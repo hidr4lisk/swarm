@@ -1,0 +1,148 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+    .ay-seccion { margin-bottom: 1.4rem; }
+    .ay-seccion h2 { font-size: 1.05rem; margin: 0 0 .6rem; display: flex; align-items: center; gap: .5rem; }
+    .ay-seccion h2 i { color: var(--accent-color); font-size: .9rem; }
+    .ay-grid2 { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+
+    /* tabla de comandos */
+    .ay-cmds { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .ay-cmds td { padding: .42rem .6rem; border-top: 1px solid var(--enj-border); vertical-align: top; }
+    .ay-cmds tr:first-child td { border-top: none; }
+    .ay-cmds code, .ay-code { font-family: monospace; color: var(--accent-color);
+        background: rgba(var(--accent-rgb), .09); padding: .1rem .4rem; border-radius: 5px;
+        white-space: nowrap; }
+
+    /* mini-mesa de ejemplo */
+    .ay-chat { display: flex; flex-direction: column; gap: .55rem; font-size: .85rem; }
+    .ay-msg { border: 1px solid var(--enj-border); border-radius: 10px; padding: .5rem .7rem;
+              background: rgba(var(--accent-rgb), .04); }
+    .ay-msg b { display: block; font-size: .72rem; letter-spacing: .04em; margin-bottom: .15rem; }
+    .ay-msg.sys { opacity: .75; font-size: .78rem; border-style: dashed; }
+
+    .ay-paso { display: flex; gap: .7rem; align-items: baseline; margin: .45rem 0; }
+    .ay-paso .n { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: inline-flex;
+        align-items: center; justify-content: center; font-size: .75rem; font-weight: 700;
+        background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
+    .ay-muted { color: var(--enj-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enj">
+    <div class="enj-head">
+        <a href="{% url 'enjambre:home' %}" class="mod-back"><i class="fas fa-chevron-left"></i> {% trans 'Mesas' %}</a>
+        <span class="mod-sep">|</span>
+        <h1 class="mod-title" style="flex:1;min-width:0;">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-circle-question" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span>{% trans 'Ayuda' %}</span>
+        </h1>
+    </div>
+
+    <div class="ay-seccion enj-card">
+        <h2><i class="fas fa-flask"></i> {% trans '¿Qué es esto?' %}</h2>
+        <p style="margin:.2rem 0;">
+            {% blocktrans %}Una <strong>mesa de trabajo multi-agente</strong>: varios CLIs de IA (tus cuentas, ya
+            logueadas en tu terminal) se sientan como <strong>sillas</strong> de una misma mesa.
+            Vos preguntás; las sillas <strong>charlan, debaten</strong> y, si se lo pedís,
+            <strong>fabrican archivos de verdad</strong> en la carpeta git de la mesa. Cada silla
+            corre en un contenedor descartable: nada toca tu sistema.{% endblocktrans %}
+        </p>
+    </div>
+
+    <div class="ay-seccion enj-card">
+        <h2><i class="fas fa-play"></i> {% trans 'Primeros pasos' %}</h2>
+        <div class="ay-paso"><span class="n">1</span><span>
+            {% blocktrans %}Entrá a <a href="/conexiones/">Conexiones</a>: te muestra qué CLIs
+            tienen login detectado en tu máquina (<span class="ay-code">claude</span>,
+            <span class="ay-code">opencode</span>, <span class="ay-code">agy</span>).{% endblocktrans %}</span></div>
+        <div class="ay-paso"><span class="n">2</span><span>
+            {% blocktrans %}En <a href="/sillas/">Sillas</a>, encendé las de los CLIs que
+            tengas (vienen apagadas). Ahí también editás su personalidad y su modelo.{% endblocktrans %}</span></div>
+        <div class="ay-paso"><span class="n">3</span><span>
+            {% blocktrans %}Creá una mesa, tildá qué sillas se sientan, y preguntá. Para dirigirte a una sola silla,
+            mencionala: <span class="ay-code">@claude revisá este enfoque</span>.{% endblocktrans %}</span></div>
+        <div class="ay-paso"><span class="n">4</span><span>
+            {% blocktrans %}¿Construir de verdad? <span class="ay-code">/armar &lt;pedido&gt;</span> — las sillas editan
+            archivos en la carpeta git de la mesa y cada turno queda commiteado (📁 para explorar
+            y descargar).{% endblocktrans %}</span></div>
+    </div>
+
+    <div class="ay-grid2 ay-seccion">
+        <div class="enj-card">
+            <h2><i class="fas fa-comments"></i> {% trans 'Una mesa, por dentro' %}</h2>
+            <div class="ay-chat">
+                <div class="ay-msg"><b style="color:#4a6cff;">{% trans 'HUMANO' %}</b>
+                    {% trans '/armar un script python que lea un CSV de gastos y arme un resumen por mes' %}</div>
+                <div class="ay-msg"><b style="color:#f4433a;">CLAUDE CODE — {% trans 'líder' %}</b>
+                    {% blocktrans %}Plan: @opencode escribe <code>gastos.py</code> (lectura CSV + agrupado);
+                    yo reviso bordes (CSV vacío, fechas inválidas) e integro.{% endblocktrans %}</div>
+                <div class="ay-msg"><b style="color:#18b8c4;">OPENCODE</b>
+                    {% blocktrans %}Hecho. <code>gastos.py</code> creado: pandas, agrupa por mes, imprime tabla.{% endblocktrans %}</div>
+                <div class="ay-msg sys">✅ {% trans 'Enjambre · mesa 7: OpenCode — 1 file changed (commit a1b2c3d)' %}</div>
+                <div class="ay-msg"><b style="color:#f4433a;">CLAUDE CODE — {% trans 'líder' %}</b>
+                    {% blocktrans %}Integrado. Quedó <code>gastos.py</code> con manejo de CSV vacío; probalo con
+                    <code>python gastos.py gastos.csv</code>. Falta: soporte de monedas (si lo querés, /seguí).{% endblocktrans %}</div>
+            </div>
+        </div>
+        <div class="enj-card">
+            <h2><i class="fas fa-terminal"></i> {% trans 'Comandos de la mesa' %}</h2>
+            <table class="ay-cmds">
+                <tr><td><code>@alias</code></td><td>{% blocktrans %}le hablás a UNA silla (ej. <code>@claude</code>){% endblocktrans %}</td></tr>
+                <tr><td><code>/armar &lt;pedido&gt;</code></td><td>{% trans 'fabricar: las sillas editan archivos en la carpeta de la mesa (un commit por turno)' %}</td></tr>
+                <tr><td><code>/deshacer</code></td><td>{% trans 'revierte el último turno de /armar (git reset)' %}</td></tr>
+                <tr><td><code>/volver &lt;commit&gt;</code></td><td>{% trans 'rebobina la carpeta a un commit anterior' %}</td></tr>
+                <tr><td><code>/debate &lt;tema&gt;</code></td><td>{% trans 'rondas donde las sillas se refutan (solo texto)' %}</td></tr>
+                <tr><td><code>/continuo &lt;objetivo&gt;</code></td><td>{% trans 'fija un objetivo persistente y corre la 1ª iteración' %}</td></tr>
+                <tr><td><code>/seguí</code></td><td>{% trans 'una iteración más hacia el objetivo' %}</td></tr>
+                <tr><td><code>/auto</code></td><td>{% trans 'itera sola hacia el objetivo (frena por tope de costo, máximo de iteraciones o /alto)' %}</td></tr>
+                <tr><td><code>/alto</code></td><td>{% trans 'freno de mano: corta el turno y apaga el modo continuo' %}</td></tr>
+                <tr><td><code>/cerrar</code></td><td>{% trans 'cierra la mesa con un resumen (qué se hizo + costo)' %}</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="ay-grid2 ay-seccion">
+        <div class="enj-card">
+            <h2><i class="fas fa-sitemap"></i> {% trans 'Topologías' %}</h2>
+            <p style="margin:.2rem 0;">{% blocktrans %}<strong>Plana</strong> — broadcast: todas las sillas ven tu
+            mensaje y responden a la vez. Ideal para charlar, comparar enfoques, debatir.{% endblocktrans %}</p>
+            <p style="margin:.6rem 0 .2rem;">{% blocktrans %}<strong>Líder</strong> — una silla coordina: descompone
+            tu pedido en subtareas (<span class="ay-code">@alias: subtarea</span>), cada trabajador
+            ejecuta la suya y el líder integra el resultado. Ideal para construir.{% endblocktrans %}</p>
+            <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">{% blocktrans %}Se elige por mesa, en su
+            configuración (⚙). El líder reparte mirando la <em>especialidad</em> de cada silla.{% endblocktrans %}</p>
+        </div>
+        <div class="enj-card">
+            <h2><i class="fas fa-chair"></i> {% trans 'Las sillas' %}</h2>
+            <p style="margin:.2rem 0;">{% trans 'Cada silla es un CLI o un modelo local con personalidad propia:' %}</p>
+            <table class="ay-cmds">
+                <tr><td><strong>{% trans 'Cliente' %}</strong></td><td>{% blocktrans %}<span class="ay-code">claude</span> (Claude Code),
+                    <span class="ay-code">opencode</span> (OpenCode, multi-modelo),
+                    <span class="ay-code">agy</span> (Antigravity) u
+                    <span class="ay-code">ollama</span> (un modelo local tuyo, por URL){% endblocktrans %}</td></tr>
+                <tr><td><strong>Prompt</strong></td><td>{% trans 'la personalidad: quién es y cómo responde (↺ Reset vuelve al de fábrica)' %}</td></tr>
+                <tr><td><strong>{% trans 'Recordatorio' %}</strong></td><td>{% trans 'se repite al final de cada turno (lo que no debe olvidar)' %}</td></tr>
+                <tr><td><strong>{% trans 'Especialidad' %}</strong></td><td>{% trans 'pista corta para que el líder reparta mejor' %}</td></tr>
+            </table>
+            <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">{% blocktrans %}Cloná una silla para repetir
+            un cliente con otro modelo/prompt. El velocímetro de cada mesa estima tokens y costo
+            notional por turno.{% endblocktrans %}</p>
+        </div>
+    </div>
+
+    <div class="ay-seccion enj-card">
+        <h2><i class="fas fa-shield-halved"></i> {% trans 'Tus credenciales' %}</h2>
+        <p style="margin:.2rem 0;">
+            {% blocktrans %}El login vive en <strong>tu terminal</strong>; la app jamás pide ni guarda credenciales.
+            Cada turno corre en un contenedor descartable que recibe una <strong>copia efímera</strong>
+            de la credencial (solo-lectura → tmpfs) y muere al terminar. El detalle completo y el
+            modelo de amenaza están en el README del repo — leelo antes de usar esto en serio.{% endblocktrans %}
+        </p>
+    </div>
+</div>
+{% endblock %}

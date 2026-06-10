@@ -1,0 +1,231 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+.enj-sillas-grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); }
+.enj-silla-card { position:relative; border:1px solid var(--enj-border); border-radius:12px;
+    padding:1rem; background:rgba(var(--accent-rgb),.04); display:flex; flex-direction:column; gap:.45rem; }
+.enj-silla-card.enj-inactiva { opacity:.5; }
+.enj-silla-card input[type=text], .enj-silla-card textarea, .enj-silla-card select {
+    width:100%; box-sizing:border-box; }
+.enj-silla-card .enj-card-nombre { font-weight:700; font-size:1.05rem; }
+.enj-fieldlabel { font-size:.7rem; opacity:.7; display:block; margin-bottom:.1rem; }
+.enj-saved-btn { font-size:.78rem; }
+.enj-saved-btn:disabled { opacity:.55; cursor:default; }
+.enj-silla-actions { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
+.enj-silla-actions form { margin:0; display:inline; }
+@media (max-width:600px){ .enj-sillas-grid { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enj">
+    <div class="enj-head">
+        <a href="{% url 'enjambre:home' %}" class="mod-back"><i class="fas fa-chevron-left"></i> {% trans 'Mesas' %}</a>
+        <span class="mod-sep">|</span>
+        <h1 class="mod-title" style="flex:1;min-width:0;">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-flask" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span>{% trans 'Sillas' %}</span>
+        </h1>
+        <a href="{% url 'enjambre:conexiones' %}" class="enj-lab" style="margin-left:auto;flex-shrink:0;"
+           title="{% trans 'Conexiones — qué CLIs tienen login detectado en el host' %}">
+            <i class="fas fa-plug"></i><span class="enj-lab-txt">{% trans 'Conexiones' %}</span>
+        </a>
+        <button type="button" id="enj-worker-restart" class="enj-del enj-ghost"
+                title="{% trans 'Reiniciar el worker (recargar código nuevo)' %}" aria-label="{% trans 'Reiniciar el worker' %}"
+                style="flex-shrink:0;">♻️ Worker</button>
+    </div>
+
+    <p class="enj-muted" style="font-size:.8rem;margin:.3rem 0 .8rem;">
+        {% blocktrans %}Cada cambio se guarda solo (✓). El nombre define el <strong>@alias</strong> de mención.
+        Elegí <strong>cliente</strong> + <strong>modelo</strong>; cloná para repetir un cliente con otro modelo/prompt.{% endblocktrans %}
+    </p>
+
+    <form method="post" action="{% url 'enjambre:crear_silla' %}" class="enj-row" style="margin:0 0 1rem;gap:.5rem;">
+        {% csrf_token %}
+        <input type="text" name="nombre" placeholder="{% trans 'Nombre de la silla nueva' %}" maxlength="100">
+        <button class="enj-btn" type="submit"><i class="fas fa-plus"></i> {% trans 'Agregar silla' %}</button>
+    </form>
+
+    {# Modelos por cliente para el JS (poblar el <select> de modelo) #}
+    {{ clientes_meta|json_script:"clientes-meta" }}
+
+    <div class="enj-sillas-grid">
+        {% for s in sillas %}
+        <div>
+            <form class="enj-silla-card{% if not s.activo %} enj-inactiva{% endif %}" method="post"
+                  action="{% url 'enjambre:guardar_silla' s.key %}" data-card>
+                {% csrf_token %}
+                <input type="text" name="nombre" value="{{ s.nombre }}" maxlength="100"
+                       class="enj-card-nombre" placeholder="{% trans 'Nombre' %}" aria-label="{% trans 'Nombre' %}">
+
+                <div class="enj-row" style="gap:.4rem;align-items:flex-end;">
+                    <div style="flex:1;min-width:0;">
+                        <label class="enj-fieldlabel">{% trans 'Cliente' %}</label>
+                        <select name="cliente" data-cliente>
+                            {% for ckey, c in clientes.items %}
+                            <option value="{{ ckey }}"{% if c.http %} data-http="1"{% endif %}{% if c.model_flag %} data-model="1"{% endif %}{% if ckey == s.cliente_sel %} selected{% endif %}>{{ c.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div style="flex:1;min-width:0;" data-modelo-wrap>
+                        <label class="enj-fieldlabel">{% trans 'Modelo' %}</label>
+                        <input type="text" name="modelo" data-modelo list="modelos-{{ s.key }}"
+                               value="{{ s.modelo_sel }}" placeholder="(default)" autocomplete="off"
+                               title="{% trans 'Elegí uno sugerido o tipeá cualquier ID de modelo de tus proveedores' %}">
+                        <datalist id="modelos-{{ s.key }}"></datalist>
+                    </div>
+                </div>
+                <div data-endpoint-wrap hidden>
+                    <label class="enj-fieldlabel">{% trans 'Endpoint URL (Ollama)' %}</label>
+                    <input type="text" name="endpoint_url" value="{{ s.endpoint_url }}"
+                           placeholder="http://localhost:11434">
+                </div>
+
+                <div>
+                    <label class="enj-fieldlabel">{% trans 'Prompt A — control' %}</label>
+                    <textarea name="persona_a" rows="4">{{ s.persona }}</textarea>
+                </div>
+                <div>
+                    <label class="enj-fieldlabel">{% trans 'Prompt B — consulta' %} <span style="opacity:.6;">{% trans '(vacío = usa A)' %}</span></label>
+                    <textarea name="persona_b" rows="3">{{ s.persona_consulta }}</textarea>
+                </div>
+                <div>
+                    <label class="enj-fieldlabel">{% trans 'Recordatorio (recencia)' %}</label>
+                    <input type="text" name="recordatorio" value="{{ s.recordatorio }}" placeholder="{% trans '(opcional)' %}">
+                </div>
+                <div>
+                    <label class="enj-fieldlabel">{% trans 'Especialidad' %} <span style="opacity:.6;">{% trans '(el líder reparte por esto)' %}</span></label>
+                    <input type="text" name="especialidad" value="{{ s.especialidad }}" maxlength="120"
+                           placeholder="{% trans 'ej: frontend/CSS · scripts · redacción (opcional)' %}">
+                </div>
+
+                <div class="enj-row" style="gap:1rem;align-items:center;flex-wrap:wrap;">
+                    <label class="enj-check"><input type="checkbox" name="activo" {% if s.activo %}checked{% endif %}> <span>{% trans 'Activa' %}</span></label>
+                    <span class="enj-rango" role="radiogroup" aria-label="{% trans 'Rango' %}" style="display:inline-flex;gap:.6rem;">
+                        <label class="enj-check"><input type="radio" name="rango" value="control" {% if not s.permitir_consulta %}checked{% endif %}> <span>CONTROL</span></label>
+                        <label class="enj-check"><input type="radio" name="rango" value="consulta" {% if s.permitir_consulta %}checked{% endif %}> <span>CONSULTA</span></label>
+                    </span>
+                    <label class="enj-fieldlabel" style="margin-left:auto;display:flex;align-items:center;gap:.3rem;">{% trans 'Orden' %}
+                        <input type="number" name="orden" value="{{ s.orden }}" style="width:58px;"></label>
+                </div>
+
+                <div class="enj-silla-actions">
+                    <button type="submit" data-save class="enj-saved-btn enj-ghost" disabled>{% trans 'Guardado' %}</button>
+                    <button type="button" class="enj-del enj-ghost" data-reset-a data-default="{{ s.persona_default }}"
+                            title="{% trans 'Restaurar el prompt A de fábrica' %}">↺ Reset A</button>
+                    <span class="enj-muted" style="font-size:.7rem;margin-left:auto;">@{{ s.alias }} · {{ s.motor }}</span>
+                </div>
+            </form>
+            <div class="enj-silla-actions" style="margin-top:.4rem;">
+                <form method="post" action="{% url 'enjambre:clonar_silla' s.key %}">{% csrf_token %}
+                    <button class="enj-del enj-ghost" type="submit"><i class="fas fa-copy"></i> {% trans 'Clonar' %}</button></form>
+                <form method="post" action="{% url 'enjambre:borrar_silla' s.key %}"
+                      onsubmit="return confirm('{% blocktrans with nombre=s.nombre|escapejs %}¿Borrar la silla «{{ nombre }}»? Sus tareas viejas quedan huérfanas.{% endblocktrans %}');">
+                    {% csrf_token %}<button class="enj-del enj-ghost" type="submit"><i class="fas fa-trash"></i> {% trans 'Borrar' %}</button></form>
+            </div>
+        </div>
+        {% empty %}
+        <p class="enj-muted">{% trans 'No hay sillas. Agregá una arriba.' %}</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var META = JSON.parse((document.getElementById('clientes-meta') || {}).textContent || '{}');
+
+    function cliente(card) { return card.querySelector('[data-cliente]').value; }
+
+    function rebuildModelos(card) {
+        // input + datalist: SUGIERE los modelos conocidos pero acepta cualquier ID que
+        // tipees (gemini/gpt/los de tus proveedores). Antes era un <select> cerrado y no
+        // dejaba usar modelos fuera de nuestra lista — bug del primer beta real.
+        var inp = card.querySelector('[data-modelo]');
+        var dl = card.querySelector('datalist');
+        if (!inp || !dl) return;
+        var meta = META[cliente(card)] || {};
+        dl.innerHTML = '';
+        (meta.modelos || []).forEach(function (m) {
+            if (m === '') return;
+            var o = document.createElement('option');
+            o.value = m;
+            dl.appendChild(o);
+        });
+    }
+    function syncCliente(card) {
+        var meta = META[cliente(card)] || {};
+        var mWrap = card.querySelector('[data-modelo-wrap]');
+        var eWrap = card.querySelector('[data-endpoint-wrap]');
+        if (mWrap) mWrap.hidden = !(meta.model || meta.http);
+        if (eWrap) eWrap.hidden = !meta.http;
+    }
+    function setSaved(card, saved) {
+        var btn = card.querySelector('[data-save]');
+        if (!btn) return;
+        btn.disabled = saved;
+        btn.textContent = saved ? '{% trans "Guardado" %}' : '{% trans "Guardar" %}';
+        btn.classList.toggle('enj-btn', !saved);
+        btn.classList.toggle('enj-ghost', saved);
+    }
+    function save(card) {
+        var btn = card.querySelector('[data-save]');
+        if (btn) { btn.textContent = '{% trans "Guardando…" %}'; btn.disabled = true; }
+        fetch(card.action, {
+            method: 'POST', body: new FormData(card),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (r) {
+            if (r.ok) {
+                setSaved(card, true);
+                var act = card.querySelector('[name="activo"]');
+                card.classList.toggle('enj-inactiva', act && !act.checked);
+            } else { setSaved(card, false); }
+        }).catch(function () { setSaved(card, false); });
+    }
+    document.querySelectorAll('[data-card]').forEach(function (card) {
+        rebuildModelos(card);
+        syncCliente(card);
+        setSaved(card, true);   // arranca limpia → "Guardado"
+        card.addEventListener('input', function () { setSaved(card, false); });
+        card.addEventListener('change', function (e) {
+            if (e.target.matches('[data-cliente]')) {
+                var inp = card.querySelector('[data-modelo]');
+                if (inp) inp.value = '';   // al cambiar cliente, modelo vuelve a default
+                rebuildModelos(card);
+                syncCliente(card);
+            }
+            setSaved(card, false);
+        });
+        card.addEventListener('submit', function (e) { e.preventDefault(); save(card); });
+        var reset = card.querySelector('[data-reset-a]');
+        if (reset) reset.addEventListener('click', function () {
+            var ta = card.querySelector('[name="persona_a"]');
+            if (ta) { ta.value = reset.dataset.default || ''; setSaved(card, false); }
+        });
+    });
+})();
+
+// Reiniciar el worker del host: encola la señal; el worker se sale y systemd lo relanza (~5s).
+(function () {
+    var btn = document.getElementById('enj-worker-restart');
+    if (!btn) return;
+    var token = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    btn.addEventListener('click', function () {
+        if (!confirm('{% trans "¿Reiniciar el worker? Tarda ~5s en volver; un turno en curso se corta." %}')) return;
+        var orig = btn.textContent;
+        btn.disabled = true; btn.textContent = '♻️ {% trans "Reiniciando…" %}';
+        fetch("{% url 'enjambre:worker_restart' %}", {
+            method: 'POST', headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (r) {
+            btn.textContent = r.ok ? '♻️ {% trans "Reiniciando (~5s)…" %}' : '♻️ Error';
+            if (r.ok) setTimeout(function () { btn.disabled = false; btn.textContent = orig; }, 8000);
+            else btn.disabled = false;
+        }).catch(function () { btn.textContent = '♻️ Error'; btn.disabled = false; });
+    });
+})();
+</script>
+{% endblock %}

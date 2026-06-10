@@ -1,0 +1,689 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+/* La fila de chips tenía overflow-x:auto (→ overflow-y computa a auto) que recortaba el globito
+   que se abre hacia arriba. Ya no hace falta scroll horizontal: los participantes van en el popover. */
+.enj-chips { overflow: visible; flex-wrap: wrap; }
+.enj-participantes { position:relative; display:inline-block; }
+.enj-part-pop {
+    position:absolute; bottom:calc(100% + 6px); left:0; display:none;
+    flex-wrap:wrap; gap:.3rem; width:max-content; max-width:min(90vw,480px); max-height:45vh;
+    overflow-y:auto; padding:.5rem; z-index:50;
+    background:var(--surface-color,#15171c); border:1px solid var(--enj-border);
+    border-radius:10px; box-shadow:0 6px 24px rgba(0,0,0,.35);
+}
+.enj-participantes:hover .enj-part-pop,
+.enj-participantes:focus-within .enj-part-pop,
+.enj-participantes.open .enj-part-pop { display:flex; }
+.enj-part-model { opacity:.6; font-size:.85em; }
+/* Comandos: globito (?) que LISTA los comandos al pasar el mouse / tocar (no son botones) */
+.enj-comandos { position:relative; display:inline-block; }
+.enj-cmd-trigger { cursor:help; }
+.enj-cmd-pop {
+    position:absolute; bottom:calc(100% + 6px); left:0; display:none;
+    flex-direction:column; gap:.1rem; width:max-content; max-width:min(92vw,460px); max-height:55vh;
+    overflow-y:auto; padding:.5rem .6rem; z-index:50;
+    background:var(--surface-color,#15171c); border:1px solid var(--enj-border);
+    border-radius:10px; box-shadow:0 6px 24px rgba(0,0,0,.35); font-size:.8rem;
+}
+.enj-comandos:hover .enj-cmd-pop,
+.enj-comandos:focus-within .enj-cmd-pop,
+.enj-comandos.open .enj-cmd-pop { display:flex; }
+.enj-cmd-row { display:flex; gap:.6rem; align-items:baseline; padding:.13rem 0; }
+.enj-cmd-row + .enj-cmd-row { border-top:1px solid var(--enj-border); }
+.enj-cmd-k { flex-shrink:0; font-weight:700; min-width:6.2em; white-space:nowrap; }
+.enj-cmd-d { opacity:.78; line-height:1.35; }
+.enj-cmd-d code { font-size:.92em; opacity:.95; }
+/* Velocímetro: desglose de gasto por silla al pasar el mouse sobre el badge 💸 */
+.enj-velo { position:relative; display:inline-block; }
+.enj-velo-pop {
+    position:absolute; bottom:calc(100% + 6px); left:0; display:none;
+    width:max-content; max-width:min(90vw,420px); padding:.55rem .65rem; z-index:50;
+    background:var(--surface-color,#15171c); border:1px solid var(--enj-border);
+    border-radius:10px; box-shadow:0 6px 24px rgba(0,0,0,.35); font-size:.8rem; }
+.enj-velo:hover .enj-velo-pop, .enj-velo:focus-within .enj-velo-pop { display:block; }
+.enj-velo-pop table { border-collapse:collapse; width:100%; }
+.enj-velo-pop td { padding:.12rem .5rem .12rem 0; white-space:nowrap; }
+.enj-velo-pop td:last-child { text-align:right; padding-right:0; }
+.enj-velo-pop .enj-velo-h { opacity:.6; font-size:.72rem; padding-bottom:.25rem; }
+.enj-topo { display:flex; flex-direction:column; gap:.4rem; padding:0 0 .6rem; margin-bottom:.4rem;
+            border-bottom:1px solid var(--enj-border); }
+.enj-topo-row { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
+.enj-topo-row > span { font-size:.85rem; white-space:nowrap; }
+.enj-topo select { flex:1; min-width:0; max-width:60%; padding:.3rem .4rem;
+                   background:var(--surface-color,#15171c); color:inherit;
+                   border:1px solid var(--enj-border); border-radius:7px; }
+.enj-lider-chip { background:rgba(var(--accent-rgb),.13); border-color:transparent; cursor:default; }
+
+/* ── Área de trabajo: chat (izq) + flujo (der) ─────────────────────────────── */
+.enj-main { display:flex; gap:.7rem; flex:1; min-height:0; }
+.enj-left { display:flex; flex-direction:column; min-height:0; min-width:0; flex:1; }
+.enj-flujo-col { width:clamp(300px,32%,420px); flex-shrink:0; display:flex; flex-direction:column;
+    min-height:0; border:1px solid var(--enj-border); border-radius:var(--enj-radius);
+    background:var(--enj-chatbg); box-shadow:var(--enj-glow); overflow:hidden; }
+.enj-main[data-flujo="closed"] .enj-flujo-col { display:none; }
+#flujo-toggle[aria-pressed="false"] { opacity:.5; }
+.enj-flujo-h { display:flex; align-items:center; gap:.45rem; padding:.55rem .7rem; flex-shrink:0;
+    border-bottom:1px solid var(--enj-border); font-weight:700; font-size:.85rem; }
+.enj-flujo-live { width:7px; height:7px; border-radius:50%; background:#46c46a;
+    box-shadow:0 0 0 0 rgba(70,196,106,.6); animation:enj-pulse 2s infinite; }
+@keyframes enj-pulse { 0%{box-shadow:0 0 0 0 rgba(70,196,106,.5);} 70%{box-shadow:0 0 0 6px rgba(70,196,106,0);} 100%{box-shadow:0 0 0 0 rgba(70,196,106,0);} }
+.enj-flujo-body { flex:1; min-height:0; overflow-y:auto; padding:.35rem .55rem;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.74rem; line-height:1.5; }
+.enj-logline { padding:.16rem 0; border-bottom:1px solid var(--enj-border); }
+.enj-logline:last-child { border-bottom:0; }
+.enj-logline-head { display:flex; gap:.5rem; align-items:baseline; }
+.enj-logline-head time { opacity:.5; flex-shrink:0; font-variant-numeric:tabular-nums; }
+.enj-logline-head .t { word-break:break-word; }
+.enj-logline.ok    .enj-logline-head .t { color:#46c46a; }
+.enj-logline.error .enj-logline-head .t { color:#f4433a; }
+.enj-logline.paso  .enj-logline-head .t { color:var(--enj-accent); }
+.enj-logline.has-detalle .enj-logline-head { cursor:pointer; }
+.enj-logline.has-detalle .enj-logline-head .t::after { content:" ⌄"; opacity:.45; }
+.enj-logline.has-detalle.pin .enj-logline-head .t::after { content:" ⌃"; opacity:.7; }
+.enj-log-detalle { display:none; margin:.28rem 0 .1rem; padding:.45rem .55rem; border-radius:7px;
+    background:rgba(127,127,127,.14); border:1px solid var(--enj-border);
+    white-space:pre; overflow:auto; max-height:320px; max-width:100%;
+    font-size:.7rem; line-height:1.45; tab-size:2; }
+.enj-logline.has-detalle.pin .enj-log-detalle { display:block; }
+.enj-diff-add { color:#46c46a; } .enj-diff-del { color:#f4433a; } .enj-diff-hd { color:var(--enj-accent); opacity:.85; }
+.enj-flujo-bg { display:none; }
+
+/* ── Carpeta de la mesa (modal) ────────────────────────────────────────────── */
+.enj-carpeta-path { display:flex; gap:.4rem; align-items:center; margin-bottom:.6rem; }
+.enj-carpeta-host { flex:1; min-width:0; overflow-x:auto; white-space:nowrap; font-size:.72rem;
+    padding:.4rem .55rem; border:1px solid var(--enj-border); border-radius:7px;
+    background:rgba(127,127,127,.1); }
+.enj-carpeta-list { display:flex; flex-direction:column; gap:.1rem; max-height:50vh; overflow:auto;
+    border:1px solid var(--enj-border); border-radius:8px; padding:.3rem; }
+.enj-file { display:flex; align-items:center; gap:.55rem; padding:.32rem .4rem; border-radius:6px; font-size:.82rem; }
+.enj-file:hover { background:rgba(127,127,127,.12); }
+.enj-file > i { opacity:.55; flex-shrink:0; }
+.enj-file-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.enj-file-size { opacity:.55; font-size:.72rem; flex-shrink:0; font-variant-numeric:tabular-nums; }
+.enj-file .enj-del { padding:.1rem .42rem; flex-shrink:0; line-height:1; }
+.enj-copy.ok { color:#46c46a; border-color:#46c46a; }
+/* El drawer del flujo no debe generar scroll horizontal global ni desbordar su ancho. */
+.enj-chatpage { overflow-x:hidden; }
+.enj-flujo-col, .enj-logline, .enj-logline-head .t { max-width:100%; }
+.enj-flujo-body { overflow-x:hidden; }
+@media (max-width:760px){
+    .enj-flujo-col { position:fixed; top:0; right:0; height:100%; height:100dvh;
+        width:min(380px,100vw); max-width:100vw;
+        z-index:1002; border-radius:0; border-top:0; border-bottom:0; border-right:0;
+        box-shadow:-8px 0 24px rgba(0,0,0,.4); }
+    /* z-index por encima del header (sticky, 1000) y footer (fixed, 999) globales, si no lo tapan.
+       cerrado = display:none (NO translateX off-canvas): un fixed empujado fuera del viewport
+       genera scroll horizontal y "se sale de la pantalla". */
+    .enj-main[data-flujo="closed"] .enj-flujo-col { display:none; }
+    .enj-main[data-flujo="open"]   .enj-flujo-col { display:flex; animation:enj-drawer-in .22s ease; }
+    .enj-flujo-bg.open { display:block; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1001; }
+}
+@keyframes enj-drawer-in { from{transform:translateX(100%)} to{transform:translateX(0)} }
+/* Botones de acción del header agrupados: wrappean JUNTOS a una 2da fila (no se desparraman en
+   3 renglones), y el título queda en 1 línea con ellipsis (no vertical). */
+.enj-head-actions { display:flex; gap:.1rem; margin-left:auto; flex-shrink:0; }
+@media (max-width:600px){
+    .enj-head .mod-title { font-size:1.15rem; }
+    .enj-head .mod-back { font-size:11px; }
+    .enj-head .mod-sep { font-size:13px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enj enj-chatpage">
+    <div class="enj-head">
+        <a href="{% url 'enjambre:home' %}" class="mod-back">{% trans 'Mesas' %}</a>
+        <span class="mod-sep">|</span>
+        <h1 class="mod-title" style="flex:1;min-width:0;font-size:clamp(1.2rem,5vw,1.8rem);">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-flask" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sesion.nombre }}</span>
+            <span class="enj-muted" style="flex-shrink:0;font-size:.65em;opacity:.6;">#{{ sesion.pk }}</span>
+        </h1>
+        <div class="enj-head-actions">
+            <button type="button" class="enj-del enj-ghost" data-modal="cfg-mesa" title="{% trans 'Sillas de la mesa' %}"
+                    aria-label="{% trans 'Sillas de la mesa' %}"><i class="fas fa-gear"></i></button>
+            <button type="button" class="enj-del enj-ghost" id="enj-descargar" title="{% trans 'Descargar la charla (.txt)' %}"
+                    aria-label="{% trans 'Descargar la charla' %}"><i class="fas fa-copy"></i></button>
+            <button type="button" class="enj-del enj-ghost" data-modal="ayuda" title="{% trans 'Ayuda / comandos' %}"
+                    aria-label="{% trans 'Ayuda' %}"><i class="fas fa-circle-question"></i></button>
+            {% if puede_log %}
+            <button type="button" class="enj-del enj-ghost" data-modal="carpeta" id="carpeta-btn" title="{% trans 'Carpeta de la mesa (archivos)' %}"
+                    aria-label="{% trans 'Carpeta de la mesa' %}"><i class="fas fa-folder-open"></i></button>
+            <button type="button" class="enj-del enj-ghost" id="flujo-toggle" title="{% trans 'Flujo de trabajo (en vivo)' %}"
+                    aria-label="{% trans 'Flujo de trabajo' %}" aria-pressed="true"><i class="fas fa-list-check"></i></button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Área de trabajo: chat (izq) + flujo de trabajo (der, solo CONTROL) -->
+    <div class="enj-main" id="enj-main" data-flujo="open">
+    <div class="enj-left">
+    <!-- Chat: ocupa todo; la barra de preguntar va fija abajo (estilo WhatsApp) -->
+    <section class="enj-chat">
+        <div id="mensajes">
+            {% for m in mensajes %}
+            <div class="msg" data-id="{{ m.id }}"{% if not m.participante_id %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
+                <span class="enj-pcolor" style="background:{{ m.color }};color:{{ m.color }};"></span><strong style="color:{{ m.color }};">{{ m.emisor }}:</strong> <span>{{ m.texto }}</span>
+            </div>
+            {% empty %}
+            <div id="enj-empty" class="enj-muted">{% trans 'La mesa está en silencio. Hacé la primera pregunta.' %}</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Comandos (solo control) + globito de Participantes (hover/tap, se abre hacia arriba) -->
+    <div class="enj-chips">
+        {% if sesion.topologia == 'lider' and sesion.lider %}
+        <span class="enj-chip enj-lider-chip" title="{% trans 'El líder coordina al resto; @silla habla directo a una' %}">👑 {% trans 'Líder' %}: {{ sesion.lider.nombre }}</span>
+        {% endif %}
+        {% if puede_log %}
+        <span class="enj-velo" tabindex="0">
+            <span class="enj-chip enj-velocimetro" id="enj-velocimetro" style="font-weight:700;cursor:help;">💸 ~${{ costo_total|floatformat:4 }}{% if sesion.costo_tope %} / ${{ sesion.costo_tope }}{% endif %} · {{ tokens_total }} tok</span>
+            <div class="enj-velo-pop">
+                <div class="enj-velo-h">{% trans 'Gasto estimado por silla (notional, a precio de lista — no es la factura real)' %}</div>
+                <table>
+                    {% for g in gasto_por_silla %}
+                    <tr><td>{{ g.emisor }}</td><td>{{ g.tok }} tok</td><td>{% if g.usd %}${{ g.usd|floatformat:4 }}{% else %}$0 {% trans '(gratis)' %}{% endif %}</td></tr>
+                    {% empty %}
+                    <tr><td>{% trans 'Todavía no gastó ninguna silla.' %}</td></tr>
+                    {% endfor %}
+                    {% if gasto_por_silla %}
+                    <tr style="border-top:1px solid var(--enj-border);font-weight:700;"><td>{% trans 'Total' %}</td><td>{{ tokens_total }} tok</td><td>${{ costo_total|floatformat:4 }}</td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </span>
+        {% if sesion.continuo %}
+        <span class="enj-chip enj-lider-chip" title="{% trans 'Objetivo continuo:' %} {{ sesion.objetivo }}">{% if sesion.auto %}🤖 {% trans 'Auto' %}{% else %}🔁 {% trans 'Continuo' %}{% endif %}: {{ sesion.objetivo|truncatechars:40 }}</span>
+        {% endif %}
+        {% endif %}
+        {% if puede_controlar %}
+        <div class="enj-comandos">
+            <button type="button" class="enj-chip enj-cmd-trigger" aria-haspopup="true"
+                    title="{% trans 'Comandos de la mesa (pasá el mouse / tocá)' %}">(?)&nbsp;{% trans 'Comandos' %}</button>
+            <div class="enj-cmd-pop" role="tooltip">
+                <div class="enj-cmd-row"><span class="enj-cmd-k">🔨 /armar</span><span class="enj-cmd-d">{% trans 'Construir/editar en la carpeta de la mesa' %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">↩️ /deshacer</span><span class="enj-cmd-d">{% trans 'Revertir el último /armar' %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">🕰️ /volver</span><span class="enj-cmd-d">{% trans 'Rebobinar la carpeta a un commit (sin sha lista los commits)' %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">💬 /debate</span><span class="enj-cmd-d">{% trans 'Las sillas discuten en rondas' %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">🔁 /continuo</span><span class="enj-cmd-d">{% blocktrans %}Fija un objetivo y la mesa lo construye iteración por iteración; vos confirmás cada paso con /seguí. Atajo: <code>/continuo --auto &lt;objetivo&gt;</code> define el objetivo y arranca en automático de una.{% endblocktrans %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">▶️ /seguí</span><span class="enj-cmd-d">{% trans 'Correr la próxima iteración hacia el objetivo continuo' %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">🤖 /auto</span><span class="enj-cmd-d">{% blocktrans %}Pasa a automático un <em>continuo que ya está activo</em>: el worker itera solo (bajo tope y máx de iteraciones) hasta /alto. Sin objetivo activo, pedí <code>/continuo --auto &lt;objetivo&gt;</code>.{% endblocktrans %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">🛑 /alto</span><span class="enj-cmd-d">{% trans 'Cortar: termina el turno en curso (la silla que corre termina) y apaga el modo continuo' %}</span></div>
+                <div class="enj-cmd-row"><span class="enj-cmd-k">🏁 /cerrar</span><span class="enj-cmd-d">{% trans 'Cerrar la mesa con un resumen (qué se construyó, commits, costo total). No borra nada.' %}</span></div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="enj-participantes">
+            <button type="button" class="enj-chip enj-part-trigger" aria-haspopup="true"
+                    title="{% trans 'Dirigir a una silla (@mención)' %}"><i class="fas fa-users"></i> {% trans 'Participantes' %} ({{ sillas|length }})</button>
+            <div class="enj-part-pop">
+                {% for s in sillas %}
+                <button type="button" class="enj-chip" data-alias="{{ s.alias }}" title="{% blocktrans with nombre=s.nombre alias=s.alias %}Dirigir solo a {{ nombre }} (@{{ alias }}){% endblocktrans %}">{{ s.nombre }} <span class="enj-part-model">{{ s.motor }}</span></button>
+                {% empty %}
+                <span class="enj-muted" style="font-size:.8rem;">{% trans 'No hay sillas en esta mesa.' %}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de preguntar FIJA al footer -->
+    <form method="post" action="{% url 'enjambre:preguntar' sesion.pk %}" class="enj-ask">
+        {% csrf_token %}
+        <input name="texto" placeholder="{% if puede_controlar %}{% trans 'Hablá con la mesa… (@silla, /armar para construir)' %}{% else %}{% trans 'Hablá con la mesa… (@silla para dirigir a una)' %}{% endif %}" autocomplete="off" required>
+        <button type="submit" class="enj-btn" aria-label="{% trans 'Enviar' %}"><i class="fas fa-paper-plane"></i></button>
+    </form>
+    </div><!-- /.enj-left -->
+
+    {% if puede_log %}
+    <aside class="enj-flujo-col" id="flujo-col" aria-label="{% trans 'Flujo de trabajo' %}">
+        <div class="enj-flujo-h">
+            <i class="fas fa-list-check"></i> {% trans 'Flujo de trabajo' %}
+            <span class="enj-flujo-live" title="{% trans 'En vivo' %}"></span>
+            <button type="button" class="enj-del enj-ghost" id="flujo-close" aria-label="{% trans 'Ocultar flujo' %}"
+                    style="margin-left:auto;padding:.1rem .4rem;">✕</button>
+        </div>
+        <div class="enj-flujo-body" id="flujo-body">
+            {% for l in logs %}
+            <div class="enj-logline {{ l.nivel }}{% if l.detalle %} has-detalle{% endif %}" data-id="{{ l.id }}">
+                <div class="enj-logline-head"><time>{{ l.creado_at|date:'H:i:s' }}</time><span class="t">{{ l.texto }}</span></div>
+                {% if l.detalle %}<pre class="enj-log-detalle">{{ l.detalle }}</pre>{% endif %}
+            </div>
+            {% empty %}
+            <div class="enj-muted" id="flujo-empty" style="font-size:.78rem;padding:.3rem;">{% trans 'Sin actividad todavía. El flujo aparece cuando las sillas trabajan.' %}</div>
+            {% endfor %}
+        </div>
+    </aside>
+    {% endif %}
+    </div><!-- /.enj-main -->
+    {% if puede_log %}<div class="enj-flujo-bg" id="flujo-bg"></div>{% endif %}
+
+    <!-- Sillas de la mesa: agregar/quitar en vivo (vuelve a la mesa; aplica al próximo turno) -->
+    <div class="enj-modal" id="cfg-mesa" hidden>
+        <div class="enj-modal-bg" data-close></div>
+        <div class="enj-modal-card enj-panel">
+            <div class="enj-panel-h">{% trans 'Sillas de la mesa' %}</div>
+            <form method="post" action="{% url 'enjambre:guardar_config' sesion.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="origen" value="mesa">
+                <div class="enj-modal-body">
+                    <div class="enj-topo">
+                        <label class="enj-topo-row">
+                            <span>{% trans 'Coordinación' %}</span>
+                            <select name="topologia" id="enj-topo-sel">
+                                <option value="plana" {% if sesion.topologia != 'lider' %}selected{% endif %}>{% trans 'Plana — todas responden' %}</option>
+                                <option value="lider" {% if sesion.topologia == 'lider' %}selected{% endif %}>{% trans 'Líder — una coordina al resto' %}</option>
+                            </select>
+                        </label>
+                        <label class="enj-topo-row" id="enj-lider-wrap">
+                            <span>👑 {% trans 'Líder' %}</span>
+                            <select name="lider">
+                                <option value="">{% trans '— elegí una silla —' %}</option>
+                                {% for s in sillas %}
+                                <option value="{{ s.key }}" {% if sesion.lider_id == s.id %}selected{% endif %}>{{ s.etiqueta }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <p class="enj-muted" style="margin:.1rem 0 .2rem;font-size:.78rem;">
+                            {% blocktrans %}En modo Líder, el líder descompone tu pedido en subtareas, se las reparte a las
+                            otras sillas y al final integra todo. Con <code>@silla</code> hablás directo a una.{% endblocktrans %}
+                        </p>
+                        <label class="enj-topo-row">
+                            <span>💸 {% trans 'Tope de gasto (USD)' %}</span>
+                            <input type="number" name="costo_tope" min="0" step="0.01"
+                                   value="{{ sesion.costo_tope|floatformat:'-2' }}"
+                                   placeholder="{% trans '0 = sin tope' %}" style="max-width:8rem;">
+                        </label>
+                        <p class="enj-muted" style="margin:.1rem 0 .2rem;font-size:.78rem;">
+                            {% blocktrans %}En modo continuo, si el gasto estimado acumulado supera el tope, la mesa no
+                            corre la próxima iteración. <strong>0 = sin tope.</strong>{% endblocktrans %}
+                        </p>
+                    </div>
+                    <div class="enj-panel-h" style="font-size:.85rem;opacity:.8;">{% trans 'Sillas de la mesa' %}</div>
+                    {% for silla in sillas_activas %}
+                    <label class="enj-check enj-silla-opt"{% if silla.endpoint_url %} data-local="1"{% endif %}>
+                        <input type="checkbox" name="sillas" value="{{ silla.key }}"
+                               {% if not sel_ids or silla.id in sel_ids %}checked{% endif %}>
+                        <span>{{ silla.etiqueta }}{% if silla.endpoint_url %} <em class="enj-muted" style="font-size:.72rem;font-style:normal;">· {% trans 'local, no fabrica' %}</em>{% endif %}</span>
+                    </label>
+                    {% empty %}
+                    <p class="enj-muted">{% trans 'No hay sillas disponibles.' %}</p>
+                    {% endfor %}
+                </div>
+                <div class="enj-modal-foot">
+                    <button type="button" class="enj-del enj-ghost" data-close>{% trans 'Cancelar' %}</button>
+                    <button type="submit" class="enj-btn">{% trans 'Guardar' %}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Ayuda: comandos de la mesa y qué hace cada botón -->
+    <div class="enj-modal" id="ayuda" hidden>
+        <div class="enj-modal-bg" data-close></div>
+        <div class="enj-modal-card enj-panel">
+            <div class="enj-panel-h"><i class="fas fa-circle-question"></i> {% trans 'Ayuda de la mesa' %}</div>
+            <div class="enj-modal-body" style="font-size:.85rem;line-height:1.55;">
+                <p style="margin:0 0 .25rem;"><strong>{% trans 'Botones' %}</strong></p>
+                <p style="margin:0 0 .75rem;">
+                    <i class="fas fa-gear"></i> {% trans 'Sillas de la mesa (quién participa).' %}<br>
+                    <i class="fas fa-copy"></i> {% trans 'Descargar la charla en un .txt.' %}<br>
+                    {% if puede_log %}<i class="fas fa-folder-open"></i> {% trans 'Carpeta de la mesa: ver/descargar archivos y copiar la ruta en el host.' %}<br>
+                    <i class="fas fa-list-check"></i> {% trans 'Flujo de trabajo en vivo (qué hace cada silla, diffs).' %}<br>{% endif %}
+                    <i class="fas fa-circle-question"></i> {% trans 'Esta ayuda.' %}
+                </p>
+                <p style="margin:0 0 .25rem;"><strong>{% trans 'Coordinación' %}</strong></p>
+                <p style="margin:0 0 .75rem;">
+                    {% blocktrans %}<strong>Plana</strong> — todas las sillas responden al pedido.{% endblocktrans %}<br>
+                    {% blocktrans %}<strong>Líder</strong> (👑) — una silla coordina: descompone tu pedido en subtareas, se
+                    las reparte a las demás, y al final integra y reporta.{% endblocktrans %} {% blocktrans %}Se elige en <i class="fas fa-gear"></i> Sillas de la mesa.{% endblocktrans %}
+                </p>
+                <p style="margin:0 0 .25rem;"><strong>{% trans 'Mensajes' %}</strong></p>
+                <p style="margin:0 0 .75rem;">{% blocktrans %}<code>@silla</code> — dirigir el turno a una sola silla (también saltea al líder).{% endblocktrans %}</p>
+                {% if puede_controlar %}
+                <p style="margin:0 0 .25rem;"><strong>{% trans 'Comandos' %}</strong> {% trans '(solo control)' %}</p>
+                <p style="margin:0 0 .5rem;">
+                    {% blocktrans %}<code>/armar &lt;qué&gt;</code> — las sillas construyen/editan en la carpeta de la mesa y te muestran el diff.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/deshacer</code> — revierte el último <code>/armar</code>.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/volver &lt;sha&gt;</code> — rebobina la carpeta a ese commit (granular); sin sha lista los commits.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/debate &lt;tema&gt;</code> — las sillas discuten en rondas antes de responder.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/alto</code> — corta el turno en curso (la silla que está corriendo termina; el resto se saltea) y apaga el modo continuo.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/continuo &lt;objetivo&gt;</code> — fija un objetivo y la mesa lo construye iteración por iteración; corre una y frena.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/seguí</code> — corre la próxima iteración hacia el objetivo continuo (construye sobre lo ya hecho).{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/continuo --auto &lt;obj&gt;</code> / <code>/auto</code> — modo automático: el worker itera solo hasta el tope de costo, el máximo de iteraciones, o <code>/alto</code>.{% endblocktrans %}<br>
+                    {% blocktrans %}<code>/cerrar</code> — cierra la mesa con un resumen (qué se construyó, commits, costo total). No borra nada; bajás el resultado con 📁.{% endblocktrans %}
+                </p>
+                <p class="enj-muted" style="margin:0;">{% blocktrans %}Se combinan: <code>@claude /armar …</code>{% endblocktrans %}</p>
+                {% else %}
+                <p class="enj-muted" style="margin:0;">{% blocktrans %}Tu rango es <strong>consulta</strong>: charlás con las sillas. Los comandos de construcción son del dueño.{% endblocktrans %}</p>
+                {% endif %}
+            </div>
+            <div class="enj-modal-foot">
+                <button type="button" class="enj-del enj-ghost" data-close>{% trans 'Cerrar' %}</button>
+            </div>
+        </div>
+    </div>
+
+    {% if puede_log %}
+    <!-- Carpeta de la mesa: ver / descargar archivos + copiar la ruta (host) -->
+    <div class="enj-modal" id="carpeta" hidden>
+        <div class="enj-modal-bg" data-close></div>
+        <div class="enj-modal-card enj-panel">
+            <div class="enj-panel-h"><i class="fas fa-folder-open"></i> {% trans 'Carpeta de la mesa' %}</div>
+            <div class="enj-modal-body">
+                <div class="enj-carpeta-path">
+                    <code id="carpeta-host" class="enj-carpeta-host" title="{% trans 'Ruta en el host' %}">…</code>
+                    <button type="button" class="enj-del enj-ghost enj-copy" data-copy-from="carpeta-host"
+                            title="{% trans 'Copiar la ruta de la carpeta (host)' %}">⧉ {% trans 'Ruta' %}</button>
+                    <button type="button" class="enj-del enj-ghost" id="carpeta-reload" title="{% trans 'Refrescar' %}">↻</button>
+                </div>
+                <div id="carpeta-list" class="enj-carpeta-list">
+                    <p class="enj-muted" style="font-size:.8rem;">{% trans 'Cargando…' %}</p>
+                </div>
+            </div>
+            <div class="enj-modal-foot">
+                <a href="{% url 'enjambre:mesa_zip' sesion.pk %}" download
+                   class="enj-btn" id="carpeta-zip" style="text-decoration:none;">⬇ {% trans 'Descargar todo (.zip)' %}</a>
+                <button type="button" class="enj-del enj-ghost" data-close>{% trans 'Cerrar' %}</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const cont = document.getElementById('mensajes');
+    function lastId() {
+        const els = cont.querySelectorAll('.msg');
+        return els.length ? els[els.length - 1].dataset.id : 0;
+    }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function append(m) {
+        if (cont.querySelector('.msg[data-id="' + m.id + '"]')) return;
+        const empty = document.getElementById('enj-empty');
+        if (empty) empty.remove();
+        const div = document.createElement('div');
+        div.className = 'msg'; div.dataset.id = m.id;
+        if (m.es_ruido) div.style.opacity = .5;
+        const c = m.color || '{{ color_humano }}';
+        if (c === '{{ color_humano }}') div.dataset.humano = '1';
+        div.style.borderLeftColor = c;
+        div.innerHTML = '<span class="enj-pcolor" style="background:' + c + ';color:' + c + ';"></span>'
+                      + '<strong style="color:' + c + ';">' + esc(m.emisor) + ':</strong> <span>' + esc(m.texto) + '</span>';
+        cont.appendChild(div); cont.scrollTop = cont.scrollHeight;
+    }
+    function connectSSE() {
+        const es = new EventSource("{% url 'enjambre:stream' sesion.pk %}?since=" + lastId());
+        es.onmessage = function (e) {
+            try { JSON.parse(e.data).messages.forEach(append); } catch (_) {}
+        };
+    }
+    cont.scrollTop = cont.scrollHeight;
+    if (window.EventSource) connectSSE();
+})();
+
+// Chips: comando (/armar, /deshacer, /debate) y/o @silla. Cada chip reemplaza SOLO su prefijo,
+// conservando el otro → permite combinar `@claude /armar …` (orden: @mención y después comando).
+(function () {
+    const input = document.querySelector('.enj-ask input[name="texto"]');
+    if (!input) return;
+    const CMD = /^\s*(\/armar|\/build|\/deshacer|\/volver|\/debate|\/alto|\/cerrar|\/continuo|\/seguí|\/segui|\/auto|🔨)\s*/i;
+    function partes(v) {
+        let m = '', c = '', rest = v;
+        const mm = rest.match(/^\s*(@\S+)\s*/);
+        if (mm) { m = mm[1]; rest = rest.slice(mm[0].length); }
+        const cm = rest.match(CMD);
+        if (cm) { c = cm[1]; rest = rest.slice(cm[0].length); }
+        return { m: m, c: c, rest: rest };
+    }
+    document.querySelectorAll('.enj-chip').forEach(function (chip) {
+        if (!chip.dataset.alias && !chip.dataset.cmd) return;  // ignora el trigger de Participantes
+        chip.addEventListener('click', function () {
+            const p = partes(input.value);
+            if (chip.dataset.cmd) p.c = chip.dataset.cmd;
+            else p.m = '@' + chip.dataset.alias;
+            input.value = (p.m ? p.m + ' ' : '') + (p.c ? p.c + ' ' : '') + p.rest;
+            input.focus();
+            const cont = chip.closest('.enj-participantes');
+            if (cont) cont.classList.remove('open');  // cerrar el globito al elegir
+        });
+    });
+    // Globitos (Participantes + Comandos): hover los abre por CSS; tap/click togglea (touch).
+    document.querySelectorAll('.enj-part-trigger, .enj-cmd-trigger').forEach(function (t) {
+        t.addEventListener('click', function (e) {
+            e.stopPropagation();
+            t.closest('.enj-participantes, .enj-comandos').classList.toggle('open');
+        });
+    });
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.enj-participantes, .enj-comandos'))
+            document.querySelectorAll('.enj-participantes.open, .enj-comandos.open').forEach(function (el) { el.classList.remove('open'); });
+    });
+})();
+
+// Descargar la charla completa como .txt (lee lo que está en pantalla; los mensajes no se paginan).
+(function () {
+    const btn = document.getElementById('enj-descargar');
+    if (!btn) return;
+    const nombre = "{{ sesion.nombre|escapejs }}";
+    btn.addEventListener('click', function () {
+        const bloques = [];
+        document.querySelectorAll('#mensajes .msg').forEach(function (m) {
+            const emisor = ((m.querySelector('strong') || {}).textContent || '').trim();
+            const texto = ((m.querySelector('span:last-child') || {}).textContent || '').trim();
+            bloques.push(emisor + '\n' + texto);
+        });
+        const sep = '\n\n' + '─'.repeat(40) + '\n\n';
+        const cab = nombre + ' — Enjambre\n{% trans "Exportado:" %} ' + new Date().toLocaleString() + sep;
+        const blob = new Blob([cab + bloques.join(sep) + '\n'], {type: 'text/plain;charset=utf-8'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (nombre.replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '') || 'charla') + '.txt';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    });
+})();
+
+// Selector de coordinación: el dropdown de líder solo tiene sentido en modo Líder; además, en
+// modo Líder (mesa de trabajo) las sillas de modelo LOCAL no fabrican → se deshabilitan para que
+// ni se sienten (el backend lo refuerza igual).
+(function () {
+    const topo = document.getElementById('enj-topo-sel');
+    const wrap = document.getElementById('enj-lider-wrap');
+    if (!topo || !wrap) return;
+    const locales = document.querySelectorAll('#cfg-mesa .enj-silla-opt[data-local]');
+    function sync() {
+        const lider = (topo.value === 'lider');
+        wrap.style.display = lider ? '' : 'none';
+        locales.forEach(function (lab) {
+            const cb = lab.querySelector('input[type=checkbox]');
+            if (lider) {
+                if (cb) { cb.checked = false; cb.disabled = true; }
+                lab.style.opacity = '.45';
+                lab.title = '{% trans "Las sillas locales no fabrican: no se sientan en una mesa Líder (de trabajo)." %}';
+            } else {
+                if (cb) cb.disabled = false;
+                lab.style.opacity = '';
+                lab.title = '';
+            }
+        });
+    }
+    topo.addEventListener('change', sync);
+    sync();
+})();
+
+// Flujo de trabajo: columna lateral (desktop) / overlay (mobile), log técnico en vivo por SSE.
+(function () {
+    const main = document.getElementById('enj-main');
+    const toggle = document.getElementById('flujo-toggle');
+    const body = document.getElementById('flujo-body');
+    if (!main || !toggle || !body) return;   // mesa de consulta: sin flujo
+    const bg = document.getElementById('flujo-bg');
+    const closeBtn = document.getElementById('flujo-close');
+    let connected = false;
+
+    function colorize(pre) {
+        if (!pre || pre.dataset.cz) return; pre.dataset.cz = '1';
+        pre.innerHTML = pre.textContent.split('\n').map(function (ln) {
+            const e = ln.replace(/[&<>]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; });
+            if (/^\+(?!\+\+)/.test(ln)) return '<span class="enj-diff-add">' + e + '</span>';
+            if (/^-(?!--)/.test(ln))    return '<span class="enj-diff-del">' + e + '</span>';
+            if (/^(@@|diff |index |\+\+\+|---)/.test(ln)) return '<span class="enj-diff-hd">' + e + '</span>';
+            return e;
+        }).join('\n');
+    }
+    function wire(line) {
+        const pre = line.querySelector('.enj-log-detalle');
+        if (!pre) return;
+        colorize(pre);
+        // click en la cabecera = abrir/cerrar el detalle (diff). Sin hover: toggle explícito.
+        const head = line.querySelector('.enj-logline-head');
+        if (head) head.addEventListener('click', function () { line.classList.toggle('pin'); });
+    }
+    body.querySelectorAll('.enj-logline').forEach(wire);
+
+    function escc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function fmt(iso) { try { return new Date(iso).toLocaleTimeString('es-AR', {hour12:false}); } catch (_) { return ''; } }
+    function lastId() { const e = body.querySelectorAll('.enj-logline'); return e.length ? e[e.length-1].dataset.id : 0; }
+    function appendLog(l) {
+        if (body.querySelector('.enj-logline[data-id="' + l.id + '"]')) return;
+        const empty = document.getElementById('flujo-empty'); if (empty) empty.remove();
+        const near = body.scrollHeight - body.scrollTop - body.clientHeight < 50;
+        const div = document.createElement('div');
+        div.className = 'enj-logline ' + (l.nivel || 'info') + (l.detalle ? ' has-detalle' : '');
+        div.dataset.id = l.id;
+        let html = '<div class="enj-logline-head"><time>' + fmt(l.creado_at) + '</time><span class="t">' + escc(l.texto) + '</span></div>';
+        if (l.detalle) html += '<pre class="enj-log-detalle">' + escc(l.detalle) + '</pre>';
+        div.innerHTML = html;
+        body.appendChild(div); wire(div);
+        if (near) body.scrollTop = body.scrollHeight;
+    }
+    function connect() {
+        if (connected || !window.EventSource) return; connected = true;
+        const es = new EventSource("{% url 'enjambre:log_stream' sesion.pk %}?since=" + lastId());
+        es.onmessage = function (e) { try { JSON.parse(e.data).logs.forEach(appendLog); } catch (_) {} };
+    }
+    function setState(open) {
+        main.dataset.flujo = open ? 'open' : 'closed';
+        toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+        if (bg) bg.classList.toggle('open', open);
+        if (open) { connect(); body.scrollTop = body.scrollHeight; }
+    }
+    toggle.addEventListener('click', function () { setState(main.dataset.flujo !== 'open'); });
+    if (closeBtn) closeBtn.addEventListener('click', function () { setState(false); });
+    if (bg) bg.addEventListener('click', function () { setState(false); });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && window.innerWidth <= 760 && main.dataset.flujo === 'open') setState(false);
+    });
+    // Default: abierto en desktop (columna), cerrado en mobile (no tapar el chat al entrar).
+    setState(window.innerWidth > 760);
+})();
+
+// Carpeta de la mesa: listar archivos, descargar y copiar la ruta (host) al portapapeles.
+(function () {
+    const btn = document.getElementById('carpeta-btn');
+    const list = document.getElementById('carpeta-list');
+    const hostEl = document.getElementById('carpeta-host');
+    const reload = document.getElementById('carpeta-reload');
+    if (!btn || !list || !hostEl) return;   // mesa de consulta: sin carpeta
+    const ARCHIVOS = "{% url 'enjambre:mesa_archivos' sesion.pk %}";
+    const DESCARGAR = "{% url 'enjambre:mesa_archivo' sesion.pk %}";
+    let host = '';
+
+    function fmtSize(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+        return (n / 1048576).toFixed(1) + ' MB';
+    }
+    function escc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function flash(b) { const t = b.textContent; b.classList.add('ok'); b.textContent = '✓';
+        setTimeout(function () { b.classList.remove('ok'); b.textContent = t; }, 1100); }
+    function fallback(text, b) {
+        const ta = document.createElement('textarea'); ta.value = text;
+        ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); flash(b); } catch (_) {} ta.remove();
+    }
+    function copy(text, b) {
+        if (navigator.clipboard && window.isSecureContext)
+            navigator.clipboard.writeText(text).then(function () { flash(b); }).catch(function () { fallback(text, b); });
+        else fallback(text, b);
+    }
+    function render(data) {
+        host = data.host_path || '';
+        hostEl.textContent = host || '{% trans "(carpeta no creada todavía)" %}';
+        // Sin archivos no hay zip: deshabilitar el botón (si no, el server devuelve un 404
+        // HTML y el navegador lo baja como «descarga.htm» — bug del primer beta real).
+        var zip = document.getElementById('carpeta-zip');
+        if (zip) {
+            var hay = data.existe && data.archivos.length;
+            zip.style.opacity = hay ? '' : '.4';
+            zip.style.pointerEvents = hay ? '' : 'none';
+            zip.title = hay ? '' : '{% trans "Esta mesa todavía no fabricó nada (probá /armar)." %}';
+        }
+        if (!data.existe || !data.archivos.length) {
+            list.innerHTML = '<p class="enj-muted" style="font-size:.8rem;padding:.3rem;">' +
+                (data.existe ? '{% trans "La carpeta está vacía." %}' : '{% trans "Esta mesa todavía no fabricó nada (probá /armar)." %}') + '</p>';
+            return;
+        }
+        list.innerHTML = '';
+        data.archivos.forEach(function (a) {
+            const row = document.createElement('div'); row.className = 'enj-file';
+            const dl = DESCARGAR + '?path=' + encodeURIComponent(a.path);
+            const full = host ? (host + '/' + a.path) : a.path;
+            row.innerHTML =
+                '<i class="fas fa-file"></i>' +
+                '<span class="enj-file-name" title="' + escc(a.path) + '">' + escc(a.path) + '</span>' +
+                '<span class="enj-file-size">' + fmtSize(a.size) + '</span>' +
+                '<a class="enj-del enj-ghost" href="' + dl + '" title="{% trans "Descargar" %}">⬇</a>' +
+                '<button type="button" class="enj-del enj-ghost enj-copy" title="{% trans "Copiar ruta (host)" %}">⧉</button>';
+            row.querySelector('.enj-copy').addEventListener('click', function () { copy(full, this); });
+            list.appendChild(row);
+        });
+    }
+    function load() {
+        list.innerHTML = '<p class="enj-muted" style="font-size:.8rem;padding:.3rem;">{% trans "Cargando…" %}</p>';
+        fetch(ARCHIVOS, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); }).then(render)
+            .catch(function () { list.innerHTML = '<p class="enj-muted">{% trans "No se pudo leer la carpeta." %}</p>'; });
+    }
+    btn.addEventListener('click', load);            // abrir el modal también carga la lista
+    if (reload) reload.addEventListener('click', load);
+    document.querySelectorAll('.enj-copy[data-copy-from]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            const el = document.getElementById(b.dataset.copyFrom);
+            if (el) copy(el.textContent, b);
+        });
+    });
+})();
+
+// Modal de fabricar (abre con el martillo, cierra con fondo/Escape) — mismo patrón que el home.
+(function () {
+    document.querySelectorAll('[data-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var m = document.getElementById(btn.dataset.modal);
+            if (m) m.hidden = false;
+        });
+    });
+    function close(m) { m.hidden = true; }
+    document.querySelectorAll('.enj-modal [data-close]').forEach(function (el) {
+        el.addEventListener('click', function () { close(el.closest('.enj-modal')); });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape')
+            document.querySelectorAll('.enj-modal:not([hidden])').forEach(close);
+    });
+})();
+</script>
+{% endblock %}

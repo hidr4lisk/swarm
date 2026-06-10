@@ -1,0 +1,4 @@
+Django==5.1.6
+dj-database-url==2.3.0
+psycopg2-binary==2.9.11
+gevent==24.2.1

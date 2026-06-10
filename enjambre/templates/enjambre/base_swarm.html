@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+{% load static i18n %}
+{% comment %}
+base_swarm.html — el esqueleto self-contained de Swarm: temas matrix/inverse con sus
+tokens definidos localmente, sin login ni nada de portal. Los templates de Enjambre
+extienden de acá sin cambios.
+{% endcomment %}
+{% get_current_language as LANGUAGE_CODE %}<html lang="{{ LANGUAGE_CODE }}" data-theme="matrix">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hidr4lisk_Swarm</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'enjambre/favicon.svg' %}">
+
+    <!-- Anti-FOUC: aplicar tema antes de renderizar -->
+    <script>
+        (function () {
+            const saved = localStorage.getItem('swarm-theme');
+            const theme = (saved === 'matrix' || saved === 'inverse') ? saved : 'matrix';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
+    <!-- Fonts + FontAwesome self-hosted (sin CDN) -->
+    <link rel="preload" href="{% static 'enjambre/vendor/fonts/jetbrains-mono-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{% static 'enjambre/vendor/fonts/inter-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{% static 'enjambre/vendor/fonts/fonts.css' %}">
+    <link rel="stylesheet" href="{% static 'enjambre/vendor/fontawesome/css/all.min.css' %}">
+
+    <link rel="stylesheet" href="{% static 'enjambre/swarm.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <header>
+        <div class="header-content">
+            <a href="{% url 'enjambre:home' %}" class="brand" title="Hidr4lisk_Swarm" aria-label="Hidr4lisk_Swarm">
+                HIDR4LISK_SWARM
+            </a>
+
+            <div class="gov-banner" aria-hidden="true">
+                <span class="gov-flag">🇦🇷</span>
+                <span>{% trans '2026 - El conocimiento es libre' %}</span>
+                <span class="gov-stars">★★★</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                {# Idioma: postea al set_language de Django (cookie + redirect a la misma página). #}
+                <form action="{% url 'set_language' %}" method="post" style="margin:0;display:inline-flex;">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    {% get_current_language as LANG %}
+                    {% if LANG == 'es' %}
+                    <button type="submit" name="language" value="en" class="theme-toggle-btn"
+                            aria-label="Switch to English" title="Switch to English"
+                            style="font-size:.75rem;font-weight:700;letter-spacing:.05em;">EN</button>
+                    {% else %}
+                    <button type="submit" name="language" value="es" class="theme-toggle-btn"
+                            aria-label="Cambiar a español" title="Cambiar a español"
+                            style="font-size:.75rem;font-weight:700;letter-spacing:.05em;">ES</button>
+                    {% endif %}
+                </form>
+                <button id="themeToggle" class="theme-toggle-btn" type="button"
+                    aria-label="{% trans 'Cambiar tema' %}" title="{% trans 'Cambiar tema' %}">
+                    <i class="fas fa-yin-yang"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <style>
+        footer { gap: 10px; }
+        footer > span { min-width: 0; white-space: nowrap; }
+        footer .footer-credit { overflow: hidden; text-overflow: ellipsis; }
+        footer .footer-version { flex-shrink: 0; }
+        footer .footer-short { display: none; }
+        @media (max-width: 640px) {
+            footer .footer-long { display: none; }
+            footer .footer-short { display: inline; }
+            footer .footer-social { display: none; }   /* en celu: solo "By Federico Furgiuele" */
+        }
+    </style>
+    <footer>
+        <span class="footer-credit"><span class="footer-long">{% trans 'Desarrollado por' %} </span><span class="footer-short">By </span><a href="https://github.com/hidr4lisk" target="_blank" rel="noopener noreferrer"
+            style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:inherit;font-weight:600;">
+            Federico Furgiuele<i class="fab fa-github footer-social" style="font-size:14px;"></i>
+        </a><a href="https://www.linkedin.com/in/federico-furgiuele" target="_blank" rel="noopener noreferrer"
+            aria-label="LinkedIn de Federico Furgiuele" class="footer-social"
+            style="display:inline-flex;align-items:center;margin-left:6px;text-decoration:none;color:inherit;">
+            <i class="fab fa-linkedin" style="font-size:14px;color:inherit;" aria-hidden="true"></i>
+        </a><a href="https://www.instagram.com/HIDR4LISK" target="_blank" rel="noopener noreferrer"
+            aria-label="Instagram de HIDR4LISK" class="footer-social"
+            style="display:inline-flex;align-items:center;margin-left:6px;text-decoration:none;color:inherit;">
+            <i class="fab fa-instagram" style="font-size:14px;color:inherit;" aria-hidden="true"></i>
+        </a></span>
+        <span class="footer-version" style="font-family:monospace;font-size:0.75rem;opacity:0.5;">Hidr4lisk_Swarm</span>
+    </footer>
+
+    <script>
+        // Toggle de tema (matrix ↔ inverse), persistido en localStorage.
+        (function () {
+            const btn = document.getElementById('themeToggle');
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                const html = document.documentElement;
+                const next = html.getAttribute('data-theme') === 'matrix' ? 'inverse' : 'matrix';
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('swarm-theme', next);
+            });
+        })();
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

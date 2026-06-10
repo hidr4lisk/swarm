@@ -1,0 +1,201 @@
+{% comment %}
+Estética del módulo Enjambre. Theme-aware: los tokens --enj-* derivan de los tokens
+globales del tema (matrix / inverse). No hay skins por usuario — el módulo respeta el
+tema elegido en la web, igual que el resto de los módulos.
+{% endcomment %}
+<style>
+/* tokens del módulo derivados del tema global (matrix/inverse) */
+.enj {
+  --enj-radius:    12px;
+  --enj-mono:      ui-monospace, 'JetBrains Mono', 'Courier New', monospace;
+  --enj-text:      var(--text-main);
+  --enj-muted:     var(--text-muted);
+  --enj-title:     var(--text-main);
+  --enj-emisor:    var(--accent-color);
+  --enj-accent:    var(--accent-color);
+  --enj-accent-bd: var(--accent-color);
+  --enj-on-accent: var(--accent-contrast);
+  --enj-panel:     var(--surface-color);
+  --enj-chatbg:    var(--surface-color);
+  --enj-border:    var(--border-color);
+  --enj-input:     var(--input-bg);
+  --enj-msg-bg:    rgba(var(--accent-rgb), .06);
+  --enj-msg-bar:   var(--accent-color);
+  --enj-glow:      0 0 0 1px rgba(var(--accent-rgb), .04);
+}
+[data-theme="matrix"] .enj  { color-scheme: dark; }    /* widgets nativos (select/options) */
+[data-theme="inverse"] .enj { color-scheme: light; }
+
+/* ── Layout compartido (aprovecha el ancho en PC, colapsa en celu) ─────────── */
+/* la mesa llena el alto entre navbar y footer (sin huecos) — el chat crece para ocuparlo */
+.enj { width: 100%; max-width: 1400px; margin: 0 auto;
+       color: var(--enj-text); font-feature-settings: "ss01";
+       display: flex; flex-direction: column;
+       min-height: calc(100vh - var(--header-h) - 7rem);
+       min-height: calc(100dvh - var(--header-h) - 7rem); }
+.enj-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 1rem; }
+.enj-head .mod-title { color: var(--enj-title); }
+.enj-head .mod-title i { color: var(--enj-accent); }
+
+/* mesa: 1 columna en celu (chat arriba que crece, fabricar abajo); chat + panel lateral en PC */
+.enj-mesa { display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr auto;
+            gap: 1rem; align-items: stretch; flex: 1; min-height: 0; }
+@media (min-width: 960px) {
+  .enj-mesa { grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: 1fr; }
+  .enj-mesa--solo { grid-template-columns: 1fr; }   /* sin panel lateral (consulta) → chat full */
+}
+.enj-side { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+/* panel de fabricar: llena la altura de la columna; el textarea de órdenes crece para ocuparla */
+.enj-fab { display: flex; flex-direction: column; flex: 1; }
+.enj-fab-form { display: flex; flex-direction: column; gap: .5rem; padding: .8rem .9rem .9rem;
+                flex: 1; min-height: 0; overflow-y: auto; }
+.enj-fab-form textarea { flex: 1; min-height: 8rem; resize: vertical; }
+/* fabricar plegable: en PC siempre abierto (chevron oculto); en celu colapsa por defecto */
+.enj-fab-toggle { cursor: pointer; opacity: .7; padding: .25rem; transition: transform .2s, opacity .15s; }
+.enj-fab-toggle:hover { opacity: 1; }
+.enj-fab:not(.collapsed) .enj-fab-toggle { transform: rotate(180deg); }
+@media (min-width: 960px) { .enj-fab-toggle { display: none; } }
+@media (max-width: 959px) {
+  .enj-fab.collapsed { flex: none; }                    /* minimizado = solo el header */
+  .enj-fab.collapsed .enj-fab-form { display: none; }
+  .enj-fab-head { cursor: pointer; }                    /* tocar el header también despliega */
+  /* mensajes más compactos en celu (no que un mensaje corto ocupe media pantalla) */
+  .enj .msg { font-size: .88rem; padding: .4rem .6rem .45rem; }
+  .enj-chat #mensajes { gap: .45rem; }
+}
+
+.enj-panel { background: var(--enj-panel); border: 1px solid var(--enj-border);
+             border-radius: var(--enj-radius); box-shadow: var(--enj-glow); }
+.enj-panel-h { font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+               color: var(--enj-accent); padding: .7rem .9rem; border-bottom: 1px solid var(--enj-border); }
+
+/* chat: la columna llena su celda y la lista de mensajes crece para ocupar el alto */
+.enj-chat { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.enj-chat #mensajes {
+  flex: 1; min-height: 12rem; overflow-y: auto; padding: 1rem;
+  border: 1px solid var(--enj-border); border-radius: var(--enj-radius);
+  background: var(--enj-chatbg); box-shadow: var(--enj-glow);
+  display: flex; flex-direction: column; gap: .6rem; }
+
+/* ── Mesa estilo WhatsApp: pantalla FIJA, scroll SOLO en el chat ────────────── */
+/* altura fija (no min-height) → el contenedor no crece con los mensajes; #mensajes,
+   que es flex:1 + overflow-y:auto, absorbe el overflow scrolleando él solo. */
+.enj-chatpage { height: calc(100vh - var(--header-h) - 7rem);
+                height: calc(100dvh - var(--header-h) - 7rem);
+                min-height: 0; overflow: hidden; }
+/* menú de gestión de sillas (rename + permiso consulta) */
+.enj-silla-row { display: flex; align-items: center; gap: .5rem; padding: .35rem 0;
+                 border-bottom: 1px solid var(--enj-border); }
+.enj-silla-row > input { flex: 1; min-width: 0; }
+.enj-silla-motor { font-size: .72rem; white-space: nowrap; opacity: .7; flex-shrink: 0; }
+.enj-silla-row .enj-check { flex-shrink: 0; font-size: .8rem; }
+
+/* chips para dirigir a una silla (@alias) */
+.enj-chips { display: flex; gap: .4rem; flex-shrink: 0; margin-top: .6rem;
+             overflow-x: auto; padding-bottom: .15rem; scrollbar-width: thin; }
+.enj-chip { flex-shrink: 0; cursor: pointer; font-family: inherit; font-size: .78rem;
+            padding: .25rem .6rem; border-radius: 999px; white-space: nowrap;
+            border: 1px solid var(--enj-border); background: transparent; color: var(--enj-muted);
+            transition: color .15s, border-color .15s, background .15s; }
+.enj-chip:hover { color: var(--enj-on-accent); background: var(--enj-accent); border-color: var(--enj-accent-bd); }
+/* barra de preguntar en flujo normal, último ítem → queda siempre abajo y visible */
+.enj-ask { display: flex; gap: .5rem; align-items: center; flex-shrink: 0; margin-top: .5rem; }
+.enj-ask > input { flex: 1; min-width: 0; }
+.enj-ask .enj-btn { flex-shrink: 0; padding: .6rem .9rem; }
+
+.enj .msg { padding: .5rem .75rem .55rem; border-radius: 10px;
+            border-left: 3px solid var(--enj-msg-bar); background: var(--enj-msg-bg);
+            animation: enj-in .25s ease; }
+.enj .msg strong { color: var(--enj-emisor); font-weight: 800; letter-spacing: .03em; }
+.enj .msg span { color: var(--enj-text); }
+@keyframes enj-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* inputs + botones (heredan los tokens del tema) */
+.enj input, .enj textarea, .enj select {
+  background: var(--enj-input); border: 1px solid var(--enj-border); color: var(--enj-text);
+  border-radius: 10px; padding: .6rem .7rem; }
+.enj input::placeholder, .enj textarea::placeholder { color: var(--enj-muted); }
+.enj .mod-sep { color: var(--enj-border); }            /* los | del header */
+.enj .mod-title { color: var(--enj-title); }
+.enj .enj-btn { padding: .6rem 1.1rem; border-radius: 10px; cursor: pointer; font-weight: 700;
+                border: 1px solid var(--enj-accent-bd); background: var(--enj-accent);
+                color: var(--enj-on-accent); transition: filter .15s, transform .05s; }
+.enj .enj-btn:hover { filter: brightness(1.1); }
+.enj .enj-btn:active { transform: scale(.97); }
+.enj .enj-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+.enj .enj-row > input, .enj .enj-row > select { flex: 1; min-width: 150px; }
+.enj .enj-muted { color: var(--enj-muted); }
+/* Pin de mesa (como Brain): activo = accent + lleno; tarjeta fijada con borde accent. */
+.enj .enj-pin.active { color: var(--enj-accent); opacity: 1; }
+.enj .enj-card.is-pinned { border-color: var(--enj-accent); }
+.enj .enj-del { background: transparent; border: none; color: var(--enj-muted);
+                border-radius: 8px; padding: .3rem .45rem; cursor: pointer; opacity: .55;
+                font-size: .85rem; transition: color .15s, opacity .15s; }
+.enj .enj-del:hover { color: var(--danger-color); opacity: 1; }
+.enj .enj-ghost:hover { color: var(--enj-accent); opacity: 1; }   /* botón ícono no destructivo */
+
+/* botón-chip de la cabecera (Sillas, Conexiones) */
+.enj .enj-lab { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer;
+                padding: .4rem .7rem; border-radius: 999px; font-size: .8rem; font-weight: 600;
+                border: 1px solid var(--enj-border); background: transparent; color: var(--enj-muted);
+                transition: color .15s, border-color .15s; }
+.enj .enj-lab:hover { color: var(--enj-accent); border-color: var(--enj-accent-bd); }
+/* Mobile: los chips quedan solo-ícono (sin texto) para que entren arriba en una fila. */
+@media (max-width: 600px) { .enj .enj-lab-txt { display: none; } }
+/* Mobile: el input quedaba separado del footer porque el contenedor reservaba de más (7rem) y no
+   llenaba el alto. Bajamos la reserva en celu → el contenedor crece, el input baja hacia el footer.
+   Tunable: si queda muy pegado, subir el rem; si todavía hay hueco, bajarlo. */
+@media (max-width: 600px) {
+  .enj.enj-chatpage { height: calc(100vh - var(--header-h) - 3.5rem);
+                      height: calc(100dvh - var(--header-h) - 3.5rem); }
+}
+
+/* modal de config (sillas de la mesa) — z sobre header (1000) y footer (999) */
+.enj-modal { position: fixed; inset: 0; z-index: 1100;
+             display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.enj-modal[hidden] { display: none; }
+.enj-modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(2px); }
+.enj-modal-card { position: relative; z-index: 1; width: min(420px, 100%);
+                  max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+.enj-modal-body { padding: .9rem; display: flex; flex-direction: column; gap: .55rem;
+                  overflow-y: auto; }
+.enj-modal-foot { display: flex; justify-content: flex-end; gap: .6rem;
+                  padding: .8rem .9rem; border-top: 1px solid var(--enj-border); }
+.enj-check { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+.enj-check input { flex: none; width: auto; min-width: 0; }
+
+/* lista de mesas (home): grid responsive */
+.enj-grid { display: grid; gap: .7rem; grid-template-columns: 1fr; margin-top: 1rem; }
+@media (min-width: 640px) { .enj-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1040px) { .enj-grid { grid-template-columns: repeat(3, 1fr); } }
+.enj-card { display: flex; flex-direction: column; gap: .5rem; padding: .9rem 1rem;
+            border: 1px solid var(--enj-border); border-radius: var(--enj-radius);
+            background: var(--enj-panel); box-shadow: var(--enj-glow);
+            color: var(--enj-text); transition: transform .08s, filter .15s, box-shadow .25s; }
+.enj-card:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.enj-card.enj-saved { box-shadow: 0 0 0 2px var(--enj-accent); }
+.enj-card-top { display: flex; align-items: flex-start; gap: .4rem; }
+.enj-card-link { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .25rem;
+                 color: inherit; text-decoration: none; }
+.enj-card-link:hover .enj-card-name { color: var(--enj-accent); }
+.enj-card .enj-card-name { font-weight: 800; color: var(--enj-title); overflow-wrap: anywhere; }
+.enj-card-acts { display: flex; gap: .1rem; flex-shrink: 0; }
+.enj-card-rename { flex: 1; min-width: 0; padding: .35rem .5rem; font-size: .95rem; font-weight: 700;
+                   background: var(--surface-color, #15171c); color: var(--enj-title);
+                   border: 1px solid var(--enj-accent); border-radius: 8px; }
+.enj-card-sillas { display: flex; flex-wrap: wrap; gap: .15rem .8rem; padding-top: .5rem;
+                   border-top: 1px solid var(--enj-border); font-size: .8rem; }
+.enj-check-sm { gap: .35rem; font-size: .8rem; color: var(--enj-muted); }
+.enj-check-sm span { color: var(--enj-text); }
+
+/* sillas / topología chips */
+.enj-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .2rem .6rem;
+            border-radius: 999px; font-size: .78rem; font-weight: 700;
+            border: 1px solid var(--enj-border); background: var(--enj-input); color: var(--enj-text); }
+
+/* cuadradito de color de jugador (estilo SC1) */
+.enj-pcolor { display: inline-block; width: .68em; height: .68em; border-radius: 3px;
+              flex-shrink: 0; margin-right: .35em; vertical-align: baseline;
+              box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 0 6px currentColor; }
+.enj .msg { border-left-width: 3px; }
+</style>

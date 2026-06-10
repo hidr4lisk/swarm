@@ -1,0 +1,12 @@
+# Imagen de trabajo del runner: tools comunes para que los scripts que generan/ejecutan
+# las sillas tengan con qué correr (red, procesos, git) + el entrypoint horneado que hace
+# el seed-copy efímero de credenciales (ver entrypoint.sh, corto y auditable).
+# Build:  docker build -f Dockerfile.runner -t swarm-runner:latest .
+# (el contenedor `worker` del compose la construye solo si no existe)
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        iproute2 procps git curl ca-certificates file jq lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+COPY entrypoint.sh /usr/local/bin/swarm-entrypoint
+RUN chmod 755 /usr/local/bin/swarm-entrypoint
+ENTRYPOINT ["/usr/local/bin/swarm-entrypoint"]

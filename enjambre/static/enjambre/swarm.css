@@ -1,0 +1,307 @@
+/* ══════════════════════════════════════════════════
+   Hidr4lisk_Swarm — tokens de tema + base global.
+   Solo lo que el módulo Enjambre usa (el skin del
+   módulo va en _skin.html, derivado de estos tokens).
+   ══════════════════════════════════════════════════ */
+
+/* ── MATRIX (Terminal OS) ── razón de contraste ~12:1 ── */
+:root,
+[data-theme="matrix"] {
+    --bg-color:      #1A1A1A;
+    --header-bg:     #1f1f1f;
+    --surface-color: #222222;
+    --footer-bg:     #1f1f1f;
+    --text-main:     #ececec;
+    --text-muted:    #9aa0a6;
+    --accent-rgb:    152 180 166;
+    --accent-color:    #98B4A6;
+    --accent-hover:    #7f9e8f;
+    --accent-contrast: #1A1A1A;
+    --border-color:  rgba(152, 180, 166, 0.18);
+    --input-bg:      rgba(26, 26, 26, 0.85);
+    --input-border:  rgba(152, 180, 166, 0.28);
+    --brand-color:   #98B4A6;
+    --brand-text:    #98B4A6;
+    --danger-color:  #ff4444;
+    --header-h:      60px;
+    --card-bg:       var(--surface-color);
+    --theme-btn-bg:  var(--surface-color);
+    --theme-btn-text:   var(--accent-color);
+    --theme-btn-border: var(--accent-color);
+}
+
+/* ── INVERSE (claro) ── inverso de Matrix: fondo casi-blanco, acento azul ── */
+[data-theme="inverse"] {
+    --bg-color:      #f4f5f7;
+    --header-bg:     #ffffff;
+    --surface-color: #ffffff;
+    --footer-bg:     #ffffff;
+    --text-main:     #0d0f12;
+    --text-muted:    #5a6470;
+    --accent-rgb:    59 111 181;
+    --accent-color:    #3b6fb5;
+    --accent-hover:    #2f5a93;
+    --accent-contrast: #ffffff;
+    --border-color:  rgba(59, 111, 181, 0.18);
+    --input-bg:      #ffffff;
+    --input-border:  rgba(59, 111, 181, 0.30);
+    --brand-color:   #3b6fb5;
+    --brand-text:    #3b6fb5;
+    --danger-color:  #dc2626;
+}
+
+/* Monospace global — estándar de la web, NO efecto de Matrix.
+   Solo body/input/textarea/select/button (NUNCA * ni iconos .fa). */
+body,
+input,
+textarea,
+select,
+button {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace !important;
+}
+
+[data-theme="matrix"] ::-webkit-scrollbar { width: 5px; height: 5px; }
+[data-theme="matrix"] ::-webkit-scrollbar-track { background: #1A1A1A; }
+[data-theme="matrix"] ::-webkit-scrollbar-thumb { background: rgba(152, 180, 166, 0.35); border-radius: 2px; }
+[data-theme="matrix"] ::-webkit-scrollbar-thumb:hover { background: rgba(152, 180, 166, 0.6); }
+
+[data-theme="matrix"] header {
+    border-bottom: 1px solid rgba(152, 180, 166, 0.2) !important;
+    box-shadow: 0 1px 20px rgba(152, 180, 166, 0.06);
+}
+
+[data-theme="matrix"] footer {
+    border-top: 1px solid rgba(152, 180, 166, 0.15) !important;
+}
+
+[data-theme="matrix"] input:focus,
+[data-theme="matrix"] textarea:focus,
+[data-theme="matrix"] select:focus {
+    border-color: rgba(152, 180, 166, 0.6) !important;
+    box-shadow: 0 0 0 3px rgba(152, 180, 166, 0.08), 0 0 8px rgba(152, 180, 166, 0.15) !important;
+    outline: none;
+}
+
+/* ══════════════════════════════════════════════════
+   RESET & BASE
+   ══════════════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    background-color: var(--bg-color);
+    transition: background-color 0.25s;
+}
+
+body {
+    background-color: transparent;
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.5;
+    transition: background-color 0.25s, color 0.25s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea,
+select {
+    font-family: inherit;
+    color: var(--text-main);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    transition: border-color 0.2s;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+}
+
+select option {
+    color: var(--text-main);
+    background: var(--card-bg);
+}
+
+main {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 16px 64px;
+}
+
+/* ══════════════════════════════════════════════════
+   HEADER
+   ══════════════════════════════════════════════════ */
+header {
+    background: var(--header-bg);
+    height: var(--header-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    padding: 0;
+}
+
+/* Banner lema pirata — centrado absoluto en el navbar (igual que el original) */
+.gov-banner {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+    pointer-events: none;
+    line-height: 1;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.gov-banner > span {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+.gov-banner .gov-flag { font-size: 15px; }
+.gov-banner .gov-stars { color: #f5c518; letter-spacing: 3px; font-size: 13px; }
+@media (max-width: 1100px) { .gov-banner { display: none; } }
+
+.header-content {
+    width: 100%;
+    max-width: 1400px;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+    position: relative;   /* ancla del .gov-banner centrado */
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: var(--brand-text) !important;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.05em;
+    transition: opacity 0.2s;
+}
+
+.brand:hover { opacity: 0.8; }
+.brand i { color: var(--brand-color) !important; transition: color 0.3s; }
+
+.theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 14px;
+    gap: 8px;
+    border-radius: 12px;
+    border: 1px solid var(--theme-btn-border);
+    background: var(--theme-btn-bg);
+    color: var(--theme-btn-text);
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: opacity 0.2s, transform 0.15s, background 0.2s;
+}
+
+.theme-toggle-btn:hover { opacity: 0.82; }
+.theme-toggle-btn:active { transform: scale(0.95); }
+
+/* ── Breadcrumb de módulo ── */
+.mod-back {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: color .15s;
+}
+
+.mod-back:hover { color: var(--accent-color); }
+.mod-back i { font-size: 11px; }
+
+.mod-sep {
+    color: var(--border-color);
+    font-size: 16px;
+}
+
+.mod-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.mod-title i { color: var(--accent-color); }
+
+/* ══════════════════════════════════════════════════
+   FOOTER
+   ══════════════════════════════════════════════════ */
+footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    background: var(--footer-bg);
+    border-top: 1px solid var(--border-color);
+    padding: 7px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ══════════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    header { height: 56px; }
+    .header-content { padding: 0 14px; }
+    .theme-toggle-btn { min-width: 40px; height: 40px; padding: 0 10px; }
+    main { padding: 12px 12px 60px; }
+    footer { padding: 6px 12px; font-size: 11px; }
+}

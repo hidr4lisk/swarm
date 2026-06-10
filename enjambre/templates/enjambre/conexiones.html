@@ -1,0 +1,66 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+    .cx-fila { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+    .cx-estado { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem;
+                 flex-shrink: 0; margin-left: auto; }
+    .cx-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .cx-dot.on  { background: #2ecc40; box-shadow: 0 0 6px 1px rgba(46,204,64,.55); }
+    .cx-dot.off { background: #c0392b; box-shadow: 0 0 6px 1px rgba(192,57,43,.4); }
+    .cx-ruta { font-family: monospace; font-size: .78rem; opacity: .65; word-break: break-all; }
+    .cx-login { font-family: monospace; font-size: .8rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enj">
+    <div class="enj-head">
+        <a href="{% url 'enjambre:gestionar_sillas' %}" class="mod-back"><i class="fas fa-chevron-left"></i> {% trans 'Sillas' %}</a>
+        <span class="mod-sep">|</span>
+        <h1 class="mod-title" style="flex:1;min-width:0;">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-plug" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span>{% trans 'Conexiones' %}</span>
+        </h1>
+    </div>
+
+    <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+        {% blocktrans %}El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el
+        archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta
+        solo-lectura en contenedores descartables.{% endblocktrans %}
+        {% trans 'Logueá el CLI en el host y encendé su silla en' %}
+        <a href="{% url 'enjambre:gestionar_sillas' %}">{% trans 'Sillas' %}</a>.
+    </p>
+
+    <div class="enj-grid" style="grid-template-columns:1fr;">
+        {% for f in filas %}
+        <div class="enj-card">
+            <div class="cx-fila">
+                <strong>{{ f.nombre }}</strong>
+                <span class="cx-estado">
+                    <span class="cx-dot {% if f.ok %}on{% else %}off{% endif %}"></span>
+                    {% if f.ok %}{% trans 'Detectado' %}{% else %}{% trans 'No detectado' %}{% endif %}
+                </span>
+            </div>
+            <div class="cx-ruta">{{ f.ruta }}</div>
+            {% if not f.ok %}
+            <div class="enj-muted" style="font-size:.8rem;">
+                {% trans 'Para conectarlo, en tu terminal:' %} <span class="cx-login">{{ f.login }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <p class="enj-muted" style="font-size:.75rem;margin-top:1rem;">
+        {% if chequeado_at %}
+        {% blocktrans %}Chequeado por el worker al arrancar ({{ chequeado_at }}). Si te acabás de loguear,
+        reiniciá el worker (♻️ en Sillas) para rechequear.{% endblocktrans %}
+        {% else %}
+        {% trans 'Chequeado en vivo (modo dev, sin worker dockerizado).' %}
+        {% endif %}
+    </p>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Django
+db.sqlite3
+staticfiles/
+
+# Entorno local — acá pueden vivir rutas personales; jamás al repo
+.env
+PLAN.md
+
+# Credenciales — ningún archivo local de creds entra al repo
+*.credentials.json
+*credentials*
+!seed-credentials.sh
+
+# Editor / SO
+.idea/
+.vscode/
+*.swp
+.DS_Store

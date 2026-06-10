@@ -1,0 +1,188 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}{% endblock %}
+
+{% block content %}
+<div class="enj">
+    <div class="enj-head">
+        <h1 class="mod-title">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-flask" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span>{% trans 'Mesas' %}</span>
+        </h1>
+        {% if puede_controlar %}
+        <a href="{% url 'enjambre:gestionar_sillas' %}" class="enj-lab" title="{% trans 'Panel de sillas (clientes, modelos, prompts)' %}" style="margin-left:auto;">
+            <i class="fas fa-users-gear"></i><span class="enj-lab-txt">{% trans 'Sillas' %}</span>
+        </a>
+        {% endif %}
+        <a href="{% url 'enjambre:ayuda' %}" class="enj-lab" {% if not puede_controlar %}style="margin-left:auto;"{% endif %}
+           title="{% trans 'Ayuda — cómo funciona la mesa, comandos y ejemplos' %}">
+            <i class="fas fa-circle-question"></i><span class="enj-lab-txt">{% trans 'Ayuda' %}</span>
+        </a>
+    </div>
+
+    <form method="post" action="{% url 'enjambre:crear_sesion' %}" class="enj-row" style="margin:1rem 0;">
+        {% csrf_token %}
+        <input name="nombre" placeholder="{% trans 'Nombre de la mesa' %}" maxlength="200">
+        <button type="submit" class="enj-btn">{% trans 'Nueva mesa' %}</button>
+    </form>
+
+    <div class="enj-grid">
+        {% for s in sesiones %}
+        <div class="enj-card{% if s.fijada %} is-pinned{% endif %}" data-cfg-url="{% url 'enjambre:guardar_config' s.pk %}"
+             data-rename-url="{% url 'enjambre:renombrar_sesion' s.pk %}"
+             data-pin-url="{% url 'enjambre:fijar_sesion' s.pk %}">
+            <div class="enj-card-top">
+                <a href="{% url 'enjambre:mesa' s.pk %}" class="enj-card-link">
+                    <span class="enj-card-name" data-name>{{ s.nombre }}</span>
+                    <span class="enj-muted" style="font-size:.8rem;">[{% if s.topologia == 'lider' %}{% trans 'Líder' %}{% else %}{% trans 'Plana (broadcast)' %}{% endif %}] · #{{ s.pk }} · {{ s.creado_at|date:"d/m H:i" }}</span>
+                </a>
+                <input type="text" class="enj-card-rename" maxlength="200" value="{{ s.nombre }}"
+                       aria-label="{% trans 'Nuevo nombre de la mesa' %}" hidden>
+                <div class="enj-card-acts">
+                    <button type="button" class="enj-del enj-ghost enj-pin{% if s.fijada %} active{% endif %}" data-pin
+                            title="{% if s.fijada %}{% trans 'Desfijar' %}{% else %}{% trans 'Fijar arriba' %}{% endif %}"
+                            aria-label="{% trans 'Fijar mesa' %}" aria-pressed="{% if s.fijada %}true{% else %}false{% endif %}"><i class="fas fa-thumbtack"></i></button>
+                    <button type="button" class="enj-del enj-ghost" data-rename
+                            title="{% trans 'Renombrar mesa' %}" aria-label="{% trans 'Renombrar mesa' %}"><i class="fas fa-pen"></i></button>
+                    {% if puede_controlar %}
+                    <form method="post" action="{% url 'enjambre:borrar_sesion' s.pk %}"
+                          onsubmit="return confirm('{% blocktrans with nombre=s.nombre|escapejs %}¿Borrar la mesa «{{ nombre }}» y todos sus mensajes? Las tareas de fabricación se conservan. No se puede deshacer.{% endblocktrans %}');">
+                        {% csrf_token %}
+                        <button type="submit" class="enj-del" title="{% trans 'Borrar mesa' %}" aria-label="{% trans 'Borrar mesa' %}"><i class="fas fa-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="enj-card-sillas">
+                {% for silla in sillas_activas %}
+                {% if s.topologia == 'lider' and silla.endpoint_url %}
+                <label class="enj-check enj-check-sm" style="opacity:.45;"
+                       title="{% trans 'Silla local: no fabrica, no se sienta en una mesa Líder.' %}">
+                    <input type="checkbox" disabled>
+                    <span>{{ silla.nombre }}</span>
+                </label>
+                {% else %}
+                <label class="enj-check enj-check-sm">
+                    <input type="checkbox" name="sillas" value="{{ silla.key }}"
+                           {% if not s.sel_ids or silla.id in s.sel_ids %}checked{% endif %}>
+                    <span>{{ silla.nombre }}</span>
+                </label>
+                {% endif %}
+                {% empty %}
+                <p class="enj-muted" style="margin:0;">{% trans 'No hay sillas activas.' %}</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% empty %}
+        <p class="enj-muted">{% trans 'No hay mesas todavía.' %}</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Tarjetas: auto-guardado de sillas (AJAX) + renombrar mesa inline ──
+(function () {
+    function getCookie(name) {
+        var m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return m ? m.pop() : '';
+    }
+    var grid = document.querySelector('.enj-grid');
+    if (!grid) return;
+
+    function flash(card) {
+        card.classList.add('enj-saved');
+        setTimeout(function () { card.classList.remove('enj-saved'); }, 800);
+    }
+
+    // Reordenar: las fijadas arriba (sort estable → conserva el orden dentro de cada grupo).
+    function resort() {
+        var cards = Array.prototype.slice.call(grid.querySelectorAll('.enj-card'));
+        cards.sort(function (a, b) {
+            return (a.classList.contains('is-pinned') ? 0 : 1) - (b.classList.contains('is-pinned') ? 0 : 1);
+        });
+        cards.forEach(function (c) { grid.appendChild(c); });
+    }
+
+    // Pin (📌 fijar/desfijar) mesa.
+    grid.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-pin]');
+        if (!btn) return;
+        var card = btn.closest('.enj-card');
+        fetch(card.dataset.pinUrl, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'fetch'},
+        }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+            if (!d) return;
+            card.classList.toggle('is-pinned', d.fijada);
+            btn.classList.toggle('active', d.fijada);
+            btn.setAttribute('aria-pressed', d.fijada ? 'true' : 'false');
+            btn.title = d.fijada ? '{% trans "Desfijar" %}' : '{% trans "Fijar arriba" %}';
+            resort();
+        }).catch(function () {});
+    });
+
+    // Auto-guardar las sillas de una mesa al tildar/destildar (sin botón).
+    grid.addEventListener('change', function (e) {
+        if (!e.target.matches('.enj-card-sillas input[type="checkbox"]')) return;
+        var card = e.target.closest('.enj-card');
+        var fd = new FormData();
+        card.querySelectorAll('.enj-card-sillas input:checked').forEach(function (c) {
+            fd.append('sillas', c.value);
+        });
+        fetch(card.dataset.cfgUrl, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'fetch'},
+            body: fd,
+        }).then(function (r) { if (r.ok) flash(card); }).catch(function () {});
+    });
+
+    // Renombrar mesa: lápiz ✎ → input inline.
+    grid.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-rename]');
+        if (!btn) return;
+        var card = btn.closest('.enj-card');
+        card.querySelector('.enj-card-link').hidden = true;
+        var input = card.querySelector('.enj-card-rename');
+        input.hidden = false; input.focus(); input.select();
+    });
+
+    function commitRename(input) {
+        if (input.dataset.busy) return;
+        var card = input.closest('.enj-card');
+        var link = card.querySelector('.enj-card-link');
+        var nameEl = card.querySelector('[data-name]');
+        var actual = nameEl.textContent.trim();
+        var nuevo = input.value.trim();
+        function restore() { input.hidden = true; link.hidden = false; }
+        if (!nuevo || nuevo === actual) { input.value = actual; restore(); return; }
+        input.dataset.busy = '1';
+        var fd = new FormData(); fd.append('nombre', nuevo);
+        fetch(card.dataset.renameUrl, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'fetch'},
+            body: fd,
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d && d.ok) { nameEl.textContent = d.nombre; input.value = d.nombre; flash(card); }
+        }).catch(function () {}).finally(function () { delete input.dataset.busy; restore(); });
+    }
+
+    grid.addEventListener('keydown', function (e) {
+        if (!e.target.matches('.enj-card-rename')) return;
+        if (e.key === 'Enter') { e.preventDefault(); commitRename(e.target); }
+        else if (e.key === 'Escape') {
+            var card = e.target.closest('.enj-card');
+            e.target.value = card.querySelector('[data-name]').textContent.trim();
+            e.target.hidden = true; card.querySelector('.enj-card-link').hidden = false;
+        }
+    });
+    grid.addEventListener('blur', function (e) {
+        if (e.target.matches('.enj-card-rename') && !e.target.hidden) commitRename(e.target);
+    }, true);
+})();
+
+</script>
+{% endblock %}
