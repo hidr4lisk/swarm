@@ -1,91 +1,13 @@
-# Hidr4lisk_Swarm — clone & run:  docker compose up
-#
-#   web    — la mesa en http://localhost:8080 (no ve credenciales ni docker.sock)
-#   db     — postgres con volumen propio
-#   worker — hace el dispatch real: lanza contenedores runner descartables contra
-#            el docker.sock del host (Docker-outside-of-Docker). ⚠️ Montar el sock
-#            equivale a acceso root al host: ver README, § modelo de amenaza.
-#
-# Las credenciales de TUS CLIs nunca entran a web ni worker: acá solo viajan las
-# RUTAS (host); el runner las monta RO y las copia a un tmpfs efímero (runner/).
-name: swarm
-
-x-swarm-env: &swarm-env
-  DATABASE_URL: postgres://swarm:swarm@db:5432/swarm
-  SWARM_DEBUG: ${SWARM_DEBUG:-1}
-  SWARM_TZ: ${SWARM_TZ:-America/Argentina/Buenos_Aires}
-  ENJAMBRE_TITULO_HUMANO: ${ENJAMBRE_TITULO_HUMANO:-}
-  # Carpetas de trabajo de las mesas: misma ruta en host y contenedor (paridad).
-  # Necesario por el DooD: el worker crea ~/.enjambre/mesas/<id> y el runner monta
-  # esa MISMA ruta, que el docker del host tiene que poder resolver.
-  ENJAMBRE_MESAS_DIR: ${SWARM_DATA_DIR:-${HOME}/.enjambre}/mesas
-  ENJAMBRE_WORKSPACES_DIR: ${SWARM_DATA_DIR:-${HOME}/.enjambre}/workspaces
-  # Rutas EN TU HOST a credenciales y binarios de los CLIs (ver .env.example).
-  # web las usa solo para la pantalla Conexiones (existencia, nunca contenido);
-  # worker solo las pasa al runner, que es el único que las monta.
-  SWARM_CLAUDE_CREDS: ${SWARM_CLAUDE_CREDS:-${HOME}/.claude/.credentials.json}
-  SWARM_OPENCODE_CREDS: ${SWARM_OPENCODE_CREDS:-${HOME}/.local/share/opencode/auth.json}
-  # Opcional: config de opencode (default de modelo/proveedores). Vacío = no se monta.
-  SWARM_OPENCODE_CONFIG: ${SWARM_OPENCODE_CONFIG:-}
-  SWARM_AGY_CREDS: ${SWARM_AGY_CREDS:-${HOME}/.gemini/antigravity-cli}
-  SWARM_CLAUDE_BIN: ${SWARM_CLAUDE_BIN:-${HOME}/.local/bin/claude}
-  SWARM_OPENCODE_BIN: ${SWARM_OPENCODE_BIN:-${HOME}/.opencode/bin/opencode}
-  SWARM_AGY_BIN: ${SWARM_AGY_BIN:-${HOME}/.local/bin/agy}
-
+version: '3'
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+  # ...
+  enjambre:
+    # ...
     environment:
-      POSTGRES_USER: swarm
-      POSTGRES_PASSWORD: swarm
-      POSTGRES_DB: swarm
+      # ...
+      - SWARM_CODEX_CREDS=/creds/codex/auth.json
+      - SWARM_CODEX_BIN=codex
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U swarm -d swarm"]
-      interval: 3s
-      timeout: 3s
-      retries: 30
-
-  web:
-    build: .
-    restart: unless-stopped
-    # runserver alcanza para el modelo single-user en tu máquina (sirve los static
-    # con SWARM_DEBUG=1, el default). Si lo exponés fuera, ya es otro despliegue.
-    command: sh -c "python manage.py migrate && exec python manage.py runserver 0.0.0.0:8080"
-    environment: *swarm-env
-    ports:
-      - "8080:8080"
-    volumes:
-      # Solo para leer el resultado de la detección de Conexiones (conexiones.json)
-      # y exportar transcripciones; las mesas las escribe el worker.
-      - ${SWARM_DATA_DIR:-${HOME}/.enjambre}:${SWARM_DATA_DIR:-${HOME}/.enjambre}
-    depends_on:
-      db:
-        condition: service_healthy
-
-  worker:
-    build: .
-    restart: unless-stopped
-    # 1) hornea la imagen del runner (cacheado: gratis si no cambió nada),
-    # 2) detecta credenciales (Conexiones), 3) arranca el worker.
-    # SWARM_DOOD=1 le dice al runner que los paths de los montajes viven en el host.
-    command: >
-      sh -c "docker build -q -t swarm-runner:latest -f runner/Dockerfile.runner runner;
-             python manage.py conexiones_check;
-             exec python manage.py enjambre_worker"
-    environment:
-      <<: *swarm-env
-      ENJAMBRE_RUNNER: /app/runner/enjambre-run.sh
-      ENJAMBRE_IMG: swarm-runner:latest
-      SWARM_DOOD: "1"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${SWARM_DATA_DIR:-${HOME}/.enjambre}:${SWARM_DATA_DIR:-${HOME}/.enjambre}
-    depends_on:
-      db:
-        condition: service_healthy
-
-volumes:
-  pgdata:
+      # ...
+      - ${SWARM_CODEX_CREDS}:/tmp/codex/auth.json:ro
+      # ...
