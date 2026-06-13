@@ -172,6 +172,14 @@ def crear_sesion(request):
         if not _es_control(request):
             iniciales = iniciales.filter(permitir_consulta=True)
         sesion.participantes.set(iniciales)
+        # Crear la carpeta de la mesa YA (no perezosamente). Si no existe, subir un archivo
+        # antes de que una silla fabrique lo guardaba como archivo suelto `mesa-<id>` →
+        # rompía el worker (mkdir exist_ok igual revienta si el path es un archivo). El
+        # git init + workspace_dir (ruta host) los sigue poniendo el worker vía mesa_workspace.
+        try:
+            _mesa_dir_container(sesion.id).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         log_event(request.user, 'ENJAMBRE_SESION_CREATE', 'enjambre',
                   {'pk': sesion.pk, 'nombre': nombre}, request)
     # La mesa aparece en la lista; no se entra directo.
