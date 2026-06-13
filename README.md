@@ -17,6 +17,28 @@ without ever asking for or storing any credential.
 Requirements: **Linux**, Docker with compose, and at least one AI CLI installed and
 logged in **in your terminal** (`claude`, `opencode` and/or `agy`).
 
+<details>
+<summary><b>No Docker yet? Install it (Ubuntu/Debian)</b></summary>
+
+```bash
+# Docker Engine + compose plugin, from Docker's official repo
+sudo apt-get update && sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Run docker without sudo (compose mounts your ~/.enjambre and the docker.sock as you)
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+Other distros / macOS: see the [official guide](https://docs.docker.com/engine/install/).
+Note: compose v2 is the `docker compose` subcommand (not the old `docker-compose`).
+
+</details>
+
 ```bash
 claude            # once, in your terminal: /login  (and/or `opencode auth login`, agy)
 git clone git@github.com:hidr4lisk/swarm.git && cd swarm
@@ -106,6 +128,28 @@ logueadas, sin pedirte ni guardar ninguna credencial.
 
 Requisitos: **Linux**, Docker con compose, y al menos un CLI de IA instalado y
 logueado **en tu terminal** (`claude`, `opencode` y/o `agy`).
+
+<details>
+<summary><b>¿No tenés Docker? Instalalo (Ubuntu/Debian)</b></summary>
+
+```bash
+# Docker Engine + plugin compose, desde el repo oficial de Docker
+sudo apt-get update && sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Usar docker sin sudo (compose monta tu ~/.enjambre y el docker.sock como tu usuario)
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+Otras distros / macOS: ver la [guía oficial](https://docs.docker.com/engine/install/).
+Ojo: compose v2 es el subcomando `docker compose` (no el viejo `docker-compose`).
+
+</details>
 
 ```bash
 claude            # una vez, en tu terminal: /login  (y/o `opencode auth login`, agy)
