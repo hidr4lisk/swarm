@@ -21,6 +21,7 @@ urlpatterns = [
     path('sesion/<int:pk>/archivos/', views.mesa_archivos, name='mesa_archivos'),
     path('sesion/<int:pk>/archivo/', views.mesa_archivo, name='mesa_archivo'),
     path('sesion/<int:pk>/zip/', views.mesa_zip, name='mesa_zip'),
+    path('sesion/<int:pk>/subir/', views.mesa_subir, name='mesa_subir'),
     path('worker/restart/', views.worker_restart, name='worker_restart'),
     path('ayuda/', views.ayuda, name='ayuda'),
     path('conexiones/', views.conexiones, name='conexiones'),

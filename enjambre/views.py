@@ -533,7 +533,10 @@ def mesa_archivos(request, pk):
     if not _puede_ver_sesion(request, sesion):
         return HttpResponseForbidden("Esta mesa no es tuya.")
     base = _mesa_dir_container(pk)
-    host = sesion.workspace_dir or ''
+    # workspace_dir lo setea el worker recién al primer fabricar; mientras tanto, si la carpeta ya
+    # existe (se crea eager al crear la mesa), mostramos su ruta. Hay paridad host/contenedor
+    # (~/.enjambre montado igual en ambos), así que la ruta del contenedor ES la del host.
+    host = sesion.workspace_dir or (str(base) if base.exists() else '')
     if not base.exists():
         return JsonResponse({'existe': False, 'host_path': host, 'archivos': []})
     archivos = []
@@ -623,6 +626,68 @@ def mesa_zip(request, pk):
     resp = HttpResponse(buf.getvalue(), content_type='application/zip')
     resp['Content-Disposition'] = f'attachment; filename="mesa-{pk}.zip"'
     return resp
+
+
+@requiere_acceso
+def mesa_subir(request, pk):
+    """Sube archivos a la carpeta de la mesa (solo CONTROL). Sirve para sembrar la mesa con input
+    antes de /armar y para sumar archivos a mitad de trabajo. NO usa git (escribe al volumen
+    compartido; el worker commitea sola al próximo turno) y el motor los inyecta a las sillas
+    listando el disco (ver engine._estado_carpeta). Anti path-traversal: solo el basename, dentro
+    de la carpeta de la mesa."""
+    if not _es_control(request):
+        return HttpResponseForbidden("La carpeta de la mesa es solo para control.")
+    sesion = get_object_or_404(Sesion, pk=pk)
+    if not _puede_ver_sesion(request, sesion):
+        return HttpResponseForbidden("Esta mesa no es tuya.")
+    if request.method != 'POST':
+        return HttpResponseForbidden("Método no permitido.")
+
+    files = request.FILES.getlist('archivos')
+    if not files:
+        return JsonResponse({'ok': False, 'error': 'No se recibieron archivos.'}, status=400)
+
+    dest = _mesa_dir_container(pk)
+    dest.mkdir(parents=True, exist_ok=True)
+    dest_real = str(dest.resolve())
+    guardados, rechazados = [], []
+    for f in files:
+        name = os.path.basename((f.name or '').strip())
+        # Sin nombre, dotfiles ocultos ni rutas que escapen de la carpeta de la mesa.
+        if not name or name.startswith('.'):
+            rechazados.append(f.name or '(sin nombre)')
+            continue
+        target = (dest / name).resolve()
+        if not str(target).startswith(dest_real + os.sep):
+            rechazados.append(name)
+            continue
+        try:
+            with open(target, 'wb') as out:
+                for chunk in f.chunks():
+                    out.write(chunk)
+        except OSError as e:
+            rechazados.append(f"{name} ({e})")
+            continue
+        guardados.append(name)
+
+    if not guardados:
+        return JsonResponse({'ok': False, 'error': 'Ningún archivo válido.', 'rechazados': rechazados}, status=400)
+
+    quien = getattr(request.user, 'username', '') or 'el humano'
+    # Dejar la subida en el flujo de la mesa para que quede en el historial (y se vea en el chat).
+    try:
+        from .models import Mensaje
+        Mensaje.objects.create(
+            sesion=sesion, emisor='Enjambre', es_sistema=True,
+            texto=(f"📎 {quien} subió {len(guardados)} archivo(s) a la carpeta: "
+                   + ", ".join(guardados[:15]) + ("…" if len(guardados) > 15 else "")
+                   + ". Ya están disponibles para las sillas en el próximo turno."),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    log_event(request.user, 'ENJAMBRE_SUBIR', 'enjambre', {'pk': pk, 'archivos': guardados}, request)
+    return JsonResponse({'ok': True, 'guardados': guardados, 'rechazados': rechazados})
 
 
 def _key_unica(nombre):

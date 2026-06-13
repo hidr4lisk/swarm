@@ -937,3 +937,27 @@ msgstr "Restarting (~5s)…"
 #: enjambre/templates/enjambre/sillas.html
 msgid "Elegí uno sugerido o tipeá cualquier ID de modelo de tus proveedores"
 msgstr "Pick a suggested one or type any model ID from your providers"
+
+#: enjambre/templates/enjambre/mesa.html
+msgid "Arrastrá archivos o hacé clic para subir"
+msgstr "Drag files or click to upload"
+
+#: enjambre/templates/enjambre/mesa.html
+msgid "Arrastrá archivos acá o hacé clic para subirlos a la mesa"
+msgstr "Drag files here or click to upload them to the table"
+
+#: enjambre/templates/enjambre/mesa.html
+msgid "Subiendo…"
+msgstr "Uploading…"
+
+#: enjambre/templates/enjambre/mesa.html
+msgid "respuesta inválida"
+msgstr "invalid response"
+
+#: enjambre/templates/enjambre/mesa.html
+msgid "no se pudo subir"
+msgstr "couldn't upload"
+
+#: enjambre/templates/enjambre/mesa.html
+msgid "error de red"
+msgstr "network error"

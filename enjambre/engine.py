@@ -735,18 +735,36 @@ class Enjambre:
         return self.sesion.lider or (sillas[0] if sillas else None)
 
     def _estado_carpeta(self):
-        """Resumen del estado de la carpeta de la mesa para el evaluador: archivos trackeados +
-        NOTAS.md (la memoria compartida donde las sillas anotan qué falta)."""
-        from .workspace import mesa_workspace, _git
+        """Resumen del estado de la carpeta de la mesa para el evaluador: archivos EN DISCO +
+        NOTAS.md (la memoria compartida donde las sillas anotan qué falta).
+
+        Lista el disco (no `git ls-files`) a propósito: así incluye también los archivos que el
+        humano sube a mitad de trabajo y todavía no están commiteados — el worker los commitea
+        sola al cerrar el turno, pero las sillas tienen que VERLOS desde el turno en que aparecen."""
+        from .workspace import mesa_workspace
         dest = str(mesa_workspace(self.sesion))
-        files = _git(dest, 'ls-files', check=False) or '(sin archivos)'
+        listado = []
+        for root, dirs, files in os.walk(dest):
+            # Excluir .git, runtime de las CLIs (dot-dirs) y __pycache__.
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__']
+            for f in files:
+                if f.startswith('.'):
+                    continue
+                rel = os.path.relpath(os.path.join(root, f), dest)
+                listado.append(rel)
+                if len(listado) >= 2000:
+                    break
+            if len(listado) >= 2000:
+                break
+        listado.sort(key=str.lower)
+        files_txt = '\n'.join(listado) if listado else '(sin archivos)'
         notas = ''
         try:
             with open(os.path.join(dest, 'NOTAS.md'), encoding='utf-8') as f:
                 notas = f.read()[:2000]
         except Exception:  # noqa: BLE001
             pass
-        return f"Archivos en la carpeta:\n{files}\n\nNOTAS.md (memoria de la mesa):\n{notas or '(vacío)'}"
+        return f"Archivos en la carpeta:\n{files_txt}\n\nNOTAS.md (memoria de la mesa):\n{notas or '(vacío)'}"
 
     def _objetivo_cumplido(self):
         """Le pregunta a una silla gratis si el objetivo ya está cumplido (mirando archivos+NOTAS).

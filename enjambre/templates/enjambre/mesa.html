@@ -95,6 +95,14 @@
 .enj-carpeta-host { flex:1; min-width:0; overflow-x:auto; white-space:nowrap; font-size:.72rem;
     padding:.4rem .55rem; border:1px solid var(--enj-border); border-radius:7px;
     background:rgba(127,127,127,.1); }
+.enj-carpeta-drop { display:flex; align-items:center; justify-content:center; gap:.5rem; text-align:center;
+    padding:.7rem .6rem; margin-bottom:.5rem; font-size:.78rem; cursor:pointer; color:var(--enj-muted,#9aa);
+    border:1.5px dashed var(--enj-border); border-radius:8px; background:rgba(127,127,127,.05);
+    transition:border-color .15s, background .15s; }
+.enj-carpeta-drop:hover { border-color:var(--enj-accent,#6ad); background:rgba(127,127,127,.1); }
+.enj-carpeta-drop.dragover { border-color:var(--enj-accent,#6ad); background:rgba(106,170,221,.14); color:var(--enj-fg,#cde); }
+.enj-carpeta-drop.busy { opacity:.6; pointer-events:none; }
+.enj-carpeta-drop > i { font-size:1rem; opacity:.7; }
 .enj-carpeta-list { display:flex; flex-direction:column; gap:.1rem; max-height:50vh; overflow:auto;
     border:1px solid var(--enj-border); border-radius:8px; padding:.3rem; }
 .enj-file { display:flex; align-items:center; gap:.55rem; padding:.32rem .4rem; border-radius:6px; font-size:.82rem; }
@@ -383,6 +391,11 @@
                             title="{% trans 'Copiar la ruta de la carpeta (host)' %}">⧉ {% trans 'Ruta' %}</button>
                     <button type="button" class="enj-del enj-ghost" id="carpeta-reload" title="{% trans 'Refrescar' %}">↻</button>
                 </div>
+                <div id="carpeta-drop" class="enj-carpeta-drop" title="{% trans 'Arrastrá archivos o hacé clic para subir' %}">
+                    <input type="file" id="carpeta-file" multiple hidden>
+                    <i class="fas fa-cloud-arrow-up"></i>
+                    <span id="carpeta-drop-txt">{% trans 'Arrastrá archivos acá o hacé clic para subirlos a la mesa' %}</span>
+                </div>
                 <div id="carpeta-list" class="enj-carpeta-list">
                     <p class="enj-muted" style="font-size:.8rem;">{% trans 'Cargando…' %}</p>
                 </div>
@@ -660,6 +673,52 @@
     }
     btn.addEventListener('click', load);            // abrir el modal también carga la lista
     if (reload) reload.addEventListener('click', load);
+
+    // ── Subir archivos a la carpeta (drag & drop o clic) ──────────────────────
+    const SUBIR = "{% url 'enjambre:mesa_subir' sesion.pk %}";
+    const drop = document.getElementById('carpeta-drop');
+    const fileInput = document.getElementById('carpeta-file');
+    const dropTxt = document.getElementById('carpeta-drop-txt');
+    function csrf() {
+        const el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+    function subir(files) {
+        if (!files || !files.length || !drop) return;
+        const fd = new FormData();
+        for (let i = 0; i < files.length; i++) fd.append('archivos', files[i]);
+        const prev = dropTxt ? dropTxt.textContent : '';
+        drop.classList.add('busy');
+        if (dropTxt) dropTxt.textContent = '{% trans "Subiendo…" %} (' + files.length + ')';
+        fetch(SUBIR, { method: 'POST', headers: { 'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest' }, body: fd })
+            .then(function (r) { return r.json().catch(function () { return { ok: false, error: '{% trans "respuesta inválida" %}' }; }); })
+            .then(function (d) {
+                drop.classList.remove('busy');
+                if (dropTxt) dropTxt.textContent = d && d.ok
+                    ? ('✓ ' + (d.guardados || []).join(', '))
+                    : ('✗ ' + ((d && d.error) || '{% trans "no se pudo subir" %}'));
+                load();   // refrescar la lista de archivos
+                setTimeout(function () { if (dropTxt) dropTxt.textContent = prev; }, 3500);
+            })
+            .catch(function () {
+                drop.classList.remove('busy');
+                if (dropTxt) dropTxt.textContent = '✗ {% trans "error de red" %}';
+                setTimeout(function () { if (dropTxt) dropTxt.textContent = prev; }, 3500);
+            });
+    }
+    if (drop && fileInput) {
+        drop.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () { subir(fileInput.files); fileInput.value = ''; });
+        ['dragenter', 'dragover'].forEach(function (ev) {
+            drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('dragover'); });
+        });
+        ['dragleave', 'drop'].forEach(function (ev) {
+            drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('dragover'); });
+        });
+        drop.addEventListener('drop', function (e) {
+            if (e.dataTransfer && e.dataTransfer.files) subir(e.dataTransfer.files);
+        });
+    }
     document.querySelectorAll('.enj-copy[data-copy-from]').forEach(function (b) {
         b.addEventListener('click', function () {
             const el = document.getElementById(b.dataset.copyFrom);
