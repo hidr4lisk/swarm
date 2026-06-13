@@ -92,6 +92,12 @@ ENJAMBRE_MESAS_DIR = os.environ.get('ENJAMBRE_MESAS_DIR', '')
 # Git worktrees aislados de las Tareas. Vacío = ~/.enjambre/workspaces.
 ENJAMBRE_WORKSPACES_DIR = os.environ.get('ENJAMBRE_WORKSPACES_DIR', '')
 
+# uid/gid del worker del host. Si el contenedor web corre como root, chownea a estos las
+# carpetas/archivos de mesa que crea, para que el worker pueda hacerles git init (si no, quedan
+# root:root → 'Permission denied' al fabricar). Override por .env si tu usuario no es 1000.
+ENJAMBRE_HOST_UID = int(os.environ.get('ENJAMBRE_HOST_UID', '1000'))
+ENJAMBRE_HOST_GID = int(os.environ.get('ENJAMBRE_HOST_GID', '1000'))
+
 # Resolver de rol pluggable: callable(creador) -> 'control' | 'consulta'.
 # None (default) = todo es rango `control` — el modelo single-user de Swarm.
 ENJAMBRE_ROLE_RESOLVER = None

@@ -28,7 +28,7 @@ from .clientes import CLIENTES, build_comando, cliente_de, modelo_de
 from .models import (
     LogMesa, Mensaje, Participante, Sesion, Tarea, Topologia, WorkerRestart,
 )
-from .workspace import mesas_dir
+from .workspace import mesas_dir, chown_host
 from .personas import persona_default
 
 logger = logging.getLogger('enjambre')
@@ -177,7 +177,9 @@ def crear_sesion(request):
         # rompía el worker (mkdir exist_ok igual revienta si el path es un archivo). El
         # git init + workspace_dir (ruta host) los sigue poniendo el worker vía mesa_workspace.
         try:
-            _mesa_dir_container(sesion.id).mkdir(parents=True, exist_ok=True)
+            d = _mesa_dir_container(sesion.id)
+            d.mkdir(parents=True, exist_ok=True)
+            chown_host(d)  # el worker (host) tiene que poder git-init acá si el web corre como root
         except OSError:
             pass
         log_event(request.user, 'ENJAMBRE_SESION_CREATE', 'enjambre',
@@ -672,6 +674,8 @@ def mesa_subir(request, pk):
 
     if not guardados:
         return JsonResponse({'ok': False, 'error': 'Ningún archivo válido.', 'rechazados': rechazados}, status=400)
+
+    chown_host(dest)  # si el web corre como root, dejar los archivos al worker del host
 
     quien = getattr(request.user, 'username', '') or 'el humano'
     # Dejar la subida en el flujo de la mesa para que quede en el historial (y se vea en el chat).

@@ -9,6 +9,7 @@ hace push ni PR).
 Las funciones de git son puras (operan sobre rutas/params, sin ORM) para poder testearlas
 en aislamiento; `ejecutar_tarea()` las orquesta sobre los modelos.
 """
+import os
 import subprocess
 from pathlib import Path
 
@@ -43,6 +44,28 @@ def mesas_dir():
          or str(Path.home() / '.enjambre' / 'mesas'))
     Path(d).mkdir(parents=True, exist_ok=True)
     return d
+
+
+def chown_host(path):
+    """Deja `path` (y su contenido) con dueño del worker del host (uid/gid de ENJAMBRE_HOST_UID/GID,
+    default 1000). Lo usa el CONTENEDOR WEB (root): las carpetas/archivos de mesa que crea quedarían
+    root:root y el worker (corre como el usuario del host) no podría hacerles `git init` →
+    'Permission denied'. Best-effort: si no corre como root (p.ej. el propio worker), no hace nada."""
+    uid = int(getattr(settings, 'ENJAMBRE_HOST_UID', 1000))
+    gid = int(getattr(settings, 'ENJAMBRE_HOST_GID', 1000))
+    if not hasattr(os, 'geteuid') or os.geteuid() != 0:
+        return  # solo root puede chownear a otro uid; el worker ya crea con el dueño correcto
+    p = Path(path)
+    try:
+        os.chown(p, uid, gid)
+        for root, dirs, files in os.walk(p):
+            for name in dirs + files:
+                try:
+                    os.chown(os.path.join(root, name), uid, gid)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def mesa_workspace(sesion):
