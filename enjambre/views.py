@@ -550,10 +550,11 @@ def mesa_archivos(request, pk):
                 continue  # ocultar dotfiles (.gitignore, .env, runtime de CLIs, etc.)
             full = Path(root) / f
             try:
-                size = full.stat().st_size
+                st = full.stat()
             except OSError:
                 continue  # symlink roto / archivo transitorio: no listarlo
-            archivos.append({'path': str(full.relative_to(base)), 'size': size})
+            archivos.append({'path': str(full.relative_to(base)),
+                             'size': st.st_size, 'mtime': int(st.st_mtime)})
             if len(archivos) >= 2000:  # tope defensivo
                 break
         if len(archivos) >= 2000:

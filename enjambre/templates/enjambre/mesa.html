@@ -1,5 +1,5 @@
 {% extends 'enjambre/base_swarm.html' %}
-{% load i18n %}
+{% load i18n static %}
 {% block extra_css %}{% include 'enjambre/_skin.html' %}
 <style>
 /* La fila de chips tenía overflow-x:auto (→ overflow-y computa a auto) que recortaba el globito
@@ -100,7 +100,7 @@
     border:1.5px dashed var(--enj-border); border-radius:8px; background:rgba(127,127,127,.05);
     transition:border-color .15s, background .15s; }
 .enj-carpeta-drop:hover { border-color:var(--enj-accent,#6ad); background:rgba(127,127,127,.1); }
-.enj-carpeta-drop.dragover { border-color:var(--enj-accent,#6ad); background:rgba(106,170,221,.14); color:var(--enj-fg,#cde); }
+.enj-carpeta-drop.dragover { border-color:var(--enj-accent,#6ad); background:rgba(106,170,221,.14); color:var(--enj-text); }
 .enj-carpeta-drop.busy { opacity:.6; pointer-events:none; }
 .enj-carpeta-drop > i { font-size:1rem; opacity:.7; }
 .enj-carpeta-list { display:flex; flex-direction:column; gap:.1rem; max-height:50vh; overflow:auto;
@@ -110,9 +110,54 @@
 .enj-file > i { opacity:.55; flex-shrink:0; }
 .enj-file-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+#carpeta .enj-modal-card { width:min(1100px, 96vw); }
+.enj-carpeta-sort { display:flex; align-items:center; gap:.4rem; margin:.2rem 0 .35rem; font-size:.72rem; }
+.enj-carpeta-sort .enj-del { padding:.12rem .5rem; }
+.enj-carpeta-sort .enj-del.is-active { background:var(--enj-accent); color:var(--enj-on-accent);
+    border:1px solid var(--enj-accent-bd); opacity:1; }
+.enj-file-date { opacity:.55; font-size:.72rem; flex-shrink:0; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .enj-file-size { opacity:.55; font-size:.72rem; flex-shrink:0; font-variant-numeric:tabular-nums; }
 .enj-file .enj-del { padding:.1rem .42rem; flex-shrink:0; line-height:1; }
 .enj-copy.ok { color:#46c46a; border-color:#46c46a; }
+/* En celular: el nombre se comía con fecha/tamaño/botones en una sola fila. Pasamos a 2 filas
+   (fila 1 = ícono + nombre completo que envuelve; fila 2 = fecha, tamaño y acciones). */
+@media (max-width:600px) {
+    .enj-file { flex-wrap:wrap; row-gap:.12rem; }
+    .enj-file-name { flex-basis:calc(100% - 1.8rem); white-space:normal; overflow:visible;
+        text-overflow:clip; overflow-wrap:anywhere; }
+}
+/* ── Preview de Markdown renderizado (modal) ──────────────────────────────── */
+.enj-md-modal .enj-modal-card { width:min(820px,100%); max-height:90vh; }
+.enj-md-modal .enj-modal-body { padding:0; }
+#md-preview-name { font-family:var(--enj-mono); font-weight:600; opacity:.85; font-size:.74rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%; }
+.enj-md { padding:1.4rem 1.7rem; overflow:auto; max-height:78vh; line-height:1.7;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:var(--enj-text); font-size:.92rem; word-wrap:break-word; }
+.enj-md > :first-child { margin-top:0; }
+.enj-md h1, .enj-md h2, .enj-md h3, .enj-md h4 { line-height:1.3; margin:1.5em 0 .6em; font-weight:700; color:var(--enj-title); }
+.enj-md h1 { font-size:1.7em; border-bottom:1px solid var(--enj-border); padding-bottom:.3em; }
+.enj-md h2 { font-size:1.35em; border-bottom:1px solid var(--enj-border); padding-bottom:.25em; }
+.enj-md h3 { font-size:1.15em; } .enj-md h4 { font-size:1em; }
+.enj-md p, .enj-md ul, .enj-md ol, .enj-md blockquote, .enj-md table, .enj-md pre { margin:0 0 1em; }
+.enj-md ul, .enj-md ol { padding-left:1.7em; }
+.enj-md li { margin:.25em 0; }
+.enj-md li > input[type="checkbox"] { margin-right:.45em; }
+.enj-md a { color:var(--enj-accent); text-decoration:underline; }
+.enj-md code { font-family:var(--enj-mono); font-size:.86em; padding:.15em .4em; border-radius:5px;
+    background:rgba(127,127,127,.16); }
+.enj-md pre { padding:.9rem 1rem; border-radius:8px; overflow:auto; background:rgba(127,127,127,.12);
+    border:1px solid var(--enj-border); }
+.enj-md pre code { background:none; padding:0; font-size:.85em; line-height:1.55; }
+.enj-md blockquote { padding:.2em 1em; border-left:3px solid var(--enj-accent); color:var(--enj-muted);
+    background:rgba(127,127,127,.06); }
+.enj-md blockquote > :last-child { margin-bottom:0; }
+.enj-md table { border-collapse:collapse; width:auto; max-width:100%; display:block; overflow:auto; }
+.enj-md th, .enj-md td { border:1px solid var(--enj-border); padding:.4em .7em; text-align:left; }
+.enj-md th { background:rgba(127,127,127,.12); font-weight:700; }
+.enj-md img { max-width:100%; border-radius:6px; }
+.enj-md hr { border:0; border-top:1px solid var(--enj-border); margin:1.6em 0; }
+.enj-md .enj-md-loading { color:var(--enj-muted); font-style:italic; }
 /* El drawer del flujo no debe generar scroll horizontal global ni desbordar su ancho. */
 .enj-chatpage { overflow-x:hidden; }
 .enj-flujo-col, .enj-logline, .enj-logline-head .t { max-width:100%; }
@@ -176,8 +221,9 @@
     <section class="enj-chat">
         <div id="mensajes">
             {% for m in mensajes %}
-            <div class="msg" data-id="{{ m.id }}"{% if not m.participante_id %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
-                <span class="enj-pcolor" style="background:{{ m.color }};color:{{ m.color }};"></span><strong style="color:{{ m.color }};">{{ m.emisor }}:</strong> <span>{{ m.texto }}</span>
+            <div class="msg" data-id="{{ m.id }}" data-raw="{{ m.texto }}"{% if not m.participante_id %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
+                <div class="msg-head"><span class="enj-pcolor" style="background:{{ m.color }};color:{{ m.color }};"></span><strong style="color:{{ m.color }};">{{ m.emisor }}:</strong></div>
+                <div class="msg-text">{{ m.texto }}</div>
             </div>
             {% empty %}
             <div id="enj-empty" class="enj-muted">{% trans 'La mesa está en silencio. Hacé la primera pregunta.' %}</div>
@@ -187,8 +233,12 @@
 
     <!-- Comandos (solo control) + globito de Participantes (hover/tap, se abre hacia arriba) -->
     <div class="enj-chips">
-        {% if sesion.topologia == 'lider' and sesion.lider %}
-        <span class="enj-chip enj-lider-chip" title="{% trans 'El líder coordina al resto; @silla habla directo a una' %}">👑 {% trans 'Líder' %}: {{ sesion.lider.nombre }}</span>
+        {% if sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo %}
+        <span class="enj-chip enj-lider-chip" title="{% trans 'Modo Líder: el líder descompone tu pedido en subtareas, las reparte y al final integra; @silla habla directo a una' %}">👑 {% trans 'Líder' %}: {{ sesion.lider.nombre }}</span>
+        {% elif sesion.topologia == 'lider' %}
+        <span class="enj-chip enj-lider-chip" title="{% trans 'La mesa está en modo Líder pero el líder está inactivo o sin asignar → corre PLANA. Asigná un líder activo en ⚙ Sillas de la mesa.' %}">⚠️ {% trans 'Líder caído → Plana' %}</span>
+        {% else %}
+        <span class="enj-chip enj-lider-chip" title="{% trans 'Modo Plana: todas las sillas responden el pedido completo, sin reparto ni integración. Con /armar, cada silla CLI fabrica sobre la misma carpeta, en serie.' %}">⚖️ {% trans 'Plana' %}</span>
         {% endif %}
         {% if puede_log %}
         <span class="enj-velo" tabindex="0">
@@ -396,6 +446,11 @@
                     <i class="fas fa-cloud-arrow-up"></i>
                     <span id="carpeta-drop-txt">{% trans 'Arrastrá archivos acá o hacé clic para subirlos a la mesa' %}</span>
                 </div>
+                <div class="enj-carpeta-sort" id="carpeta-sort">
+                    <span class="enj-muted">{% trans 'Ordenar:' %}</span>
+                    <button type="button" class="enj-del enj-ghost is-active" data-sort="name">{% trans 'Nombre' %}</button>
+                    <button type="button" class="enj-del enj-ghost" data-sort="date">{% trans 'Fecha' %}</button>
+                </div>
                 <div id="carpeta-list" class="enj-carpeta-list">
                     <p class="enj-muted" style="font-size:.8rem;">{% trans 'Cargando…' %}</p>
                 </div>
@@ -407,11 +462,31 @@
             </div>
         </div>
     </div>
+
+    <!-- Preview de un .md renderizado (no crudo), estilo vista en vivo -->
+    <div class="enj-modal enj-md-modal" id="md-preview" hidden>
+        <div class="enj-modal-bg" data-close></div>
+        <div class="enj-modal-card enj-panel">
+            <div class="enj-panel-h" style="display:flex;align-items:center;gap:.6rem;">
+                <i class="fab fa-markdown"></i> {% trans 'Preview' %}
+                <span id="md-preview-name"></span>
+                <a id="md-preview-dl" class="enj-del enj-ghost" href="#" title="{% trans 'Descargar' %}"
+                   style="margin-left:auto;text-decoration:none;">⬇</a>
+                <button type="button" class="enj-del enj-ghost" data-close title="{% trans 'Cerrar' %}"
+                        style="padding:.1rem .42rem;">✕</button>
+            </div>
+            <div class="enj-modal-body">
+                <div class="enj-md" id="md-preview-body"></div>
+            </div>
+        </div>
+    </div>
     {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'enjambre/vendor/markdown/marked.min.js' %}"></script>
+<script src="{% static 'enjambre/vendor/markdown/purify.min.js' %}"></script>
 <script>
 (function () {
     const cont = document.getElementById('mensajes');
@@ -420,18 +495,33 @@
         return els.length ? els[els.length - 1].dataset.id : 0;
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    // Cuerpo del mensaje = markdown de la silla (negrita, tablas, código, saltos de línea).
+    // marked (GFM + breaks: newline suelto = <br>, como en un chat) + DOMPurify (anti-XSS:
+    // el texto lo fabrican las sillas/CLIs, puede traer HTML/script crudo).
+    function renderTexto(el, texto) {
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') { el.textContent = texto; return; }
+        el.innerHTML = DOMPurify.sanitize(marked.parse(texto, { gfm: true, breaks: true }), { ADD_ATTR: ['target'] });
+    }
+    // Mensajes ya renderizados por el server (texto plano escapado, fallback sin JS): se
+    // re-renderizan como markdown al cargar, leyendo el texto crudo de data-raw.
+    cont.querySelectorAll('.msg[data-raw]').forEach(function (m) {
+        const t = m.querySelector('.msg-text');
+        if (t) renderTexto(t, m.dataset.raw);
+    });
     function append(m) {
         if (cont.querySelector('.msg[data-id="' + m.id + '"]')) return;
         const empty = document.getElementById('enj-empty');
         if (empty) empty.remove();
         const div = document.createElement('div');
-        div.className = 'msg'; div.dataset.id = m.id;
+        div.className = 'msg'; div.dataset.id = m.id; div.dataset.raw = m.texto;
         if (m.es_ruido) div.style.opacity = .5;
         const c = m.color || '{{ color_humano }}';
         if (c === '{{ color_humano }}') div.dataset.humano = '1';
         div.style.borderLeftColor = c;
-        div.innerHTML = '<span class="enj-pcolor" style="background:' + c + ';color:' + c + ';"></span>'
-                      + '<strong style="color:' + c + ';">' + esc(m.emisor) + ':</strong> <span>' + esc(m.texto) + '</span>';
+        div.innerHTML = '<div class="msg-head"><span class="enj-pcolor" style="background:' + c + ';color:' + c + ';"></span>'
+                      + '<strong style="color:' + c + ';">' + esc(m.emisor) + ':</strong></div>'
+                      + '<div class="msg-text"></div>';
+        renderTexto(div.querySelector('.msg-text'), m.texto);
         cont.appendChild(div); cont.scrollTop = cont.scrollHeight;
     }
     function connectSSE() {
@@ -492,7 +582,9 @@
         const bloques = [];
         document.querySelectorAll('#mensajes .msg').forEach(function (m) {
             const emisor = ((m.querySelector('strong') || {}).textContent || '').trim();
-            const texto = ((m.querySelector('span:last-child') || {}).textContent || '').trim();
+            // data-raw = el markdown original de la silla (el cuerpo ahora se ve renderizado
+            // en pantalla — tablas, negrita — así que ya no sirve leer su textContent acá).
+            const texto = (m.dataset.raw || '').trim();
             bloques.push(emisor + '\n' + texto);
         });
         const sep = '\n\n' + '─'.repeat(40) + '\n\n';
@@ -620,6 +712,15 @@
         if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
         return (n / 1048576).toFixed(1) + ' MB';
     }
+    function fmtMtime(ts) {
+        if (!ts) return '';
+        try {
+            const d = new Date(ts * 1000);
+            const f = d.toLocaleString(undefined, {day:'2-digit', month:'2-digit', year:'2-digit',
+                                                    hour:'2-digit', minute:'2-digit', hour12:false});
+            return f.replace(',', '');
+        } catch (_) { return ''; }
+    }
     function escc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function flash(b) { const t = b.textContent; b.classList.add('ok'); b.textContent = '✓';
         setTimeout(function () { b.classList.remove('ok'); b.textContent = t; }, 1100); }
@@ -633,6 +734,14 @@
             navigator.clipboard.writeText(text).then(function () { flash(b); }).catch(function () { fallback(text, b); });
         else fallback(text, b);
     }
+    let lastArchivos = [];        // últimos archivos recibidos (para reordenar sin refetch)
+    let sortBy = 'name';          // 'name' (A→Z) | 'date' (más reciente primero)
+    function sortArchivos(arr) {
+        const c = arr.slice();
+        if (sortBy === 'date') c.sort(function (a, b) { return (b.mtime || 0) - (a.mtime || 0); });
+        else c.sort(function (a, b) { return a.path.toLowerCase() < b.path.toLowerCase() ? -1 : 1; });
+        return c;
+    }
     function render(data) {
         host = data.host_path || '';
         hostEl.textContent = host || '{% trans "(carpeta no creada todavía)" %}';
@@ -645,23 +754,31 @@
             zip.style.pointerEvents = hay ? '' : 'none';
             zip.title = hay ? '' : '{% trans "Esta mesa todavía no fabricó nada (probá /armar)." %}';
         }
+        lastArchivos = (data.existe && data.archivos) ? data.archivos : [];
         if (!data.existe || !data.archivos.length) {
             list.innerHTML = '<p class="enj-muted" style="font-size:.8rem;padding:.3rem;">' +
                 (data.existe ? '{% trans "La carpeta está vacía." %}' : '{% trans "Esta mesa todavía no fabricó nada (probá /armar)." %}') + '</p>';
             return;
         }
+        paint();
+    }
+    function paint() {
         list.innerHTML = '';
-        data.archivos.forEach(function (a) {
+        sortArchivos(lastArchivos).forEach(function (a) {
             const row = document.createElement('div'); row.className = 'enj-file';
             const dl = DESCARGAR + '?path=' + encodeURIComponent(a.path);
             const full = host ? (host + '/' + a.path) : a.path;
+            const isMd = /\.(md|markdown|mdown)$/i.test(a.path);
             row.innerHTML =
-                '<i class="fas fa-file"></i>' +
+                '<i class="fas ' + (isMd ? 'fa-file-lines' : 'fa-file') + '"></i>' +
                 '<span class="enj-file-name" title="' + escc(a.path) + '">' + escc(a.path) + '</span>' +
+                '<span class="enj-file-date" title="{% trans "Última modificación" %}">' + escc(fmtMtime(a.mtime)) + '</span>' +
                 '<span class="enj-file-size">' + fmtSize(a.size) + '</span>' +
+                (isMd ? '<button type="button" class="enj-del enj-ghost enj-md-btn" title="{% trans "Preview (renderizado)" %}">👁</button>' : '') +
                 '<a class="enj-del enj-ghost" href="' + dl + '" title="{% trans "Descargar" %}">⬇</a>' +
                 '<button type="button" class="enj-del enj-ghost enj-copy" title="{% trans "Copiar ruta (host)" %}">⧉</button>';
             row.querySelector('.enj-copy').addEventListener('click', function () { copy(full, this); });
+            if (isMd) row.querySelector('.enj-md-btn').addEventListener('click', function () { preview(a.path); });
             list.appendChild(row);
         });
     }
@@ -673,6 +790,18 @@
     }
     btn.addEventListener('click', load);            // abrir el modal también carga la lista
     if (reload) reload.addEventListener('click', load);
+
+    // Control de orden (nombre ↔ fecha): reordena en el cliente, sin volver a pedir al server.
+    const sortBar = document.getElementById('carpeta-sort');
+    if (sortBar) sortBar.addEventListener('click', function (e) {
+        const b = e.target.closest('[data-sort]');
+        if (!b) return;
+        sortBy = b.getAttribute('data-sort');
+        sortBar.querySelectorAll('[data-sort]').forEach(function (x) {
+            x.classList.toggle('is-active', x === b);
+        });
+        if (lastArchivos.length) paint();
+    });
 
     // ── Subir archivos a la carpeta (drag & drop o clic) ──────────────────────
     const SUBIR = "{% url 'enjambre:mesa_subir' sesion.pk %}";
@@ -725,6 +854,42 @@
             if (el) copy(el.textContent, b);
         });
     });
+
+    // ── Preview de .md renderizado (no crudo) ─────────────────────────────────
+    // El body se trae con fetch().text() sobre la misma URL de descarga (el header
+    // Content-Disposition: attachment no impide leer el cuerpo por fetch) → así no
+    // hace falta endpoint nuevo. Render: marked (GFM) + DOMPurify (anti-XSS: el .md
+    // lo fabrican las sillas, puede traer HTML/script crudo).
+    const mdModal = document.getElementById('md-preview');
+    const mdBody = document.getElementById('md-preview-body');
+    const mdName = document.getElementById('md-preview-name');
+    const mdDl = document.getElementById('md-preview-dl');
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({ gfm: true, breaks: false });
+    }
+    function preview(path) {
+        if (!mdModal || !mdBody) return;
+        const dl = DESCARGAR + '?path=' + encodeURIComponent(path);
+        if (mdName) mdName.textContent = path;
+        if (mdDl) mdDl.href = dl;
+        mdBody.innerHTML = '<p class="enj-md-loading">{% trans "Cargando…" %}</p>';
+        mdModal.hidden = false;
+        fetch(dl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { if (!r.ok) throw new Error('http'); return r.text(); })
+            .then(function (txt) {
+                if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+                    const pre = document.createElement('pre');
+                    pre.textContent = txt; mdBody.innerHTML = ''; mdBody.appendChild(pre);
+                    return;
+                }
+                const html = marked.parse(txt);
+                mdBody.innerHTML = DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
+                mdBody.scrollTop = 0;
+            })
+            .catch(function () {
+                mdBody.innerHTML = '<p class="enj-md-loading">{% trans "No se pudo leer el archivo." %}</p>';
+            });
+    }
 })();
 
 // Modal de fabricar (abre con el martillo, cierra con fondo/Escape) — mismo patrón que el home.

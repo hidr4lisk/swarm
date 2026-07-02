@@ -106,9 +106,33 @@ tema elegido en la web, igual que el resto de los módulos.
 .enj .msg { padding: .5rem .75rem .55rem; border-radius: 10px;
             border-left: 3px solid var(--enj-msg-bar); background: var(--enj-msg-bg);
             animation: enj-in .25s ease; }
+.enj .msg-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .2rem; }
 .enj .msg strong { color: var(--enj-emisor); font-weight: 800; letter-spacing: .03em; }
 .enj .msg span { color: var(--enj-text); }
 @keyframes enj-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Cuerpo del mensaje: markdown renderizado (marked+DOMPurify) en vez de texto plano —
+   antes las tablas/negritas/saltos de línea de las sillas se veían todos pegados. */
+.enj .msg-text { color: var(--enj-text); line-height: 1.5; word-wrap: break-word; }
+.enj .msg-text > :first-child { margin-top: 0; }
+.enj .msg-text > :last-child { margin-bottom: 0; }
+.enj .msg-text p, .enj .msg-text ul, .enj .msg-text ol,
+.enj .msg-text blockquote, .enj .msg-text table, .enj .msg-text pre { margin: 0 0 .6em; }
+.enj .msg-text ul, .enj .msg-text ol { padding-left: 1.4em; }
+.enj .msg-text li { margin: .15em 0; }
+.enj .msg-text a { color: var(--enj-accent); text-decoration: underline; }
+.enj .msg-text code { font-size: .92em; padding: .1em .35em; border-radius: 4px;
+    background: rgba(127,127,127,.16); }
+.enj .msg-text pre { padding: .6rem .7rem; border-radius: 8px; overflow: auto;
+    background: rgba(127,127,127,.12); border: 1px solid var(--enj-border); }
+.enj .msg-text pre code { background: none; padding: 0; }
+.enj .msg-text blockquote { padding: .1em .8em; border-left: 3px solid var(--enj-accent);
+    color: var(--enj-muted); background: rgba(127,127,127,.06); }
+.enj .msg-text table { border-collapse: collapse; width: auto; max-width: 100%;
+    display: block; overflow: auto; margin: 0 0 .6em; }
+.enj .msg-text th, .enj .msg-text td { border: 1px solid var(--enj-border); padding: .3em .6em; text-align: left; }
+.enj .msg-text th { background: rgba(127,127,127,.12); font-weight: 700; }
+.enj .msg-text h1, .enj .msg-text h2, .enj .msg-text h3, .enj .msg-text h4 { margin: .5em 0 .25em; font-weight: 700; }
 
 /* inputs + botones (heredan los tokens del tema) */
 .enj input, .enj textarea, .enj select {
