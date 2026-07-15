@@ -1,6 +1,31 @@
 {% extends 'enjambre/base_swarm.html' %}
 {% load i18n %}
-{% block extra_css %}{% include 'enjambre/_skin.html' %}{% endblock %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+/* Donaciones: botón del menú + modal (theme-aware, tokens de swarm) */
+.enj-donar i { color: var(--enj-accent); }
+.enj-donar-back { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center; z-index: 90; padding: 1rem; }
+.enj-donar-back[hidden] { display: none; }
+.enj-donar-card { position: relative; background: var(--enj-panel); color: var(--enj-text);
+    border: 1px solid var(--enj-border); border-radius: 16px; max-width: 420px; width: 100%;
+    padding: 1.7rem 1.4rem 1.3rem; text-align: center; box-shadow: 0 18px 50px rgba(0,0,0,.45);
+    animation: enj-in .2s ease; }
+.enj-donar-x { position: absolute; top: .5rem; right: .65rem; background: none; border: none;
+    color: var(--enj-muted); font-size: 1.15rem; cursor: pointer; line-height: 1; padding: .25rem; }
+.enj-donar-emoji { font-size: 2.4rem; line-height: 1; }
+.enj-donar-card h2 { margin: .5rem 0 .45rem; font-size: 1.25rem; color: var(--enj-title); }
+.enj-donar-card p { color: var(--enj-text); font-size: .9rem; line-height: 1.55; margin: 0 0 1rem; }
+.enj-donar-alias { border: 1px dashed var(--enj-border); border-radius: 12px;
+    background: rgba(var(--accent-rgb), .07); padding: .75rem .8rem; margin: 0 0 .9rem; }
+.enj-donar-label { display: block; font-size: .66rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--enj-muted); margin-bottom: .45rem; }
+.enj-donar-row { display: flex; gap: .5rem; align-items: center; justify-content: center; flex-wrap: wrap; }
+.enj-donar-row code { font-family: var(--enj-mono); font-size: 1.1rem; font-weight: 700;
+    color: var(--accent-color); letter-spacing: .02em; word-break: break-all; }
+.enj-donar-fine { font-size: .74rem !important; color: var(--enj-muted) !important; margin: 0 !important; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="enj">
@@ -20,6 +45,28 @@
            title="{% trans 'Ayuda — cómo funciona la mesa, comandos y ejemplos' %}">
             <i class="fas fa-circle-question"></i><span class="enj-lab-txt">{% trans 'Ayuda' %}</span>
         </a>
+        <button type="button" class="enj-lab enj-donar" id="donar-open"
+                title="{% trans 'Donar — bancá el servidor que sostiene el enjambre' %}">
+            <i class="fas fa-heart"></i><span class="enj-lab-txt">{% trans 'Donar' %}</span>
+        </button>
+    </div>
+
+    {# Modal de donaciones: alias de transferencia, claro que son donaciones voluntarias. #}
+    <div class="enj-donar-back" id="donar-modal" hidden>
+        <div class="enj-donar-card" role="dialog" aria-modal="true" aria-labelledby="donar-title">
+            <button type="button" class="enj-donar-x" id="donar-close" aria-label="{% trans 'Cerrar' %}">✕</button>
+            <div class="enj-donar-emoji" aria-hidden="true">🐝</div>
+            <h2 id="donar-title">{% trans 'Bancá el enjambre' %}</h2>
+            <p>{% blocktrans %}Swarm es libre y gratis. Si te sirve y querés dar una mano, podés <strong>donar</strong>: lo que juntemos va derecho a mejorar el servidor que sostiene el enjambre.{% endblocktrans %}</p>
+            <div class="enj-donar-alias">
+                <span class="enj-donar-label">{% trans 'Alias para donaciones' %}</span>
+                <div class="enj-donar-row">
+                    <code id="donar-alias">hidralisk.online</code>
+                    <button type="button" class="enj-btn" id="donar-copy">{% trans 'Copiar' %}</button>
+                </div>
+            </div>
+            <p class="enj-donar-fine">{% trans '100% voluntario. ¡Gracias por bancar la movida! 💚' %}</p>
+        </div>
     </div>
 
     <form method="post" action="{% url 'enjambre:crear_sesion' %}" class="enj-row" style="margin:1rem 0;">
@@ -182,6 +229,31 @@
     grid.addEventListener('blur', function (e) {
         if (e.target.matches('.enj-card-rename') && !e.target.hidden) commitRename(e.target);
     }, true);
+})();
+
+// ── Donaciones: abrir/cerrar el modal + copiar el alias ──
+(function () {
+    var open = document.getElementById('donar-open');
+    var modal = document.getElementById('donar-modal');
+    if (!open || !modal) return;
+    var close = document.getElementById('donar-close');
+    var copy = document.getElementById('donar-copy');
+    function show(v) { modal.hidden = !v; }
+    open.addEventListener('click', function () { show(true); });
+    if (close) close.addEventListener('click', function () { show(false); });
+    modal.addEventListener('click', function (e) { if (e.target === modal) show(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) show(false); });
+    if (copy) copy.addEventListener('click', function () {
+        var alias = (document.getElementById('donar-alias') || {}).textContent || 'hidralisk.online';
+        function done() { var t = copy.textContent; copy.textContent = '{% trans "¡Copiado!" %}';
+            setTimeout(function () { copy.textContent = t; }, 1500); }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(alias).then(done).catch(done);
+        } else {
+            var ta = document.createElement('textarea'); ta.value = alias; document.body.appendChild(ta);
+            ta.select(); try { document.execCommand('copy'); } catch (_) {} document.body.removeChild(ta); done();
+        }
+    });
 })();
 
 </script>

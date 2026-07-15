@@ -104,3 +104,18 @@ ENJAMBRE_ROLE_RESOLVER = None
 
 # Cómo te llaman las sillas en la mesa. Vacío = 'Humano'.
 ENJAMBRE_TITULO_HUMANO = os.environ.get('ENJAMBRE_TITULO_HUMANO', '')
+
+# ── Swarm 2.0 — ruta por API key / portátil / toolbelt ──────────────────────────
+# Directorio de datos PERSISTENTE (bóveda de API keys + lo que no es la DB). En el pendrive el
+# launcher lo apunta a <bundle>/data para que sobreviva a una actualización del app/. Vacío =
+# <repo>/data (dev).
+SWARM_DATA_DIR = os.environ.get('SWARM_DATA_DIR') or str(BASE_DIR / 'data')
+
+# TOOLBELT: si las sillas por API key pueden operar el SISTEMA REAL (F3). Apagado por default —
+# es un tool de mucho poder. Prender con SWARM_TOOLBELT=1 (solo en máquinas que estés autorizado
+# a atender). Ver "Threat model" del README.
+SWARM_TOOLBELT = os.environ.get('SWARM_TOOLBELT', '')
+
+# base_url del proveedor "OpenAI-compatible" (para apuntar a Groq/DeepSeek/LM Studio/etc.).
+# Vacío = api.openai.com. Solo afecta a las sillas api-openai.
+SWARM_OPENAI_BASE_URL = os.environ.get('SWARM_OPENAI_BASE_URL', '')

@@ -67,12 +67,67 @@ CLIENTES = {
             'Gemini 3.1 Pro (High)',
         ],
     },
+    # ── Proveedores por API KEY (sin binarios, ruta portable) ──────────────────
+    # No son CLIs: el motor llama la API HTTP del proveedor con la key del vault (ver
+    # providers/ + vault.py). `api` = nombre del proveedor para el dispatcher. El modelo se
+    # guarda igual que en los CLIs (--model en `comando`), así cliente_de/modelo_de no cambian.
+    'api-anthropic': {
+        'label': 'Anthropic API (Claude)',
+        'api': 'anthropic',
+        'comando': ['api-anthropic'],
+        'model_flag': '--model',
+        'modelos': ['', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5-20251001', 'claude-fable-5'],
+    },
+    'api-openai': {
+        'label': 'OpenAI-compatible (API key)',
+        'api': 'openai',
+        'comando': ['api-openai'],
+        'model_flag': '--model',
+        'modelos': ['', 'gpt-5.2', 'gpt-5-mini', 'o4', 'deepseek-chat', 'llama-3.3-70b'],
+    },
+    'api-openrouter': {
+        'label': 'OpenRouter (API key · incluye :free)',
+        'api': 'openrouter',
+        'comando': ['api-openrouter'],
+        'model_flag': '--model',
+        'modelos': [
+            '',
+            'deepseek/deepseek-chat-v3.1:free',
+            'meta-llama/llama-3.3-70b-instruct:free',
+            'qwen/qwen3-coder:free',
+            'anthropic/claude-sonnet-5',
+            'openai/gpt-5.2',
+            'google/gemini-3-flash',
+        ],
+    },
     'ollama': {
         'label': 'Modelo local (Ollama/HTTP)',
         'http': True,  # usa endpoint_url + endpoint_model, no comando
         'modelos': ['', 'qwen2.5:3b', 'qwen2.5:7b'],
     },
 }
+
+
+def es_api(cliente):
+    """True si el cliente es un proveedor por API key (api-*)."""
+    c = CLIENTES.get(cliente)
+    return bool(c and c.get('api'))
+
+
+def api_de(participante):
+    """Nombre del proveedor API de la silla ('anthropic'|'openai'|'openrouter'), o '' si no es
+    una silla por API key. Las sillas Ollama (endpoint_url) nunca son api."""
+    if participante.endpoint_url:
+        return ''
+    return (CLIENTES.get(cliente_de(participante)) or {}).get('api', '')
+
+
+def edita_archivos(participante):
+    """True si la silla puede FABRICAR/editar archivos por CLI (subprocess con acceso al FS).
+    Las sillas HTTP (Ollama) y las api:* NO editan: las primeras no tienen filesystem; las api:*
+    en F2 son solo charla (el tool-use sobre el sistema real llega con el toolbelt en F3). El
+    engine usa esto para no repartirles subtareas de /armar."""
+    return not participante.endpoint_url and not api_de(participante)
 
 
 def build_comando(cliente, modelo):
@@ -82,7 +137,8 @@ def build_comando(cliente, modelo):
     if not c or c.get('http'):
         return [], []
     cmd = list(c['comando'])
-    cmdt = list(c['comando_trabajo'])
+    # Los proveedores API no fabrican por CLI → si no traen comando_trabajo, cae a `comando`.
+    cmdt = list(c.get('comando_trabajo') or c['comando'])
     if c.get('model_flag') and modelo:
         flag = [c['model_flag'], modelo]
         if cliente == 'agy':

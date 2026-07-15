@@ -1,0 +1,7 @@
+# Dependencias de la RUTA PORTÁTIL / NATIVA (SQLite, sin Docker, sin Postgres).
+# El bundle del pendrive instala esto en runtime/{linux,win}/site-packages por SO.
+# Diferencia con requirements.txt: sin psycopg2-binary (Postgres es solo del modo Docker) y sin
+# gevent (el SSE usa time.sleep bajo el runserver threaded). Livianísimo: Django + Fernet.
+Django==5.1.6
+dj-database-url==2.3.0
+cryptography==49.0.0

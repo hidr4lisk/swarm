@@ -103,12 +103,32 @@ tema elegido en la web, igual que el resto de los módulos.
 .enj-ask > input { flex: 1; min-width: 0; }
 .enj-ask .enj-btn { flex-shrink: 0; padding: .6rem .9rem; }
 
-.enj .msg { padding: .5rem .75rem .55rem; border-radius: 10px;
+.enj .msg { display: flex; gap: .55rem; align-items: flex-start;
+            padding: .5rem .75rem .55rem; border-radius: 10px;
             border-left: 3px solid var(--enj-msg-bar); background: var(--enj-msg-bg);
             animation: enj-in .25s ease; }
+.enj .msg-body { flex: 1; min-width: 0; }
+/* Retrato = command-card de unidad RTS: marco de brackets + anillo de selección en el color
+   del jugador (--pc). Fallback (msg-avatar--ph) = cuadrado macizo de ese color. */
+.enj .msg-portrait { position: relative; width: 46px; height: 46px; flex-shrink: 0; display: block;
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--pc, transparent) 55%, transparent)); }
+.enj .msg-portrait::before, .enj .msg-portrait::after { content: ''; position: absolute;
+    width: 8px; height: 8px; pointer-events: none; border: 2px solid var(--pc, var(--enj-accent)); }
+.enj .msg-portrait::before { top: -3px; left: -3px; border-right: 0; border-bottom: 0; }
+.enj .msg-portrait::after { bottom: -3px; right: -3px; border-left: 0; border-top: 0; }
+.enj .msg-avatar { width: 46px; height: 46px; border-radius: 6px; display: block;
+    object-fit: cover; box-shadow: 0 0 0 2px var(--pc, var(--enj-accent)); }
+.enj .msg-avatar--ph { box-shadow: 0 0 0 2px var(--pc, var(--enj-accent)), inset 0 0 0 1px rgba(0,0,0,.28); }
 .enj .msg-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .2rem; }
-.enj .msg strong { color: var(--enj-emisor); font-weight: 800; letter-spacing: .03em; }
+/* Nombre = callsign de HUD: mayúsculas, tracking ancho (el color lo pone el player color inline). */
+.enj .msg strong { color: var(--enj-emisor); font-weight: 800; text-transform: uppercase;
+    letter-spacing: .09em; font-size: .82rem; }
+.enj .msg .msg-motor { color: var(--enj-text); opacity: .5; font-weight: 500; font-size: .72em;
+    letter-spacing: .02em; text-transform: none; }
 .enj .msg span { color: var(--enj-text); }
+/* Turnos del humano (el comandante) anclados a la derecha: el retrato queda a la derecha. */
+.enj .msg[data-humano] { flex-direction: row-reverse; }
+.enj .msg[data-humano] .msg-head { flex-direction: row-reverse; }
 @keyframes enj-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* Cuerpo del mensaje: markdown renderizado (marked+DOMPurify) en vez de texto plano —

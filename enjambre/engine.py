@@ -208,18 +208,48 @@ def ejecutar_http(participante, prompt, timeout):
     return salida, es_ruido(salida)
 
 
-def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, workdir_ro=None):
+def ejecutar_api(participante, provider, prompt, timeout, sesion=None):
+    """Silla por API KEY: llama la API HTTP del proveedor (anthropic/openai/openrouter) con la key
+    del vault. Devuelve (salida, ruido). No usa subprocess ni runner → es la ruta PORTABLE (sin
+    binarios).
+
+    Si el TOOLBELT está habilitado y hay `sesion`, corre con el loop de tool-use sobre el sistema
+    real (F3: inspect/read_file/system_report auto, apply_fix con aprobación). Si no, charla plana (F2).
+
+    La key sale del vault DESBLOQUEADO (runtime 0600). Si la bóveda está bloqueada o no hay key,
+    el proveedor devuelve un marcador (❌ …) → la silla queda muda y la mesa sigue (degradación)."""
+    from . import providers, vault, toolbelt
+    from .clientes import modelo_de
+    # base_url configurable solo para el proveedor openai-compat (Groq/DeepSeek/…); anthropic y
+    # openrouter tienen endpoint fijo.
+    base = getattr(settings, 'SWARM_OPENAI_BASE_URL', '') if provider == 'openai' else ''
+    key, modelo = vault.get_key(provider), modelo_de(participante)
+    if sesion is not None and toolbelt.habilitado():
+        salida = providers.chat_agentic(provider, modelo, prompt, key, timeout,
+                                        sesion, participante, base_url=base)
+    else:
+        salida = providers.chat(provider, modelo, prompt, key, timeout, base_url=base)
+    return salida, es_ruido(salida)
+
+
+def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, workdir_ro=None,
+                 sesion=None):
     """Corre la silla con el prompt dado. Devuelve (salida, ruido).
 
-    Sillas de modelo local (endpoint_url seteado) van por HTTP (ejecutar_http); el resto
-    son CLIs por subprocess. Si `workdir` está dado (worktree aislado), el CLI
-    trabaja ahí: vía runner se exporta ENJAMBRE_WORKDIR (el wrapper lo monta en /work);
-    sin runner, es el cwd. `comando` permite override (ej: el de fabricación vs el de charla).
-    `workdir_ro` (excluyente con `workdir`): monta esa carpeta en /work SOLO-LECTURA — para que
-    el líder lea/grepee el código real sin poder editar (exporta ENJAMBRE_WORKDIR_RO).
+    Sillas de modelo local (endpoint_url seteado) van por HTTP (ejecutar_http); las sillas por API
+    key (api-*) van por HTTP al proveedor (ejecutar_api); el resto son CLIs por subprocess. Si
+    `workdir` está dado (worktree aislado), el CLI trabaja ahí: vía runner se exporta
+    ENJAMBRE_WORKDIR (el wrapper lo monta en /work); sin runner, es el cwd. `comando` permite
+    override (ej: el de fabricación vs el de charla). `workdir_ro` (excluyente con `workdir`):
+    monta esa carpeta en /work SOLO-LECTURA — para que el líder lea/grepee el código real sin
+    poder editar (exporta ENJAMBRE_WORKDIR_RO).
     """
     if participante.endpoint_url and not comando:
         return ejecutar_http(participante, prompt, timeout)
+    from .clientes import api_de
+    prov = api_de(participante)
+    if prov:  # silla por API key → HTTP directo al proveedor (+ toolbelt si está habilitado)
+        return ejecutar_api(participante, prov, prompt, timeout, sesion=sesion)
     env = os.environ.copy()
     cwd = None
     if workdir:
@@ -377,7 +407,8 @@ class Enjambre:
         mesa como cwd: lee/crea/edita archivos ahí; después se commitea y se postea el diff.
         Si `leer` (y la silla es CLI, no fabrica en este turno), monta la carpeta de la mesa
         SOLO-LECTURA: el líder lee/grepea el código real para planificar/integrar sin editar."""
-        puede = editar and not self._es_consulta() and not participante.endpoint_url
+        from .clientes import edita_archivos
+        puede = editar and not self._es_consulta() and edita_archivos(participante)
         workdir = comando = base = workdir_ro = None
         timeout = self.sesion.timeout
         if puede:
@@ -397,7 +428,8 @@ class Enjambre:
         self.log(f"▶ {participante.nombre} · {modo} (timeout {timeout}s)", nivel='paso')
         t0 = time.monotonic()
         salida, ruido = ejecutar_cli(participante, prompt, timeout,
-                                     workdir=workdir, comando=comando, workdir_ro=workdir_ro)
+                                     workdir=workdir, comando=comando, workdir_ro=workdir_ro,
+                                     sesion=self.sesion)
         dt = time.monotonic() - t0
         # Velocímetro: estimación uniforme tokens ≈ len/4; costo notional por tarifa de la
         # silla (local = $0). No es la factura real, es referencia para ver y topear el gasto.
@@ -902,8 +934,10 @@ class Enjambre:
 
         workers = [s for s in self.sillas() if s.key != lider.key]
         if editar:
-            # fabricar de verdad: solo sillas CLI (las de modelo local HTTP no editan archivos)
-            workers = [w for w in workers if not w.endpoint_url]
+            # fabricar de verdad: solo sillas que editan archivos (CLI). Las de modelo local (HTTP)
+            # y las api:* (charla en F2) quedan fuera del reparto.
+            from .clientes import edita_archivos
+            workers = [w for w in workers if edita_archivos(w)]
 
         modo_txt = 'fabricar' if editar else 'charla'
         self.log(f"👑 Modo líder ({lider.nombre}) · {modo_txt} · {len(workers)} trabajador(es)",
@@ -1027,18 +1061,19 @@ class Enjambre:
             elif comando == 'build':
                 texto, editar = limpio, True
                 # /armar = trabajo real: solo las sillas que PUEDEN editar (CLI). Las de modelo
-                # local (HTTP) no tienen acceso a archivos → se saltean para que no "actúen" que
-                # fabricaron (un modelo chico tiende a alucinar que escribió).
-                capaces = [s for s in destinatarias if not s.endpoint_url]
-                saltadas = [s for s in destinatarias if s.endpoint_url]
+                # local (HTTP) y las api:* (charla en F2) no tienen acceso a archivos → se saltean
+                # para que no "actúen" que fabricaron (un modelo tiende a alucinar que escribió).
+                from .clientes import edita_archivos
+                capaces = [s for s in destinatarias if edita_archivos(s)]
+                saltadas = [s for s in destinatarias if not edita_archivos(s)]
                 if not capaces:
                     self.guardar("Enjambre", "⚠️ Ninguna silla de la mesa puede fabricar: las de "
-                                 "modelo local (HTTP) no editan archivos. Sentá una silla CLI "
-                                 "(claude/opencode) para usar /armar.", sistema=True)
+                                 "modelo local (HTTP) y las de API key no editan archivos. Sentá una "
+                                 "silla CLI (claude/opencode) para usar /armar.", sistema=True)
                     return {}
                 if saltadas:
                     nombres = ", ".join(s.nombre for s in saltadas)
-                    self.guardar("Enjambre", f"ℹ️ {nombres} es de modelo local y no edita archivos; "
+                    self.guardar("Enjambre", f"ℹ️ {nombres} no edita archivos (modelo local o API key); "
                                  "queda fuera de este /armar (fabrican las sillas CLI).", sistema=True)
                 destinatarias = capaces
         resultados = {}

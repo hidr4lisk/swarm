@@ -10,6 +10,34 @@
     .cx-dot.off { background: #c0392b; box-shadow: 0 0 6px 1px rgba(192,57,43,.4); }
     .cx-ruta { font-family: monospace; font-size: .78rem; opacity: .65; word-break: break-all; }
     .cx-login { font-family: monospace; font-size: .8rem; }
+
+    /* Segmented control (pestañas) */
+    .cx-tabs { display: inline-flex; gap: .25rem; padding: .25rem; border-radius: 10px;
+               background: rgba(var(--accent-rgb), .08); border: 1px solid var(--border-color);
+               margin: .2rem 0 1rem; }
+    .cx-tab { appearance: none; border: 0; background: transparent; cursor: pointer;
+              font: inherit; color: var(--text-muted); padding: .45rem .9rem; border-radius: 7px;
+              display: inline-flex; align-items: center; gap: .45rem; transition: background .12s, color .12s; }
+    .cx-tab[aria-selected="true"] { background: var(--surface-color); color: var(--text-main);
+              box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+    .cx-panel[hidden] { display: none; }
+
+    /* Bóveda de API keys */
+    .cx-vault { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap;
+                padding: .8rem 1rem; border-radius: 12px; border: 1px solid var(--border-color);
+                background: rgba(var(--accent-rgb), .06); margin-bottom: 1rem; }
+    .cx-lock { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex;
+               align-items: center; justify-content: center; font-size: 15px;
+               background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
+    .cx-vault.abierta .cx-lock { background: rgba(46,204,64,.16); color: #2ecc40; }
+    .cx-pass { flex: 1; min-width: 150px; }
+    .cx-pass input { width: 100%; box-sizing: border-box; }
+    .cx-key-token { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
+    .cx-key-token input { flex: 1; min-width: 160px; box-sizing: border-box; font-family: monospace; }
+    .cx-msg { font-size: .8rem; min-height: 1.1em; margin-top: .4rem; }
+    .cx-msg.ok  { color: #2ecc40; }
+    .cx-msg.err { color: #e74c3c; }
+    .cx-note { font-size: .8rem; color: var(--text-muted); }
 </style>
 {% endblock %}
 
@@ -26,41 +54,200 @@
         </h1>
     </div>
 
-    <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
-        {% blocktrans %}El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el
-        archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta
-        solo-lectura en contenedores descartables.{% endblocktrans %}
-        {% trans 'Logueá el CLI en el host y encendé su silla en' %}
-        <a href="{% url 'enjambre:gestionar_sillas' %}">{% trans 'Sillas' %}</a>.
-    </p>
-
-    <div class="enj-grid" style="grid-template-columns:1fr;">
-        {% for f in filas %}
-        <div class="enj-card">
-            <div class="cx-fila">
-                <strong>{{ f.nombre }}</strong>
-                <span class="cx-estado">
-                    <span class="cx-dot {% if f.ok %}on{% else %}off{% endif %}"></span>
-                    {% if f.ok %}{% trans 'Detectado' %}{% else %}{% trans 'No detectado' %}{% endif %}
-                </span>
-            </div>
-            <div class="cx-ruta">{{ f.ruta }}</div>
-            {% if not f.ok %}
-            <div class="enj-muted" style="font-size:.8rem;">
-                {% trans 'Para conectarlo, en tu terminal:' %} <span class="cx-login">{{ f.login }}</span>
-            </div>
-            {% endif %}
-        </div>
-        {% endfor %}
+    {% csrf_token %}
+    <div class="cx-tabs" role="tablist">
+        <button class="cx-tab" type="button" role="tab" data-tab="clis" aria-selected="true">
+            <i class="fas fa-terminal"></i> {% trans 'CLIs logueados' %}
+        </button>
+        <button class="cx-tab" type="button" role="tab" data-tab="keys" aria-selected="false">
+            <i class="fas fa-key"></i> {% trans 'API keys' %}
+        </button>
     </div>
 
-    <p class="enj-muted" style="font-size:.75rem;margin-top:1rem;">
-        {% if chequeado_at %}
-        {% blocktrans %}Chequeado por el worker al arrancar ({{ chequeado_at }}). Si te acabás de loguear,
-        reiniciá el worker (♻️ en Sillas) para rechequear.{% endblocktrans %}
-        {% else %}
-        {% trans 'Chequeado en vivo (modo dev, sin worker dockerizado).' %}
-        {% endif %}
-    </p>
+    {# ── Panel 1: CLIs logueados (detección por existencia, sin leer contenido) ── #}
+    <div class="cx-panel" data-panel="clis">
+        <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+            {% blocktrans %}El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el
+            archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta
+            solo-lectura en contenedores descartables.{% endblocktrans %}
+            {% trans 'Logueá el CLI en el host y encendé su silla en' %}
+            <a href="{% url 'enjambre:gestionar_sillas' %}">{% trans 'Sillas' %}</a>.
+        </p>
+
+        <div class="enj-grid" style="grid-template-columns:1fr;">
+            {% for f in filas %}
+            <div class="enj-card">
+                <div class="cx-fila">
+                    <strong>{{ f.nombre }}</strong>
+                    <span class="cx-estado">
+                        <span class="cx-dot {% if f.ok %}on{% else %}off{% endif %}"></span>
+                        {% if f.ok %}{% trans 'Detectado' %}{% else %}{% trans 'No detectado' %}{% endif %}
+                    </span>
+                </div>
+                <div class="cx-ruta">{{ f.ruta }}</div>
+                {% if not f.ok %}
+                <div class="enj-muted" style="font-size:.8rem;">
+                    {% trans 'Para conectarlo, en tu terminal:' %} <span class="cx-login">{{ f.login }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <p class="enj-muted" style="font-size:.75rem;margin-top:1rem;">
+            {% if chequeado_at %}
+            {% blocktrans %}Chequeado por el worker al arrancar ({{ chequeado_at }}). Si te acabás de loguear,
+            reiniciá el worker (♻️ en Sillas) para rechequear.{% endblocktrans %}
+            {% else %}
+            {% trans 'Chequeado en vivo (modo dev, sin worker dockerizado).' %}
+            {% endif %}
+        </p>
+    </div>
+
+    {# ── Panel 2: API keys cifradas (bóveda por passphrase) — ruta portable ── #}
+    <div class="cx-panel" data-panel="keys" hidden data-vault>
+        <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+            {% blocktrans %}Las sillas por <strong>API key</strong> (Anthropic / OpenAI-compatible / OpenRouter)
+            no necesitan ningún CLI: hablan directo con el proveedor. Sus keys se guardan
+            <strong>cifradas con una passphrase</strong> en <code>data/secrets.enc</code> — si se pierde el
+            pendrive sin la passphrase, no hay tokens en claro. Para que las sillas las usen en una mesa,
+            <strong>desbloqueá</strong> la bóveda.{% endblocktrans %}
+        </p>
+
+        <div class="cx-vault {% if vault_desbloqueada %}abierta{% endif %}" data-vaultbar>
+            <span class="cx-lock"><i class="fas {% if vault_desbloqueada %}fa-lock-open{% else %}fa-lock{% endif %}" data-lockicon></i></span>
+            <div class="cx-pass">
+                <label class="cx-note" for="cx-pass-input">{% trans 'Passphrase de la bóveda' %}</label>
+                <input id="cx-pass-input" type="password" data-pass autocomplete="off"
+                       placeholder="{% trans '••••••••' %}">
+            </div>
+            <button class="enj-btn" type="button" data-act="unlock" {% if vault_desbloqueada %}hidden{% endif %}>
+                <i class="fas fa-lock-open"></i> {% trans 'Desbloquear' %}</button>
+            <button class="enj-ghost" type="button" data-act="lock" {% if not vault_desbloqueada %}hidden{% endif %}>
+                <i class="fas fa-lock"></i> {% trans 'Bloquear' %}</button>
+        </div>
+        <div class="cx-msg" data-vaultmsg role="status"></div>
+
+        <div class="enj-grid" style="grid-template-columns:1fr;">
+            {% for k in keys %}
+            <div class="enj-card" data-key="{{ k.id }}">
+                <div class="cx-fila">
+                    <strong>{{ k.label }}</strong>
+                    <span class="cx-estado">
+                        <span class="cx-dot {% if k.ok %}on{% else %}off{% endif %}" data-keydot></span>
+                        <span data-keystate>{% if k.ok %}{% trans 'Configurada' %}{% else %}{% trans 'Sin key' %}{% endif %}</span>
+                    </span>
+                </div>
+                <div class="cx-key-token">
+                    <input type="password" data-token autocomplete="off"
+                           placeholder="{% trans 'Pegá la API key…' %}">
+                    <button class="enj-btn" type="button" data-act="set"><i class="fas fa-save"></i> {% trans 'Guardar' %}</button>
+                    <button class="enj-ghost" type="button" data-act="remove" {% if not k.ok %}hidden{% endif %}>
+                        <i class="fas fa-trash"></i> {% trans 'Quitar' %}</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <p class="cx-note" style="margin-top:1rem;">
+            {% blocktrans %}La <strong>primera</strong> key que guardes fija la passphrase de la bóveda; las
+            siguientes usan la misma. La passphrase nunca se guarda ni se loguea.{% endblocktrans %}
+        </p>
+    </div>
 </div>
+
+<script>
+// ── Pestañas (segmented control) ──────────────────────────────────────────────
+(function () {
+    var tabs = document.querySelectorAll('.cx-tab');
+    var panels = document.querySelectorAll('.cx-panel');
+    tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+            tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+            panels.forEach(function (p) { p.hidden = (p.dataset.panel !== tab.dataset.tab); });
+        });
+    });
+})();
+
+// ── Bóveda de API keys ────────────────────────────────────────────────────────
+(function () {
+    var vault = document.querySelector('[data-vault]');
+    if (!vault) return;
+    var token = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var passInput = vault.querySelector('[data-pass]');
+    var bar = vault.querySelector('[data-vaultbar]');
+    var lockIcon = vault.querySelector('[data-lockicon]');
+    var msg = vault.querySelector('[data-vaultmsg]');
+    var btnUnlock = vault.querySelector('[data-act="unlock"]');
+    var btnLock = vault.querySelector('[data-act="lock"]');
+
+    function say(text, kind) {
+        msg.textContent = text || '';
+        msg.className = 'cx-msg' + (kind ? ' ' + kind : '');
+    }
+    function post(fields) {
+        var fd = new FormData();
+        Object.keys(fields).forEach(function (k) { fd.append(k, fields[k]); });
+        return fetch("{% url 'enjambre:vault_keys' %}", {
+            method: 'POST', body: fd,
+            headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (r) { return r.json(); });
+    }
+    function setUnlocked(on) {
+        bar.classList.toggle('abierta', on);
+        lockIcon.className = 'fas ' + (on ? 'fa-lock-open' : 'fa-lock');
+        btnUnlock.hidden = on;
+        btnLock.hidden = !on;
+    }
+    function markConfigured(list) {
+        vault.querySelectorAll('[data-key]').forEach(function (card) {
+            var ok = list.indexOf(card.dataset.key) !== -1;
+            card.querySelector('[data-keydot]').className = 'cx-dot ' + (ok ? 'on' : 'off');
+            card.querySelector('[data-keystate]').textContent = ok ? '{% trans "Configurada" %}' : '{% trans "Sin key" %}';
+            var rm = card.querySelector('[data-act="remove"]');
+            if (rm) rm.hidden = !ok;
+        });
+    }
+
+    btnUnlock.addEventListener('click', function () {
+        var pass = passInput.value;
+        if (!pass) { say('{% trans "Escribí la passphrase." %}', 'err'); return; }
+        post({ accion: 'unlock', passphrase: pass }).then(function (d) {
+            setUnlocked(d.desbloqueada);
+            say(d.ok ? '{% trans "Bóveda desbloqueada — las sillas API ya pueden usar sus keys." %}' : (d.error || 'Error'),
+                d.ok ? 'ok' : 'err');
+        }).catch(function () { say('Error de red', 'err'); });
+    });
+    btnLock.addEventListener('click', function () {
+        post({ accion: 'lock' }).then(function (d) {
+            setUnlocked(false);
+            say('{% trans "Bóveda bloqueada." %}', 'ok');
+        }).catch(function () { say('Error de red', 'err'); });
+    });
+
+    vault.querySelectorAll('[data-key]').forEach(function (card) {
+        var provider = card.dataset.key;
+        var tokenInput = card.querySelector('[data-token]');
+        card.querySelector('[data-act="set"]').addEventListener('click', function () {
+            var pass = passInput.value, tok = tokenInput.value;
+            if (!pass) { say('{% trans "Escribí la passphrase (arriba) para cifrar la key." %}', 'err'); return; }
+            if (!tok.trim()) { say('{% trans "Pegá la API key primero." %}', 'err'); return; }
+            post({ accion: 'set', provider: provider, token: tok, passphrase: pass }).then(function (d) {
+                if (d.ok) { tokenInput.value = ''; markConfigured(d.configurados); setUnlocked(d.desbloqueada);
+                            say('{% trans "Key guardada y cifrada." %}', 'ok'); }
+                else { say(d.error || 'Error', 'err'); }
+            }).catch(function () { say('Error de red', 'err'); });
+        });
+        var rm = card.querySelector('[data-act="remove"]');
+        if (rm) rm.addEventListener('click', function () {
+            var pass = passInput.value;
+            if (!pass) { say('{% trans "Escribí la passphrase para quitar la key." %}', 'err'); return; }
+            post({ accion: 'remove', provider: provider, passphrase: pass }).then(function (d) {
+                if (d.ok) { markConfigured(d.configurados); say('{% trans "Key quitada." %}', 'ok'); }
+                else { say(d.error || 'Error', 'err'); }
+            }).catch(function () { say('Error de red', 'err'); });
+        });
+    });
+})();
+</script>
 {% endblock %}

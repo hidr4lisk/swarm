@@ -12,6 +12,8 @@ mensaje del humano / la Tarea pendiente) y se streamea la mesa por SSE.
 import json
 import logging
 import os
+import re
+import time
 from pathlib import Path
 
 from django.conf import settings
@@ -22,6 +24,7 @@ from django.http import (
     StreamingHttpResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.text import slugify
 
 from .clientes import CLIENTES, build_comando, cliente_de, modelo_de
@@ -87,17 +90,90 @@ PALETA_SC1 = [
     '#ffe23a',  # 8 Amarillo
 ]
 COLOR_HUMANO = PALETA_SC1[0]
+# Paleta de 16 swatches para el selector de color por silla/voz en el panel (color_ui).
+PALETA_16 = [
+    '#4a6cff', '#7b5cff', '#b14ae0', '#ff5db1', '#f4433a', '#ff7043', '#ff8c1a', '#ffc61a',
+    '#ffe23a', '#a0e020', '#18b8c4', '#00d977', '#b97a56', '#9aa0a6', '#6b7280', '#e8e8e8',
+]
+COLOR_DEFAULT = PALETA_SC1[0]
+
+
+def _color_limpio(val):
+    """Valida un color del form: hex #rrggbb. Si no, '' (→ fallback)."""
+    val = (val or '').strip()
+    return val if re.fullmatch(r'#[0-9a-fA-F]{6}', val) else ''
+
+
+def _avatar_limpio(val):
+    """Valida un avatar del form: data-URI de imagen y no gigante (el front recorta a 128px →
+    ~10-30 KB; el tope es red de seguridad para no inflar la DB). Si no, ''."""
+    val = (val or '').strip()
+    if val and val.startswith('data:image/') and len(val) <= 200_000:
+        return val
+    return ''
 
 
 def _colores_por_silla():
-    """Devuelve (sillas_con_color, mapa_id→color). El color sale del orden de la silla
-    (id), desplazado porque el asiento 1 es el humano. Estable: no depende de activo."""
+    """Devuelve (sillas_con_color, mapa_id→color). El color lo fija el humano por silla
+    (`color_ui`); si está vacío, cae al color posicional estilo StarCraft (por orden de id,
+    desplazado porque el asiento 1 es el humano). Estable: no depende de activo."""
     todas = list(Participante.objects.order_by('id'))
     mapa = {}
     for i, p in enumerate(todas):
-        p.color = PALETA_SC1[(i + 1) % len(PALETA_SC1)]
+        p.color = p.color_ui or PALETA_SC1[(i + 1) % len(PALETA_SC1)]
         mapa[p.id] = p.color
     return todas, mapa
+
+
+def _colores_globales():
+    """Colores (hex) de las voces que NO son sillas: Enjambre (sistema) y humano. Del singleton
+    AvataresEnjambre; vacío = fallback. Espejo de los avatares globales."""
+    from .models import AvataresEnjambre
+    esp = AvataresEnjambre.get()
+    return (esp.color_enjambre or COLOR_DEFAULT, esp.color_humano or COLOR_HUMANO)
+
+
+def _color_de(m, color_map, c_enjambre, c_humano):
+    """Color de UN mensaje, en paralelo a `_avatar_de`: silla → su color; sistema → Enjambre;
+    resto → humano."""
+    if m.participante_id:
+        return color_map.get(m.participante_id, c_humano)
+    if m.es_sistema:
+        return c_enjambre
+    return c_humano
+
+
+def _avatares():
+    """Retratos (data-URI) para los mensajes: mapa id_silla→avatar + los dos globales
+    (Enjambre para los mensajes de sistema, humano para los turnos de la gente)."""
+    from .models import AvataresEnjambre
+    mapa = {p.id: p.avatar for p in Participante.objects.exclude(avatar='').only('id', 'avatar')}
+    esp = AvataresEnjambre.get()
+    return mapa, esp.enjambre, esp.humano
+
+
+def _avatar_de(m, avatar_map, av_enjambre, av_humano):
+    """Avatar de UN mensaje: silla → su avatar; sistema (es_sistema) → Enjambre; resto → humano.
+    Cadena vacía = sin avatar → la UI cae al cuadrado de color."""
+    if m.participante_id:
+        return avatar_map.get(m.participante_id, '')
+    if m.es_sistema:
+        return av_enjambre
+    return av_humano
+
+
+def _es_humano(m):
+    """¿El mensaje es de una persona? Solo entonces va anclado a la derecha (estilo WhatsApp).
+    Los avisos de sistema (es_sistema, 'Enjambre') NO son del humano aunque no tengan silla."""
+    return not m.participante_id and not m.es_sistema
+
+
+def _modelo_corto(m):
+    """Modelo/motor de la silla para la etiqueta de la UI, recortado. Solo display. '' para
+    humano/sistema."""
+    if not m.participante_id:
+        return ''
+    return (m.participante.motor or '').split('/')[-1].split(':')[0]
 
 
 def _titulo_humano(request):
@@ -106,22 +182,27 @@ def _titulo_humano(request):
 
 
 # ── Serialización ───────────────────────────────────────────────────────────────
-def _mensaje_dict(m, color_map, color_humano):
-    return {
+def _mensaje_dict(m, color_map, colores, avatares=None):
+    d = {
         'id': m.id,
         'emisor': m.emisor,
         'texto': m.texto,
         'es_ruido': m.es_ruido,
+        'es_humano': _es_humano(m),
         'participante': m.participante.key if m.participante_id else None,
-        'color': color_map.get(m.participante_id, color_humano),
+        'color': _color_de(m, color_map, *colores),
+        'modelo': _modelo_corto(m),
         'creado_at': m.creado_at.isoformat(),
     }
+    if avatares is not None:
+        d['avatar'] = _avatar_de(m, *avatares)
+    return d
 
 
-def _fetch_mensajes_since(sesion_id, last_id, color_map, color_humano):
+def _fetch_mensajes_since(sesion_id, last_id, color_map, colores, avatares=None):
     qs = (Mensaje.objects.filter(sesion_id=sesion_id, id__gt=last_id)
           .select_related('participante').order_by('id'))
-    data = [_mensaje_dict(m, color_map, color_humano) for m in qs]
+    data = [_mensaje_dict(m, color_map, colores, avatares) for m in qs]
     if data:
         last_id = data[-1]['id']
     return data, last_id
@@ -318,9 +399,14 @@ def mesa(request, pk):
     if not _puede_ver_sesion(request, sesion):
         return HttpResponseForbidden("Esta mesa no es tuya.")
     todas, color_map = _colores_por_silla()
+    colores = _colores_globales()
+    avatar_map, av_enjambre, av_humano = _avatares()
     mensajes = list(sesion.mensajes.select_related('participante').order_by('id'))
     for m in mensajes:
-        m.color = color_map.get(m.participante_id, COLOR_HUMANO)
+        m.color = _color_de(m, color_map, *colores)
+        m.avatar = _avatar_de(m, avatar_map, av_enjambre, av_humano)
+        m.es_humano = _es_humano(m)
+        m.modelo = _modelo_corto(m)
     # Sillas de la mesa (∩ activas); vacío = todas las activas (espejo del engine).
     sel_ids = set(sesion.participantes.values_list('id', flat=True))
     mesa_sillas = [p for p in todas if p.activo and (not sel_ids or p.id in sel_ids)]
@@ -440,18 +526,19 @@ def stream(request, pk):
     if not _puede_ver_sesion(request, sesion):
         return HttpResponseForbidden("Esta mesa no es tuya.")
     _, color_map = _colores_por_silla()
+    colores = _colores_globales()
+    avatares = _avatares()
     try:
         since_id = int(request.headers.get('Last-Event-ID') or request.GET.get('since', 0))
     except (ValueError, TypeError):
         since_id = 0
 
     def event_stream(last_id):
-        import gevent
         yield ': ok\n\n'  # abre el stream de inmediato
         idle = 0
         while True:
             try:
-                data, last_id = _fetch_mensajes_since(sesion.id, last_id, color_map, COLOR_HUMANO)
+                data, last_id = _fetch_mensajes_since(sesion.id, last_id, color_map, colores, avatares)
             except Exception:
                 connection.close()
                 break
@@ -464,7 +551,10 @@ def stream(request, pk):
                 idle += 1
                 if idle % 15 == 0:  # heartbeat ~cada 30s
                     yield ': ping\n\n'
-            gevent.sleep(2)
+            # time.sleep (no gevent): bajo el runserver threaded que usa Swarm cada SSE vive en su
+            # propio hilo → bloquear ese hilo 2s es correcto y no necesita gevent (dep nativa que
+            # sacamos del bundle portátil). Bajo un worker gevent monkey-patcheado sería cooperativo igual.
+            time.sleep(2)
 
     resp = StreamingHttpResponse(event_stream(since_id), content_type='text/event-stream')
     resp['Cache-Control'] = 'no-cache'
@@ -487,7 +577,6 @@ def log_stream(request, pk):
         since_id = 0
 
     def event_stream(last_id):
-        import gevent
         yield ': ok\n\n'
         idle = 0
         while True:
@@ -510,7 +599,7 @@ def log_stream(request, pk):
                 idle += 1
                 if idle % 15 == 0:
                     yield ': ping\n\n'
-            gevent.sleep(2)
+            time.sleep(2)  # ver nota en stream(): sin gevent, correcto bajo runserver threaded
 
     resp = StreamingHttpResponse(event_stream(since_id), content_type='text/event-stream')
     resp['Cache-Control'] = 'no-cache'
@@ -726,6 +815,13 @@ def _aplicar_form_silla(silla, post):
     silla.persona_consulta = (post.get('persona_b') or '').strip()
     silla.recordatorio = (post.get('recordatorio') or '').strip()
     silla.especialidad = (post.get('especialidad') or '').strip()[:120]
+    silla.rol_tarjeta = (post.get('rol_tarjeta') or '').strip()[:40]
+    # Color/avatar de la silla en la mesa (guardados solo si el form los trae, para no blanquear
+    # el avatar pesado en un save parcial).
+    if 'color_ui' in post:
+        silla.color_ui = _color_limpio(post.get('color_ui'))
+    if 'avatar' in post:
+        silla.avatar = _avatar_limpio(post.get('avatar'))
     # Rango exclusivo: CONTROL (solo control) o CONSULTA (también el rango consulta la usa).
     silla.permitir_consulta = (post.get('rango') == 'consulta')
     silla.activo = bool(post.get('activo'))
@@ -752,8 +848,41 @@ def gestionar_sillas(request):
                          'http': bool(c.get('http')),
                          'model': bool(c.get('model_flag'))}
                      for k, c in CLIENTES.items()}
+    from .models import AvataresEnjambre
+    esp = AvataresEnjambre.get()
+    avatares_voces = [
+        {'key': 'humano', 'label': 'Humano (vos)', 'avatar': esp.humano,
+         'color': esp.color_humano or COLOR_HUMANO},
+        {'key': 'enjambre', 'label': 'Enjambre (sistema)', 'avatar': esp.enjambre,
+         'color': esp.color_enjambre or COLOR_DEFAULT},
+    ]
     return render(request, 'enjambre/sillas.html',
-                  {'sillas': sillas, 'clientes': CLIENTES, 'clientes_meta': clientes_meta})
+                  {'sillas': sillas, 'clientes': CLIENTES, 'clientes_meta': clientes_meta,
+                   'avatares_voces': avatares_voces, 'paleta16': PALETA_16})
+
+
+@requiere_acceso
+def guardar_avatares(request):
+    """Guarda los retratos del Enjambre (mensajes de sistema) y del humano (singleton
+    AvataresEnjambre). Solo control. AJAX."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    if request.method == 'POST':
+        from .models import AvataresEnjambre
+        esp = AvataresEnjambre.get()
+        if 'enjambre' in request.POST:
+            esp.enjambre = _avatar_limpio(request.POST.get('enjambre'))
+        if 'humano' in request.POST:
+            esp.humano = _avatar_limpio(request.POST.get('humano'))
+        if 'color_enjambre' in request.POST:
+            esp.color_enjambre = _color_limpio(request.POST.get('color_enjambre'))
+        if 'color_humano' in request.POST:
+            esp.color_humano = _color_limpio(request.POST.get('color_humano'))
+        esp.save()
+        log_event(request.user, 'ENJAMBRE_AVATARES_SAVE', 'enjambre', {}, request)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'ok': True})
+    return redirect('enjambre:gestionar_sillas')
 
 
 @requiere_acceso
@@ -801,6 +930,7 @@ def clonar_silla(request, key):
             comando=list(src.comando), comando_trabajo=list(src.comando_trabajo),
             endpoint_url=src.endpoint_url, endpoint_model=src.endpoint_model,
             permitir_consulta=src.permitir_consulta, color=src.color,
+            color_ui=src.color_ui, avatar=src.avatar, rol_tarjeta=src.rol_tarjeta,
             persona=src.persona, persona_consulta=src.persona_consulta,
             recordatorio=src.recordatorio, especialidad=src.especialidad,
             rol=src.rol, activo=src.activo, orden=orden,
@@ -870,11 +1000,127 @@ def conexiones(request):
          'ruta': ruta_corta(ruta_creds(k)), 'ok': detectado.get(k, False)}
         for k, c in CLIS.items()
     ]
+    from . import vault
+    prov_labels = {'anthropic': 'Anthropic (Claude)',
+                   'openai': 'OpenAI-compatible (OpenAI / Groq / DeepSeek…)',
+                   'openrouter': 'OpenRouter (incluye :free)'}
+    configurados = vault.configured_providers()
+    keys = [{'id': p, 'label': prov_labels.get(p, p), 'ok': p in configurados}
+            for p in vault.PROVIDERS]
     return render(request, 'enjambre/conexiones.html', {
         'filas': filas,
         'chequeado_at': chequeado_at,
         'puede_controlar': _puede_controlar(request),
+        'keys': keys,
+        'vault_desbloqueada': vault.is_unlocked(),
+        'vault_existe': vault.has_vault(),
     })
+
+
+@requiere_acceso
+def vault_keys(request):
+    """Gestión de la bóveda de API keys (cifrada por passphrase). POST con `accion`:
+    set / remove / unlock / lock. Single-user, solo control. La passphrase NUNCA se loguea ni
+    se devuelve. AJAX (JSON) con fallback a redirect a Conexiones."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    if request.method != 'POST':
+        return redirect('enjambre:conexiones')
+    from . import vault
+    accion = request.POST.get('accion', '')
+    passphrase = request.POST.get('passphrase', '')
+    ok, error = True, ''
+    if accion == 'set':
+        ok, error = vault.set_key(passphrase, request.POST.get('provider', ''),
+                                  request.POST.get('token', ''))
+    elif accion == 'remove':
+        ok, error = vault.remove_key(passphrase, request.POST.get('provider', ''))
+    elif accion == 'unlock':
+        ok = vault.unlock(passphrase)
+        error = '' if ok else 'passphrase incorrecta (o bóveda vacía)'
+    elif accion == 'lock':
+        vault.lock()
+    else:
+        ok, error = False, 'acción desconocida'
+    # Se loguea SOLO la acción y el proveedor (nombre), jamás la passphrase ni el token.
+    log_event(request.user, 'ENJAMBRE_VAULT', 'enjambre',
+              {'accion': accion, 'provider': request.POST.get('provider', '')}, request)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'ok': ok, 'error': error,
+                             'desbloqueada': vault.is_unlocked(),
+                             'configurados': vault.configured_providers()})
+    return redirect('enjambre:conexiones')
+
+
+@requiere_acceso
+def bitacora(request, pk):
+    """Bitácora del toolbelt de una mesa: todas las Acciones (lecturas auto + mutaciones), con
+    aprobar/rechazar para las pendientes. La red de seguridad del paradigma «fuera del cascarón»."""
+    sesion = get_object_or_404(Sesion, pk=pk)
+    from . import toolbelt
+    acciones = list(sesion.acciones.select_related('participante'))
+    pendientes = sum(1 for a in acciones if a.estado == 'pendiente')
+    return render(request, 'enjambre/bitacora.html', {
+        'sesion': sesion,
+        'acciones': acciones,
+        'pendientes': pendientes,
+        'toolbelt_on': toolbelt.habilitado(),
+        'puede_controlar': _puede_controlar(request),
+    })
+
+
+@requiere_acceso
+def accion_resolver(request, accion_id):
+    """Aprueba (ejecuta en el host) o rechaza una Acción pendiente del toolbelt. Solo control.
+    POST accion=aprobar|rechazar. AJAX (JSON) con fallback a redirect a la bitácora."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    from .models import Accion
+    from . import toolbelt
+    acc = get_object_or_404(Accion, pk=accion_id)
+    if request.method == 'POST' and acc.estado == 'pendiente':
+        quien = getattr(request.user, 'username', '') or 'el técnico'
+        if request.POST.get('accion') == 'aprobar':
+            toolbelt.ejecutar_pendiente(acc, quien)
+            log_event(request.user, 'ENJAMBRE_ACCION_APROBAR', 'enjambre', {'accion': acc.pk}, request)
+        elif request.POST.get('accion') == 'rechazar':
+            toolbelt.rechazar_pendiente(acc, quien, request.POST.get('motivo', ''))
+            log_event(request.user, 'ENJAMBRE_ACCION_RECHAZAR', 'enjambre', {'accion': acc.pk}, request)
+        acc.refresh_from_db()
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'ok': True, 'estado': acc.estado, 'salida': acc.salida,
+                             'aprobada_por': acc.aprobada_por})
+    return redirect('enjambre:bitacora', pk=acc.sesion_id)
+
+
+@requiere_acceso
+def informe(request, pk):
+    """Exporta la bitácora de la mesa como informe de soporte (.md descargable). Fiel: refleja
+    exactamente lo que quedó registrado (comando, motivo, estado, salida, quién, cuándo)."""
+    sesion = get_object_or_404(Sesion, pk=pk)
+    acciones = list(sesion.acciones.select_related('participante'))
+    lineas = [f"# Informe de soporte — {sesion.nombre} (mesa #{sesion.pk})",
+              f"_Generado: {timezone.now():%Y-%m-%d %H:%M:%S}_  ·  {len(acciones)} acción(es)", ""]
+    ESTADO_TXT = {'ejecutada': '✅ ejecutada', 'pendiente': '⏳ pendiente',
+                  'rechazada': '🚫 rechazada', 'error': '⚠️ error'}
+    for a in acciones:
+        tipo = '🔧 MUTACIÓN' if a.es_mutacion else '🔍 lectura'
+        lineas.append(f"## {a.herramienta} · {tipo} · {ESTADO_TXT.get(a.estado, a.estado)}")
+        lineas.append(f"- Silla: {a.emisor or '—'}  ·  {a.creado_at:%Y-%m-%d %H:%M:%S}")
+        if a.aprobada_por:
+            lineas.append(f"- Resuelta por: {a.aprobada_por}"
+                          + (f" ({a.resuelto_at:%H:%M:%S})" if a.resuelto_at else ''))
+        lineas.append(f"\n```\n$ {a.comando}\n```")
+        if a.motivo:
+            lineas.append(f"**Motivo:** {a.motivo}")
+        if a.salida:
+            lineas.append(f"\nSalida:\n```\n{a.salida[:4000]}\n```")
+        lineas.append("")
+    contenido = '\n'.join(lineas)
+    resp = HttpResponse(contenido, content_type='text/markdown; charset=utf-8')
+    resp['Content-Disposition'] = f'attachment; filename="informe-mesa-{sesion.pk}.md"'
+    log_event(request.user, 'ENJAMBRE_INFORME', 'enjambre', {'sesion': sesion.pk}, request)
+    return resp
 
 
 @requiere_acceso

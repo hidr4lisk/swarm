@@ -205,6 +205,8 @@
                     aria-label="{% trans 'Descargar la charla' %}"><i class="fas fa-copy"></i></button>
             <button type="button" class="enj-del enj-ghost" data-modal="ayuda" title="{% trans 'Ayuda / comandos' %}"
                     aria-label="{% trans 'Ayuda' %}"><i class="fas fa-circle-question"></i></button>
+            <a href="{% url 'enjambre:bitacora' sesion.pk %}" class="enj-del enj-ghost" title="{% trans 'Bitácora del toolbelt (acciones sobre el sistema)' %}"
+               aria-label="{% trans 'Bitácora' %}"><i class="fas fa-clipboard-list"></i></a>
             {% if puede_log %}
             <button type="button" class="enj-del enj-ghost" data-modal="carpeta" id="carpeta-btn" title="{% trans 'Carpeta de la mesa (archivos)' %}"
                     aria-label="{% trans 'Carpeta de la mesa' %}"><i class="fas fa-folder-open"></i></button>
@@ -221,9 +223,14 @@
     <section class="enj-chat">
         <div id="mensajes">
             {% for m in mensajes %}
-            <div class="msg" data-id="{{ m.id }}" data-raw="{{ m.texto }}"{% if not m.participante_id %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
-                <div class="msg-head"><span class="enj-pcolor" style="background:{{ m.color }};color:{{ m.color }};"></span><strong style="color:{{ m.color }};">{{ m.emisor }}:</strong></div>
-                <div class="msg-text">{{ m.texto }}</div>
+            <div class="msg" data-id="{{ m.id }}" data-raw="{{ m.texto }}"{% if m.es_humano %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
+                <span class="msg-portrait" style="--pc:{{ m.color }};">
+                    {% if m.avatar %}<img class="msg-avatar" src="{{ m.avatar }}" alt="">{% else %}<span class="msg-avatar msg-avatar--ph" style="background:{{ m.color }};"></span>{% endif %}
+                </span>
+                <div class="msg-body">
+                    <div class="msg-head"><strong style="color:{{ m.color }};">{{ m.emisor }}{% if m.modelo %} <span class="msg-motor">({{ m.modelo }})</span>{% endif %}:</strong></div>
+                    <div class="msg-text">{{ m.texto }}</div>
+                </div>
             </div>
             {% empty %}
             <div id="enj-empty" class="enj-muted">{% trans 'La mesa está en silencio. Hacé la primera pregunta.' %}</div>
@@ -516,11 +523,17 @@
         div.className = 'msg'; div.dataset.id = m.id; div.dataset.raw = m.texto;
         if (m.es_ruido) div.style.opacity = .5;
         const c = m.color || '{{ color_humano }}';
-        if (c === '{{ color_humano }}') div.dataset.humano = '1';
+        if (m.es_humano) div.dataset.humano = '1';
         div.style.borderLeftColor = c;
-        div.innerHTML = '<div class="msg-head"><span class="enj-pcolor" style="background:' + c + ';color:' + c + ';"></span>'
-                      + '<strong style="color:' + c + ';">' + esc(m.emisor) + ':</strong></div>'
-                      + '<div class="msg-text"></div>';
+        const inner = m.avatar
+            ? '<img class="msg-avatar" src="' + esc(m.avatar) + '" alt="">'
+            : '<span class="msg-avatar msg-avatar--ph" style="background:' + c + ';"></span>';
+        const av = '<span class="msg-portrait" style="--pc:' + c + ';">' + inner + '</span>';
+        const motor = m.modelo ? ' <span class="msg-motor">(' + esc(m.modelo) + ')</span>' : '';
+        div.innerHTML = av
+                      + '<div class="msg-body"><div class="msg-head">'
+                      + '<strong style="color:' + c + ';">' + esc(m.emisor) + motor + ':</strong></div>'
+                      + '<div class="msg-text"></div></div>';
         renderTexto(div.querySelector('.msg-text'), m.texto);
         cont.appendChild(div); cont.scrollTop = cont.scrollHeight;
     }

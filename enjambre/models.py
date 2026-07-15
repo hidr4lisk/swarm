@@ -43,6 +43,12 @@ class Participante(models.Model):
         default=False, help_text='Si el rango consulta puede usar esta silla. False = solo control.',
     )
     color = models.CharField(max_length=20, blank=True, help_text='Código ANSI para el REPL.')
+    # Color del chip/borde de la silla en la mesa (hex #rrggbb, seteable a mano). Vacío = negro
+    # por defecto. Distinto del `color` de arriba (ANSI del REPL).
+    color_ui = models.CharField(max_length=9, blank=True, help_text='Color en la mesa (hex #rrggbb). Vacío = negro.')
+    # Avatar 1:1 (retrato estilo StarCraft en los mensajes de la mesa). Se guarda como data-URI
+    # (base64) recortado/redimensionado en el navegador → sin MEDIA/Pillow. Vacío = fallback (punto de color).
+    avatar = models.TextField(blank=True, help_text='Retrato 1:1 como data-URI. Vacío = usa el punto de color.')
     persona = models.TextField(blank=True, help_text='Encuadre de rol/estilo (variante A, rango control). Va ARRIBA del prompt.')
     persona_consulta = models.TextField(blank=True, help_text='Persona variante B para rango consulta. Vacío = usa la A.')
     recordatorio = models.TextField(blank=True, help_text='Se repite ABAJO del prompt (recencia).')
@@ -52,6 +58,14 @@ class Participante(models.Model):
         max_length=120, blank=True,
         help_text='Capacidad corta para que el líder reparta mejor '
                   '(ej: "frontend/CSS", "scripts/automatización", "redacción"). Vacío = sin pista.',
+    )
+    # Rol corto SOLO para la tarjeta del panel de sillas (reconocerlas rápido sin abrirlas).
+    # NO se pasa a las sillas ni al contexto — es puramente UI (a diferencia de `especialidad`,
+    # que sí va en el roster que el líder ve al planificar).
+    rol_tarjeta = models.CharField(
+        max_length=40, blank=True, default='',
+        help_text='Rol corto para la tarjeta del panel (ej: "Arquitecto", "Red Team"). '
+                  'Solo display — NO se pasa a las sillas ni al contexto.',
     )
     rol = models.CharField(max_length=20, choices=Rol.choices, default=Rol.TRABAJADOR)
     activo = models.BooleanField(default=True)
@@ -299,3 +313,66 @@ class WorkerRestart(models.Model):
 
     def __str__(self):
         return f"WorkerRestart @ {self.creado_at:%H:%M:%S} ({self.solicitante})"
+
+
+class Accion(models.Model):
+    """Bitácora del TOOLBELT: cada vez que una silla api:* toca la máquina real (fuera de la
+    cápsula de la mesa), queda registrado acá. Es la red de seguridad del nuevo paradigma «salir
+    del cascarón»: no hay sandbox, así que TODO lo que una silla hace sobre el sistema se audita.
+
+    Dos clases:
+      · LECTURA (inspect/read_file/list_dir/system_report): read-only → se ejecuta SOLA y se
+        registra `ejecutada` con su salida. `es_mutacion=False`.
+      · MUTACIÓN (apply_fix): cambia el sistema → NUNCA se ejecuta sola. Nace `pendiente`; el
+        técnico la aprueba (→ se ejecuta, `ejecutada`/`error`) o la rechaza (`rechazada`).
+    """
+    class Estado(models.TextChoices):
+        PENDIENTE = 'pendiente', 'Pendiente de aprobación'
+        EJECUTADA = 'ejecutada', 'Ejecutada'
+        RECHAZADA = 'rechazada', 'Rechazada'
+        ERROR = 'error', 'Error'
+
+    sesion = models.ForeignKey(Sesion, on_delete=models.CASCADE, related_name='acciones')
+    participante = models.ForeignKey(
+        Participante, on_delete=models.SET_NULL, null=True, blank=True, related_name='acciones',
+    )
+    emisor = models.CharField(max_length=100, blank=True, help_text='Nombre de la silla (snapshot).')
+    herramienta = models.CharField(max_length=30, help_text='inspect|read_file|list_dir|system_report|apply_fix')
+    # True = cambia el sistema (apply_fix) → siempre pasa por aprobación. False = read-only (auto).
+    es_mutacion = models.BooleanField(default=False)
+    comando = models.TextField(help_text='Comando/ruta que la silla quiso correr.')
+    motivo = models.TextField(blank=True, help_text='Por qué (lo explica la silla en apply_fix).')
+    estado = models.CharField(max_length=12, choices=Estado.choices, default=Estado.EJECUTADA)
+    salida = models.TextField(blank=True, help_text='Salida (stdout/stderr) o razón del rechazo.')
+    aprobada_por = models.CharField(max_length=150, blank=True)
+    creado_at = models.DateTimeField(auto_now_add=True)
+    resuelto_at = models.DateTimeField(null=True, blank=True, help_text='Cuándo se aprobó/rechazó/ejecutó.')
+
+    class Meta:
+        ordering = ['-creado_at', '-id']
+
+    def __str__(self):
+        return f"Acción #{self.pk}: {self.herramienta} [{self.estado}]"
+
+
+class AvataresEnjambre(models.Model):
+    """Singleton (pk=1) con los retratos de los participantes que NO son sillas:
+    el **humano** (los turnos de la gente) y el **Enjambre** (mensajes de sistema —
+    `es_sistema`: estado, /deshacer, avisos). Se conserva también un slot **ultron**
+    por compatibilidad/futuro (una voz orquestadora), hoy sin uso en Swarm.
+    Mismo formato que Participante.avatar: data-URI 1:1 recortado en el navegador. Vacío = fallback."""
+    ultron = models.TextField(blank=True, help_text='Retrato 1:1 de la voz orquestadora (reservado), data-URI.')
+    enjambre = models.TextField(blank=True, help_text='Retrato 1:1 del Enjambre (mensajes de sistema), data-URI.')
+    humano = models.TextField(blank=True, help_text='Retrato 1:1 del humano, data-URI.')
+    # Color del chip/borde de cada voz en la mesa (hex #rrggbb, seteable a mano). Vacío = negro.
+    color_ultron = models.CharField(max_length=9, blank=True, help_text='Color de la voz orquestadora (hex). Vacío = negro.')
+    color_enjambre = models.CharField(max_length=9, blank=True, help_text='Color del Enjambre (hex). Vacío = negro.')
+    color_humano = models.CharField(max_length=9, blank=True, help_text='Color del humano (hex). Vacío = negro.')
+
+    def __str__(self):
+        return "Avatares del Enjambre (humano + sistema)"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

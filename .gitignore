@@ -8,6 +8,9 @@ venv/
 db.sqlite3
 staticfiles/
 
+# Bundle portátil (lo arma scripts/build_bundle.sh; no va al repo)
+dist/
+
 # Entorno local — acá pueden vivir rutas personales; jamás al repo
 .env
 PLAN.md
@@ -16,6 +19,12 @@ PLAN.md
 *.credentials.json
 *credentials*
 !seed-credentials.sh
+
+# Bóveda de API keys (ruta portable): cifrada, pero JAMÁS al repo (menos aún público)
+data/secrets.enc
+data/.secrets.runtime.json
+secrets.enc
+.secrets.runtime.json
 
 # Editor / SO
 .idea/

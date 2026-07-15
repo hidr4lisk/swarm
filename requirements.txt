@@ -1,4 +1,8 @@
 Django==5.1.6
 dj-database-url==2.3.0
 psycopg2-binary==2.9.11
-gevent==24.2.1
+# Vault de API keys: Fernet cifra data/secrets.enc con clave scrypt de la passphrase.
+# Wheel nativa por SO → se bundlea en site-packages/{win,linux} para el pendrive.
+cryptography==49.0.0
+# (gevent removido 2026-07: el SSE usa time.sleep bajo el runserver threaded; no había otro uso,
+#  y era una wheel nativa que engordaba el bundle portátil.)

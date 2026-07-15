@@ -14,6 +14,23 @@
 .enj-saved-btn:disabled { opacity:.55; cursor:default; }
 .enj-silla-actions { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
 .enj-silla-actions form { margin:0; display:inline; }
+/* Identidad visual de la silla (avatar + color + rol de tarjeta) */
+.enj-idrow { display:flex; gap:.6rem; align-items:flex-start; }
+.enj-av-box { flex-shrink:0; }
+.enj-av-pic { width:56px; height:56px; border-radius:10px; object-fit:cover; display:block;
+    box-shadow:0 0 0 1px rgba(0,0,0,.28); }
+.enj-av-ph { box-shadow:0 0 0 1px rgba(0,0,0,.28), 0 0 7px currentColor; }
+.enj-av-col { display:flex; flex-direction:column; gap:.25rem; align-items:center; margin-top:.3rem; }
+.enj-av-btns { display:flex; gap:.25rem; }
+.enj-av-mini { font-size:.66rem; padding:.15rem .4rem; }
+.enj-colorrow { display:flex; gap:.35rem; align-items:center; }
+.enj-colorrow input[type=color] { width:40px; height:28px; padding:0; border:1px solid var(--enj-border);
+    border-radius:6px; background:none; cursor:pointer; }
+/* Avatares globales (Enjambre/humano) */
+.enj-avatares { border:1px solid var(--enj-border); border-radius:12px; margin:0 0 1rem; padding:.4rem .8rem; }
+.enj-avatares summary { cursor:pointer; font-weight:600; font-size:.85rem; }
+.enj-avatares-grid { display:flex; gap:1.2rem; flex-wrap:wrap; padding:.7rem 0 .3rem; }
+.enj-avatar-voz { display:flex; gap:.6rem; align-items:flex-start; }
 @media (max-width:600px){ .enj-sillas-grid { grid-template-columns:1fr; } }
 </style>
 {% endblock %}
@@ -43,6 +60,35 @@
         Elegí <strong>cliente</strong> + <strong>modelo</strong>; cloná para repetir un cliente con otro modelo/prompt.{% endblocktrans %}
     </p>
 
+    <details class="enj-avatares">
+        <summary>{% trans '🎭 Avatares del humano y del sistema' %}</summary>
+        <div class="enj-avatares-grid" data-avatares>
+            {% csrf_token %}
+            {% for voz in avatares_voces %}
+            <div class="enj-avatar-voz" data-voz="{{ voz.key }}">
+                <div class="enj-av-box" data-av-box data-color="{{ voz.color }}">
+                    {% if voz.avatar %}<img class="enj-av-pic" src="{{ voz.avatar }}" alt="">
+                    {% else %}<span class="enj-av-pic enj-av-ph" style="background:{{ voz.color }};"></span>{% endif %}
+                </div>
+                <input type="hidden" data-av-input value="{{ voz.avatar }}">
+                <input type="file" accept="image/*" data-av-file hidden>
+                <div class="enj-av-col" style="align-items:flex-start;">
+                    <strong style="font-size:.8rem;">{{ voz.label }}</strong>
+                    <span class="enj-colorrow">
+                        <input type="color" data-colorpick value="{{ voz.color }}" aria-label="{% trans 'Color' %}">
+                        <input type="hidden" data-colorval value="{{ voz.color }}">
+                    </span>
+                    <div class="enj-av-btns">
+                        <button type="button" class="enj-ghost enj-av-mini" data-av-pick>{% trans 'Retrato' %}</button>
+                        <button type="button" class="enj-ghost enj-av-mini" data-av-clear>{% trans 'Quitar' %}</button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="enj-muted" style="font-size:.7rem;margin:.2rem 0 .3rem;">{% trans 'Se guardan solos al cambiar. Vacío = cuadrado de color.' %}</p>
+    </details>
+
     <form method="post" action="{% url 'enjambre:crear_silla' %}" class="enj-row" style="margin:0 0 1rem;gap:.5rem;">
         {% csrf_token %}
         <input type="text" name="nombre" placeholder="{% trans 'Nombre de la silla nueva' %}" maxlength="100">
@@ -60,6 +106,32 @@
                 {% csrf_token %}
                 <input type="text" name="nombre" value="{{ s.nombre }}" maxlength="100"
                        class="enj-card-nombre" placeholder="{% trans 'Nombre' %}" aria-label="{% trans 'Nombre' %}">
+
+                <div class="enj-idrow">
+                    <div class="enj-av-box" data-av-box data-color="{{ s.color_ui|default:'#4a6cff' }}">
+                        {% if s.avatar %}<img class="enj-av-pic" src="{{ s.avatar }}" alt="">
+                        {% else %}<span class="enj-av-pic enj-av-ph" style="background:{{ s.color_ui|default:'#4a6cff' }};"></span>{% endif %}
+                    </div>
+                    <input type="hidden" name="avatar" value="{{ s.avatar }}" data-av-input>
+                    <input type="file" accept="image/*" data-av-file hidden>
+                    <div style="flex:1;min-width:0;">
+                        <label class="enj-fieldlabel">{% trans 'Rol (tarjeta — solo display)' %}</label>
+                        <input type="text" name="rol_tarjeta" value="{{ s.rol_tarjeta }}" maxlength="40"
+                               placeholder="{% trans 'ej: Arquitecto · Red Team' %}">
+                        <div class="enj-row" style="gap:.5rem;align-items:center;margin-top:.4rem;flex-wrap:wrap;">
+                            <span class="enj-colorrow">
+                                <input type="color" data-colorpick value="{{ s.color_ui|default:'#4a6cff' }}"
+                                       aria-label="{% trans 'Color en la mesa' %}"
+                                       title="{% trans 'Color del borde/cuadrado en la mesa' %}">
+                                <input type="hidden" name="color_ui" value="{{ s.color_ui }}" data-colorval>
+                            </span>
+                            <button type="button" class="enj-ghost enj-av-mini" data-av-pick>{% trans 'Retrato' %}</button>
+                            <button type="button" class="enj-ghost enj-av-mini" data-av-clear>{% trans 'Quitar' %}</button>
+                            <button type="button" class="enj-ghost enj-av-mini" data-color-auto
+                                    title="{% trans 'Color automático por orden' %}">{% trans 'Color auto' %}</button>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="enj-row" style="gap:.4rem;align-items:flex-end;">
                     <div style="flex:1;min-width:0;">
@@ -136,6 +208,73 @@
 
 {% block extra_js %}
 <script>
+// ── Avatar: recorte cuadrado 128px en canvas → JPEG data-URI < ~40KB (sin backend de imágenes) ──
+function enjCropAvatar(file, cb) {
+    if (!file || !/^image\//.test(file.type)) return;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        var img = new Image();
+        img.onload = function () {
+            var S = 128, cv = document.createElement('canvas');
+            cv.width = S; cv.height = S;
+            var ctx = cv.getContext('2d');
+            var side = Math.min(img.width, img.height);
+            var sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+            ctx.drawImage(img, sx, sy, side, side, 0, 0, S, S);
+            var q = 0.85, uri = cv.toDataURL('image/jpeg', q);
+            while (uri.length > 40000 && q > 0.3) { q -= 0.1; uri = cv.toDataURL('image/jpeg', q); }
+            cb(uri);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+// Pinta la caja de preview: si hay data-URI → <img>; si no → cuadrado del color.
+function enjPaintBox(box, uri, color) {
+    if (uri) {
+        box.innerHTML = '<img class="enj-av-pic" alt="">';
+        box.firstChild.src = uri;
+    } else {
+        box.innerHTML = '<span class="enj-av-pic enj-av-ph"></span>';
+        box.firstChild.style.background = color || (box.dataset.color || '#4a6cff');
+    }
+}
+// Cablea un bloque avatar/color (card o voz global). onDirty() se llama en cada cambio.
+function enjWireAvatar(scope, onDirty) {
+    var box = scope.querySelector('[data-av-box]');
+    var input = scope.querySelector('[data-av-input]');
+    var file = scope.querySelector('[data-av-file]');
+    var pick = scope.querySelector('[data-av-pick]');
+    var clear = scope.querySelector('[data-av-clear]');
+    var colorpick = scope.querySelector('[data-colorpick]');
+    var colorval = scope.querySelector('[data-colorval]');
+    var autoBtn = scope.querySelector('[data-color-auto]');
+    if (pick && file) pick.addEventListener('click', function () { file.click(); });
+    if (file) file.addEventListener('change', function () {
+        if (!file.files || !file.files[0]) return;
+        enjCropAvatar(file.files[0], function (uri) {
+            if (input) input.value = uri;
+            if (box) enjPaintBox(box, uri, colorval && colorval.value);
+            onDirty();
+        });
+        file.value = '';
+    });
+    if (clear) clear.addEventListener('click', function () {
+        if (input) input.value = '';
+        if (box) enjPaintBox(box, '', colorval && colorval.value);
+        onDirty();
+    });
+    if (colorpick) colorpick.addEventListener('input', function () {
+        if (colorval) colorval.value = colorpick.value;
+        if (box) { box.dataset.color = colorpick.value; if (!input || !input.value) enjPaintBox(box, '', colorpick.value); }
+        onDirty();
+    });
+    if (autoBtn) autoBtn.addEventListener('click', function () {
+        if (colorval) colorval.value = '';   // '' = color automático por orden en la mesa
+        onDirty();
+    });
+}
+
 (function () {
     var META = JSON.parse((document.getElementById('clientes-meta') || {}).textContent || '{}');
 
@@ -190,6 +329,7 @@
         rebuildModelos(card);
         syncCliente(card);
         setSaved(card, true);   // arranca limpia → "Guardado"
+        enjWireAvatar(card, function () { setSaved(card, false); });
         card.addEventListener('input', function () { setSaved(card, false); });
         card.addEventListener('change', function (e) {
             if (e.target.matches('[data-cliente]')) {
@@ -207,6 +347,30 @@
             if (ta) { ta.value = reset.dataset.default || ''; setSaved(card, false); }
         });
     });
+})();
+
+// Avatares globales (humano / sistema): autosave con debounce a guardar_avatares.
+(function () {
+    var wrap = document.querySelector('[data-avatares]');
+    if (!wrap) return;
+    var token = (wrap.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    function saveAll() {
+        var fd = new FormData();
+        wrap.querySelectorAll('.enj-avatar-voz').forEach(function (voz) {
+            var key = voz.dataset.voz;  // 'humano' | 'enjambre'
+            var av = voz.querySelector('[data-av-input]');
+            var cv = voz.querySelector('[data-colorval]');
+            fd.append(key, av ? av.value : '');
+            fd.append('color_' + key, cv ? cv.value : '');
+        });
+        fetch("{% url 'enjambre:guardar_avatares' %}", {
+            method: 'POST', body: fd,
+            headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+        });
+    }
+    var t;
+    function onDirty() { clearTimeout(t); t = setTimeout(saveAll, 400); }
+    wrap.querySelectorAll('.enj-avatar-voz').forEach(function (voz) { enjWireAvatar(voz, onDirty); });
 })();
 
 // Reiniciar el worker del host: encola la señal; el worker se sale y systemd lo relanza (~5s).
