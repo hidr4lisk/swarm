@@ -74,8 +74,11 @@ echo "▶ Deps Windows (cross-build, solo wheels)…"
     --platform win_amd64 --python-version "$WIN_PYVER" \
     --implementation cp --abi "$WIN_PYTAG" --only-binary=:all: \
     --dest "$OUT/runtime/win/_wheels"
+# Un wheel es un zip: lo DESEMPAQUETAMOS en el site-packages destino. NO usar `pip install`:
+# rechaza wheels win_amd64 corriendo en Linux ("not a supported wheel on this platform"),
+# incluso con --no-deps. Descomprimir preserva los .pyd/.dll compilados (cffi/cryptography).
 for whl in "$OUT/runtime/win/_wheels"/*.whl; do
-  "$LINUX_PY" -m pip install "$whl" --target "$OUT/runtime/win/site-packages" --no-deps --upgrade >/dev/null
+  "$LINUX_PY" -m zipfile -e "$whl" "$OUT/runtime/win/site-packages"
 done
 rm -rf "$OUT/runtime/win/_wheels"
 
