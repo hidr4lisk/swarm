@@ -1,175 +1,186 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hidr4lisk_Swarm — a multi-agent worktable in your browser</title>
-<meta name="description" content="Swarm: several AIs at one table — chat, debate and act on the real machine. Runs on your CLIs or API keys, installed or from a pendrive. Linux & Windows, open source.">
-<meta property="og:title" content="Hidr4lisk_Swarm">
-<meta property="og:description" content="A multi-agent worktable in your browser. Installed or on a pendrive. Your keys, your machine.">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hidr4lisk_Swarm — mesa multi-agente en tu navegador</title>
+<meta name="description" content="Swarm: varias IAs en una misma mesa — charlan, debaten y actúan. Corre con tus API keys o CLIs, instalada o desde un pendrive. Linux y Windows, open source (MIT).">
+<meta property="og:title" content="Hidr4lisk_Swarm — multi-agent worktable in your browser">
+<meta property="og:description" content="Several AIs at one table — chat, debate and act. Runs on your API keys or CLIs, installed or from a pendrive. Linux & Windows, open source (MIT).">
 <meta property="og:image" content="https://hidr4lisk.github.io/swarm/docs/img/social-preview.png">
 <meta property="og:type" content="website">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --surface-2: #1c2230;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-dim: #b0b8c1;
-    --accent: #e3b341;          /* ámbar de enjambre — la firma de Swarm (solo el contenido) */
-    --accent-rgb: 227, 179, 65;
-    --accent-2: #58a6ff;        /* azul de apoyo para enlaces */
-    --green: #3fb950;
-    --red: #f85149;
-    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
-  }
-  html { font-size: 17px; scroll-behavior: smooth; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text);
-    line-height: 1.7; -webkit-font-smoothing: antialiased; min-height: 100vh;
-    padding-bottom: 44px; }
-  a { color: var(--accent-2); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+:root{
+  --bg:#0a0e0c; --surface:#0d1310; --surface2:#131a16;
+  --border:#1d2a22; --border-strong:#223229;
+  --accent:#22e584; --accent-glow:rgba(34,229,132,.25);
+  --text:#eef2ef; --text-soft:#c7cfc9; --text-dim:#7d8781; --text-disabled:#5c6862;
+  --amber:#ffbd2e;
+  --font:'Hack','JetBrains Mono','Cascadia Code',ui-monospace,Menlo,Consolas,'DejaVu Sans Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.6;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(1100px 520px at 50% -8%,rgba(34,229,132,.06),transparent 60%);pointer-events:none;z-index:0;}
+a{color:var(--accent);}
+img{max-width:100%;}
 
-  /* ── Top-bar compartida (mismas medidas que pentool/warp/shield/tech) ── */
-  .top-bar { --nav-accent: #98B4A6; --nav-pad: 1rem;
-    position: sticky; top: 0; z-index: 200; height: 36px; background: rgba(13,17,23,0.92);
-    border-bottom: 1px solid var(--border); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-  @media (min-width: 640px)  { .top-bar { --nav-pad: 1.5rem; } }
-  @media (min-width: 1024px) { .top-bar { --nav-pad: 3rem; } }
-  @media (min-width: 1280px) { .top-bar { --nav-pad: 4rem; } }
-  .top-bar__inner { max-width: 1320px; margin: 0 auto; height: 100%; padding-inline: var(--nav-pad);
-    display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .top-bar__left, .top-bar__right { display: flex; align-items: center; gap: 12px; }
-  .tool-select { min-width: 150px; appearance: none; -webkit-appearance: none; background-color: transparent;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%2398B4A6'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 8px center; background-size: 8px 5px;
-    border: 1px solid var(--nav-accent); color: var(--nav-accent); font-family: var(--font);
-    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; padding: 3px 28px 3px 8px;
-    cursor: pointer; border-radius: 2px; }
-  .tool-select:focus-visible { outline: 2px solid var(--nav-accent); outline-offset: 2px; }
-  .lang-toggle { display: flex; align-items: center; gap: 8px; }
-  .lang-btn { background: transparent; border: 1px solid var(--border); color: var(--text-dim);
-    font-family: var(--font); font-size: 0.72rem; padding: 2px 8px; cursor: pointer;
-    letter-spacing: 0.1em; min-height: 24px; min-width: 36px; border-radius: 2px;
-    transition: border-color .15s, color .15s; }
-  .lang-btn:hover, .lang-btn.active { border-color: #98B4A6; color: #98B4A6; }
-  .lang-sep { color: var(--border); font-size: 0.72rem; }
+/* ── Top-bar compartida (mismas medidas que warp/shield/tech/pentool/hidralisk-os) ── */
+.top-bar{--nav-accent:#98B4A6;--nav-pad:1rem;
+  position:sticky;top:0;z-index:200;height:36px;background:rgba(13,17,23,.92);
+  border-bottom:1px solid var(--border);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+@media (min-width:640px){.top-bar{--nav-pad:1.5rem;}}
+@media (min-width:1024px){.top-bar{--nav-pad:3rem;}}
+@media (min-width:1280px){.top-bar{--nav-pad:4rem;}}
+.top-bar__inner{max-width:1320px;margin:0 auto;height:100%;padding-inline:var(--nav-pad);
+  display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.top-bar__left,.top-bar__right{display:flex;align-items:center;gap:12px;
+  font-size:.72rem;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;}
+.tool-select{ min-width: 150px;appearance:none;-webkit-appearance:none;background-color:transparent;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%2398B4A6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;background-size:8px 5px;
+  border:1px solid var(--nav-accent);color:var(--nav-accent);font-family:var(--font);
+  font-size:.72rem;font-weight:700;letter-spacing:.08em;padding:3px 28px 3px 8px;
+  cursor:pointer;border-radius:2px;}
+.tool-select:focus-visible{outline:2px solid var(--nav-accent);outline-offset:2px;}
+.lang-toggle{display:flex;align-items:center;gap:8px;}
+.lang-btn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--font);font-size:.72rem;padding:2px 8px;cursor:pointer;
+  letter-spacing:.1em;min-height:24px;min-width:36px;border-radius:2px;
+  transition:border-color .15s,color .15s;}
+.lang-btn:hover{border-color:var(--nav-accent);color:var(--nav-accent);}
+.lang-btn.active{border-color:var(--nav-accent);color:var(--nav-accent);}
+.lang-sep{color:var(--border);font-size:.72rem;}
 
-  /* ── Layout ── */
-  .wrap { max-width: 1080px; margin: 0 auto; padding-inline: clamp(20px, 5vw, 40px); }
-  section { padding: clamp(48px, 8vw, 96px) 0; border-bottom: 1px solid var(--border); }
-  .eyebrow { font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
-    color: var(--accent); font-weight: 700; margin-bottom: 18px; }
-  h2 { font-size: clamp(1.5rem, 4vw, 2.1rem); line-height: 1.2; letter-spacing: -0.01em;
-    font-weight: 700; margin-bottom: 14px; }
-  h2 .amp { color: var(--accent); }
-  .lead { color: var(--text-dim); font-size: 1.02rem; max-width: 62ch; }
+/* ── Layout ── */
+.wrap{max-width:1000px;margin:0 auto;padding:0 24px;position:relative;z-index:1;}
+section{padding:88px 0;border-bottom:1px solid var(--border);}
+.eyebrow{color:var(--accent);font-weight:700;font-size:.95rem;letter-spacing:.12em;margin-bottom:26px;}
+h2{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.15;letter-spacing:-.5px;margin-bottom:22px;}
+.body-txt{color:var(--text-soft);font-size:1.06rem;max-width:46em;}
+.body-txt b{color:var(--text);}
+.punch{color:var(--accent);font-weight:700;font-size:1.06rem;margin-top:26px;max-width:44em;}
 
-  /* ── Hero ── */
-  .hero { padding-top: clamp(56px, 10vw, 110px); border-bottom: none; position: relative; overflow: hidden; }
-  .hero::before { content: ""; position: absolute; inset: 0;
-    background: radial-gradient(60% 55% at 72% 0%, rgba(var(--accent-rgb), 0.12), transparent 70%);
-    pointer-events: none; }
-  .hero .eyebrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .hero .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green);
-    box-shadow: 0 0 8px var(--green); display: inline-block; }
-  .brand { font-size: clamp(1.9rem, 7.6vw, 5rem); line-height: 0.98; font-weight: 700;
-    letter-spacing: -0.02em; margin-bottom: 20px; word-break: break-word; }
-  .brand .pre { color: var(--text-dim); font-weight: 500; }
-  .brand .name { color: var(--accent); }
-  .hero .lead { font-size: clamp(1.05rem, 2.6vw, 1.32rem); max-width: 40ch; margin-bottom: 30px; }
-  .cta { display: flex; gap: 14px; flex-wrap: wrap; }
-  .btn { font-family: var(--font); font-size: 0.86rem; font-weight: 700; letter-spacing: 0.02em;
-    padding: 12px 22px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);
-    display: inline-flex; align-items: center; gap: 9px; transition: transform .12s, border-color .15s, background .15s; }
-  .btn:hover { text-decoration: none; transform: translateY(-2px); }
-  .btn-primary { background: var(--accent); color: #1a1305; border-color: var(--accent); }
-  .btn-primary:hover { background: #f0c65a; }
-  .btn-ghost { background: transparent; color: var(--text); }
-  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+/* ── Hero ── */
+.hero{padding:96px 0 80px;text-align:center;border-bottom:1px solid var(--border);}
+.hero .prompt{font-size:1.05rem;color:var(--text-dim);}
+.hero .prompt .u{color:var(--accent);font-weight:700;}
+.hero .prompt .cur{color:var(--accent);animation:blink 1.1s step-end infinite;}
+@keyframes blink{50%{opacity:0;}}
+.hero h1{font-size:clamp(2.4rem,7vw,4.4rem);letter-spacing:-1px;margin-top:30px;word-break:break-word;}
+.hero h1 .lo{color:var(--text-dim);}
+.hero .tagline{color:var(--text-soft);font-size:clamp(1rem,2.4vw,1.25rem);margin:20px auto 0;max-width:40em;}
+.hero .tagline b{color:var(--text);}
+.hero .badges{color:var(--text-dim);margin-top:22px;font-size:.95rem;}
+.hero .ctas{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-top:40px;}
+.btn{display:inline-block;padding:15px 30px;border-radius:10px;font-weight:700;
+  font-size:1rem;text-decoration:none;letter-spacing:.03em;transition:transform .12s,box-shadow .12s;cursor:pointer;}
+.btn-primary{background:var(--accent);color:#04130b;box-shadow:0 0 34px var(--accent-glow);border:none;font-family:var(--font);}
+.btn-secondary{border:1px solid var(--border-strong);color:var(--text-soft);}
+.btn:hover{transform:translateY(-2px);}
+.hero .relnote{margin-top:26px;color:var(--text-disabled);font-size:.86rem;}
 
-  /* ── La mesa (elemento firma) ── */
-  .mesa-motif { margin: clamp(46px, 8vw, 78px) 0 8px; position: relative; }
-  .mesa-caption { text-align: center; color: var(--text-dim); font-size: 0.74rem;
-    letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 26px; }
-  .mesa { position: relative; display: flex; flex-direction: column; align-items: center; }
-  .seats { display: flex; gap: clamp(8px, 3vw, 26px); flex-wrap: wrap; justify-content: center;
-    margin-bottom: -14px; z-index: 2; }
-  .seat { --c: var(--accent-2); width: clamp(48px, 13vw, 66px); text-align: center; }
-  .seat .face { width: 100%; aspect-ratio: 1; border-radius: 12px; border: 2px solid var(--c);
-    background: var(--surface-2); color: var(--c); display: grid; place-items: center;
-    font-weight: 700; font-size: clamp(1rem, 3.6vw, 1.35rem);
-    box-shadow: 0 0 0 4px rgba(0,0,0,0.25), 0 8px 20px rgba(0,0,0,0.35); position: relative; }
-  .seat .role { font-size: 0.6rem; letter-spacing: 0.06em; color: var(--text-dim);
-    margin-top: 8px; text-transform: uppercase; }
-  .seat.leader .face::after { content: "★"; position: absolute; top: -12px; right: -10px;
-    font-size: 0.8rem; color: var(--accent); text-shadow: 0 0 6px rgba(var(--accent-rgb),0.7); }
-  .seat.human { --c: var(--accent); }
-  .table-top { width: min(560px, 92%); height: clamp(60px, 12vw, 92px);
-    border: 1px solid var(--border); border-radius: 50%/40%;
-    background: linear-gradient(180deg, var(--surface-2), var(--surface));
-    display: grid; place-items: center; box-shadow: inset 0 2px 20px rgba(0,0,0,0.5);
-    margin-top: 26px; }
-  .table-top .req { font-size: 0.78rem; color: var(--text-dim); padding: 0 18px; text-align: center; }
-  .table-top .req b { color: var(--accent); font-weight: 700; }
+/* ── Terminal ── */
+.term{background:var(--surface);border:1px solid var(--border-strong);border-radius:14px;
+  overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.55);margin-top:36px;}
+.term .bar{display:flex;align-items:center;gap:9px;background:var(--surface2);
+  padding:12px 18px;border-bottom:1px solid var(--border-strong);}
+.term .bar i{width:13px;height:13px;border-radius:50%;display:block;}
+.term .bar i:nth-child(1){background:#ff5f56;}.term .bar i:nth-child(2){background:#ffbd2e;}.term .bar i:nth-child(3){background:#27c93f;}
+.term .bar span{color:#8b958f;font-size:.82rem;margin-left:8px;}
+.term .scr{padding:22px 26px;font-size:.95rem;line-height:1.9;overflow-x:auto;}
+.term .scr .row{white-space:nowrap;}
+.pr{color:var(--accent);font-weight:700;}
+.dim{color:var(--text-dim);}
+.who{color:var(--accent);font-weight:700;}
+.who.b{color:#58a6ff;}.who.r{color:#ff6b6b;}.who.q{color:#c792ea;}
+.wait{color:var(--amber);animation:pulse 1.6s ease-in-out infinite;}
+@keyframes pulse{50%{opacity:.45;}}
 
-  /* ── Grids de tarjetas ── */
-  .grid { display: grid; gap: 18px; margin-top: 34px; }
-  .grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-  .grid.three { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 26px 24px; transition: border-color .15s, transform .12s; }
-  .card:hover { border-color: rgba(var(--accent-rgb), 0.5); transform: translateY(-3px); }
-  .card .ico { font-size: 1.3rem; margin-bottom: 12px; display: block; }
-  .card h3 { font-size: 1.05rem; margin-bottom: 8px; }
-  .card h3 .tag { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    color: var(--accent); border: 1px solid rgba(var(--accent-rgb),0.4); border-radius: 20px;
-    padding: 2px 9px; margin-left: 8px; vertical-align: middle; white-space: nowrap; }
-  .card p { color: var(--text-dim); font-size: 0.92rem; }
-  .card code, .lead code, li code { background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 4px; padding: 1px 6px; font-size: 0.85em; color: var(--text); }
+/* ── A/B slots ── */
+.slots{display:flex;gap:22px;align-items:stretch;margin-top:36px;flex-wrap:wrap;}
+.slot{flex:1;min-width:250px;border-radius:14px;padding:26px;}
+.slot.a{border:2px solid var(--accent);background:rgba(34,229,132,.06);}
+.slot.b{border:2px dashed #3a4a41;}
+.slot .t{font-weight:700;font-size:1.15rem;}
+.slot.a .t{color:var(--accent);}.slot.b .t{color:#8b958f;}
+.slot p{font-size:.94rem;color:var(--text-dim);margin-top:10px;}
+.slot code{background:var(--surface2);border:1px solid var(--border-strong);border-radius:5px;
+  padding:1px 6px;font-size:.86em;color:var(--text-soft);}
+.slots .arr{display:flex;align-items:center;color:var(--text-disabled);font-size:1.6rem;}
 
-  .feat-list { list-style: none; margin-top: 26px; display: grid; gap: 14px; }
-  .feat-list li { display: flex; gap: 14px; align-items: flex-start; color: var(--text-dim);
-    font-size: 0.96rem; }
-  .feat-list li .mk { color: var(--accent); font-weight: 700; flex: none; }
-  .feat-list li b { color: var(--text); font-weight: 700; }
+/* ── Checklist ── */
+.ck{list-style:none;margin-top:30px;display:flex;flex-direction:column;gap:16px;font-size:1.04rem;}
+.ck li{display:flex;gap:14px;color:var(--text-soft);}
+.ck li::before{content:'✓';color:var(--accent);font-weight:700;flex-shrink:0;}
+.ck li b{color:var(--text);}
 
-  /* ── Screenshots ── */
-  .shots { display: grid; gap: 20px; margin-top: 34px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-  figure { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
-  figure img { width: 100%; display: block; }
-  figure figcaption { padding: 12px 16px; color: var(--text-dim); font-size: 0.82rem;
-    border-top: 1px solid var(--border); }
-  .shot-hero { grid-column: 1 / -1; }
+/* ── Warning ── */
+.warn{margin-top:32px;border:1px solid #6b5b1e;background:rgba(255,189,46,.05);
+  border-radius:12px;padding:20px 24px;font-size:.95rem;color:var(--text-soft);max-width:46em;}
+.warn .t{color:var(--amber);font-weight:700;margin-bottom:8px;}
 
-  /* ── Code blocks (quickstart) ── */
-  pre { background: #0a0d12; border: 1px solid var(--border); border-radius: 8px;
-    padding: 18px 20px; overflow-x: auto; font-size: 0.84rem; line-height: 1.7; margin-top: 6px; }
-  pre code { background: none; border: none; padding: 0; color: var(--text); }
-  pre .c { color: var(--text-dim); }
-  pre .p { color: var(--green); }
+/* ── Screenshot ── */
+.shot{border:1px solid var(--border-strong);border-radius:14px;overflow:hidden;
+  box-shadow:0 18px 60px rgba(0,0,0,.55);margin-top:36px;}
+.shot img{display:block;width:100%;}
+.shot figcaption{padding:12px 18px;color:var(--text-dim);font-size:.85rem;border-top:1px solid var(--border-strong);}
 
-  /* ── Footer fijo compartido ── */
-  .site-footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
-    background: rgba(13,17,23,0.95); border-top: 1px solid var(--border);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-  .site-footer .foot-line { max-width: 1800px; margin: 0 auto; padding: 7px 24px;
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    flex-wrap: wrap; font-size: 0.7rem; color: var(--text-dim); }
-  .site-footer a { color: var(--text-dim); }
-  .site-footer a:hover { color: var(--accent); text-decoration: none; }
-  .site-footer .foot-brand { color: var(--accent); font-weight: 700; }
-  .site-footer .foot-sep { opacity: 0.4; }
+/* ── Donación ── */
+.donate{display:flex;gap:34px;align-items:center;flex-wrap:wrap;margin-top:36px;
+  background:var(--surface);border:1px solid var(--accent);border-radius:16px;
+  padding:30px;box-shadow:0 0 44px rgba(34,229,132,.09);}
+.donate .qbox{background:#fff;border-radius:12px;padding:14px;flex-shrink:0;line-height:0;}
+.donate .qr{width:170px;height:170px;display:block;}
+.donate .qr path{fill:#04130b;}
+.donate .dinfo{flex:1;min-width:220px;}
+.donate .dlabel{color:var(--text-dim);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase;}
+.donate .alias{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 6px;}
+.donate .alias b{color:var(--accent);font-size:1.5rem;font-weight:700;letter-spacing:-.5px;}
+.donate .copy{background:transparent;border:1px solid var(--border-strong);color:var(--text-soft);
+  font-family:var(--font);font-size:.78rem;padding:5px 12px;border-radius:6px;cursor:pointer;
+  transition:border-color .15s,color .15s;}
+.donate .copy:hover{border-color:var(--accent);color:var(--accent);}
+.donate .copy.ok{border-color:var(--accent);color:var(--accent);}
+.donate .dnote{color:var(--text-dim);font-size:.92rem;margin-top:8px;}
 
-  .note { font-size: 0.82rem; color: var(--text-dim); margin-top: 14px; }
-  .note b { color: var(--red); }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn:hover, .card:hover { transform: none; } }
+/* ── Steps (arrancar) ── */
+#arrancar{border-bottom:none;}
+.steps{counter-reset:st;margin-top:40px;display:flex;flex-direction:column;gap:30px;}
+.step{display:flex;gap:20px;}
+.step::before{counter-increment:st;content:counter(st,decimal-leading-zero);
+  color:var(--accent);font-weight:700;font-size:1.15rem;flex-shrink:0;}
+.step .st-t{font-weight:700;margin-bottom:8px;font-size:1.05rem;}
+.step p{color:var(--text-dim);font-size:.93rem;margin-top:8px;}
+.step p code, .body-txt code{background:var(--surface2);border:1px solid var(--border-strong);
+  border-radius:5px;padding:1px 6px;font-size:.86em;color:var(--text-soft);}
+.step .cmd{display:block;background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:8px;padding:12px 16px;margin-top:4px;font-size:.88rem;color:var(--text-soft);
+  overflow-x:auto;white-space:pre;line-height:1.8;}
+.step .cmd .pr{user-select:none;}
+
+/* ── Footer ── */
+footer{border-top:1px solid var(--border);padding:34px 24px 44px;text-align:center;
+  color:var(--text-disabled);font-size:.85rem;position:relative;z-index:1;}
+footer .brand{color:var(--accent);font-weight:700;}
+footer a{color:var(--text-dim);}
+
+@media (max-width:640px){
+  section{padding:64px 0;}
+  .hero{padding:70px 0 56px;}
+  .slots .arr{display:none;}
+  .donate{justify-content:center;text-align:center;}
+  .donate .alias{justify-content:center;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto;}
+  .btn:hover{transform:none;}
+  .hero .prompt .cur,.wait{animation:none;}
+}
 </style>
 </head>
 <body>
+
 <div class="top-bar">
   <div class="top-bar__inner">
     <div class="top-bar__left">
@@ -185,280 +196,256 @@
     </div>
     <div class="top-bar__right">
       <nav class="lang-toggle" aria-label="Language selector">
-        <button class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+        <button class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
         <span class="lang-sep" aria-hidden="true">/</span>
-        <button class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
+        <button class="lang-btn active" data-lang="es" aria-pressed="true">ES</button>
       </nav>
     </div>
   </div>
 </div>
 
-<!-- ═══════════ HERO ═══════════ -->
+<!-- ── Hero ── -->
 <header class="hero">
   <div class="wrap">
-    <div class="eyebrow"><span class="dot"></span><span data-i18n="hero_eyebrow">Open source · Linux &amp; Windows · no account required</span></div>
-    <div class="brand"><span class="pre">Hidr4lisk_</span><span class="name">Swarm</span></div>
-    <p class="lead" data-i18n="hero_lead">A multi-agent worktable in your browser. Several AIs sit at the same table — chat, debate and act — coordinated by a leader, on your own CLIs or API keys.</p>
-    <div class="cta">
-      <a class="btn btn-primary" href="#get" data-i18n="cta_get">▸ Get it</a>
-      <a class="btn btn-ghost" href="#screens" data-i18n="cta_see">See a table</a>
+    <div class="prompt"><span class="u">hidra@swarm</span>:~$ <span class="cur" aria-hidden="true">█</span></div>
+    <h1><span class="lo">Hidr4lisk_</span>Swarm</h1>
+    <p class="tagline" data-i18n-html="tagline">Una <b>mesa multi-agente</b> en tu navegador: varias IAs charlan, debaten y <b>actúan</b> — coordinadas por un líder.</p>
+    <p class="badges" data-i18n="badges">multi-agente · API keys o CLIs · portátil · open source (MIT)</p>
+    <div class="ctas">
+      <a class="btn btn-primary" href="#arrancar" data-i18n="cta_go">▸ ARRANCAR</a>
+      <a class="btn btn-secondary" href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener">GITHUB →</a>
     </div>
-
-    <!-- Firma: la mesa -->
-    <div class="mesa-motif" aria-hidden="true">
-      <div class="mesa-caption" data-i18n="mesa_cap">one table · many minds</div>
-      <div class="mesa">
-        <div class="seats">
-          <div class="seat leader" style="--c:#e3b341"><div class="face">L</div><div class="role" data-i18n="role_leader">leader</div></div>
-          <div class="seat" style="--c:#58a6ff"><div class="face">A</div><div class="role" data-i18n="role_arch">arch</div></div>
-          <div class="seat" style="--c:#3fb950"><div class="face">B</div><div class="role" data-i18n="role_build">build</div></div>
-          <div class="seat" style="--c:#f85149"><div class="face">R</div><div class="role" data-i18n="role_red">red team</div></div>
-          <div class="seat" style="--c:#a371f7"><div class="face">Q</div><div class="role" data-i18n="role_qa">qa</div></div>
-          <div class="seat human"><div class="face">👤</div><div class="role" data-i18n="role_you">you</div></div>
-        </div>
-        <div class="table-top">
-          <div class="req" data-i18n="mesa_req">“review this box and fix the failing service” <b>→</b> they discuss, act, report back</div>
-        </div>
-      </div>
-    </div>
+    <p class="relnote" data-i18n="relnote">corre instalada o desde un pendrive · Linux &amp; Windows · sin cuenta</p>
   </div>
 </header>
 
-<!-- ═══════════ QUÉ ES ═══════════ -->
-<section id="what">
+<!-- ── 01 la mesa ── -->
+<section>
   <div class="wrap">
-    <div class="eyebrow" data-i18n="what_eyebrow">The idea</div>
-    <h2 data-i18n="what_h">One table. <span class="amp">Many minds.</span></h2>
-    <p class="lead" data-i18n="what_lead">Each seat (<i>silla</i>) is an AI persona with its own voice and job. You drop a request on the table; they discuss it flat or under a leader, and the leader closes — with an answer, or by building real files. It's your browser, your machine, your accounts. The whole UI is bilingual (EN/ES), though its soul speaks Spanish, <i>rioplatense</i> to be precise.</p>
-    <ul class="feat-list">
-      <li><span class="mk">▸</span><span><b data-i18n="what_1b">Many small tables.</b> <span data-i18n="what_1t">Spin up a mesa per task, with the seats you want, in flat or leader topology.</span></span></li>
-      <li><span class="mk">▸</span><span><b data-i18n="what_2b">Live, in your browser.</b> <span data-i18n="what_2t">Turns stream in as they happen; the leader's flow shows on the side. Nothing to watch in a terminal.</span></span></li>
-      <li><span class="mk">▸</span><span><b data-i18n="what_3b">Personas with a voice.</b> <span data-i18n="what_3t">RTS-style portraits, colours and roles — architecture, building, red team, QA, research.</span></span></li>
+    <p class="eyebrow" data-i18n="s1_eyebrow">// 01 · UNA MESA, MUCHAS MENTES</p>
+    <h2 data-i18n="s1_h">Varias IAs, una misma mesa.</h2>
+    <p class="body-txt" data-i18n-html="s1_body">Cada <b>silla</b> es una IA con su voz y su tarea. Dejás un pedido; lo discuten en plano o bajo un <b>líder</b>, y el líder cierra — con una respuesta o <b>actuando</b>. Tu navegador, tu máquina, tus cuentas.</p>
+    <div class="term"><div class="bar"><i></i><i></i><i></i><span>swarm — mesa 07</span></div><div class="scr">
+      <div class="row"><span class="pr">$</span> mesa nueva <span class="dim">"revisá el disco y arreglá el servicio caído"</span></div>
+      <div class="row"><span class="who">[líder]</span> <span data-i18n="s1_l1">reparto: Arq revisa disco, Red mira el servicio…</span></div>
+      <div class="row"><span class="who b">[arq]</span>&nbsp;&nbsp;&nbsp;<span class="dim">/</span> <span data-i18n="s1_l2">disco 82% — /var/log se comió 12 GB</span></div>
+      <div class="row"><span class="who r">[red]</span>&nbsp;&nbsp;&nbsp;<span data-i18n="s1_l3">nginx caído: falta reload tras el logrotate</span></div>
+      <div class="row"><span class="who">[líder]</span> <span data-i18n="s1_l4">propongo: limpiar logs + reload nginx</span> &nbsp;<span class="wait" data-i18n="s1_l5">⧗ espera tu OK</span></div>
+    </div></div>
+    <p class="punch" data-i18n="s1_punch">Muchas mesitas, una por tarea. En vivo, en el navegador.</p>
+  </div>
+</section>
+
+<!-- ── 02 dos formas ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s2_eyebrow">// 02 · DOS FORMAS DE CORRERLA</p>
+    <h2 data-i18n="s2_h">Instalada, o en un pendrive.</h2>
+    <p class="body-txt" data-i18n-html="s2_body">Mismo app, mismo SQLite. Dos envoltorios — elegí el que le sirve a la máquina que tenés enfrente.</p>
+    <div class="slots">
+      <div class="slot a"><div class="t" data-i18n="s2_at">INSTALADA</div><p data-i18n-html="s2_ap">Un comando: <code>python manage.py serve</code>. Sin Docker. (O <code>docker compose up</code> para aislar las sillas de CLI.)</p></div>
+      <div class="arr" aria-hidden="true">⇄</div>
+      <div class="slot b"><div class="t" data-i18n="s2_bt">PORTÁTIL ⟳</div><p data-i18n-html="s2_bp">Un Python bundleado por SO en un pendrive. PC pelada, <b>sin Python ni Docker</b> → doble-clic y la mesa abre en el navegador.</p></div>
+    </div>
+    <p class="punch" data-i18n="s2_punch">El kit del técnico: un pendrive que vuelve cualquier PC de cliente una mesa completa.</p>
+  </div>
+</section>
+
+<!-- ── 03 tres sillas ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s3_eyebrow">// 03 · TRES TIPOS DE SILLA</p>
+    <h2 data-i18n="s3_h">Por CLI, por API key, o local.</h2>
+    <p class="body-txt" data-i18n-html="s3_body">Cada silla elige su backend. Mezclalas en la misma mesa.</p>
+    <div class="term"><div class="bar"><i></i><i></i><i></i><span>swarm — conexiones</span></div><div class="scr">
+      <div class="row"><span class="pr">$</span> swarm conexiones</div>
+      <div class="row"><span class="who">cli</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;claude · opencode · agy&nbsp;&nbsp;<span class="dim" data-i18n="s3_cli">— cuentas ya logueadas, nada se guarda</span></div>
+      <div class="row"><span class="who b">api</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;anthropic · openai · openrouter&nbsp;&nbsp;<span class="dim" data-i18n="s3_api">— keys cifradas en bóveda con passphrase</span></div>
+      <div class="row"><span class="who q">local</span>&nbsp;&nbsp;&nbsp;ollama <span class="dim">(http)</span>&nbsp;&nbsp;<span class="dim" data-i18n="s3_local">— corre entero en tu propio hardware</span></div>
+    </div></div>
+    <p class="punch" data-i18n="s3_punch">La ruta por API key no necesita ningún binario — es la que hace posible el pendrive.</p>
+  </div>
+</section>
+
+<!-- ── 04 toolbelt ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s4_eyebrow">// 04 · EL FILO</p>
+    <h2 data-i18n="s4_h">Puede tocar la máquina real — con cuidado.</h2>
+    <p class="body-txt" data-i18n-html="s4_body">Prendé el <b>toolbelt</b> (opt-in, apagado por default) y las sillas por API key reciben herramientas que actúan sobre la computadora a la que enchufaste — sin contenedor, sin cápsula. La red de seguridad <b>no</b> es un sandbox; es disciplina:</p>
+    <ul class="ck">
+      <li data-i18n-html="s4_i1"><span><b>Lo de solo-lectura corre solo.</b> Revisar disco, procesos y archivos: allowlist sin shell, corre sin preguntar.</span></li>
+      <li data-i18n-html="s4_i2"><span><b>Toda mutación espera tu OK.</b> Un arreglo nunca corre solo: se encola y lo aprobás o rechazás en la Bitácora.</span></li>
+      <li data-i18n-html="s4_i3"><span><b>Todo queda logueado.</b> Cada lectura y cada cambio va a la bitácora de la mesa, exportable como informe.</span></li>
     </ul>
-  </div>
-</section>
-
-<!-- ═══════════ DOS FORMAS DE CORRERLO ═══════════ -->
-<section id="run">
-  <div class="wrap">
-    <div class="eyebrow" data-i18n="run_eyebrow">Two ways to run it</div>
-    <h2 data-i18n="run_h">Install it, <span class="amp">or carry it on a pendrive.</span></h2>
-    <p class="lead" data-i18n="run_lead">Same app, same SQLite. Two wrappers — pick the one that fits the machine in front of you.</p>
-    <div class="grid two">
-      <div class="card">
-        <span class="ico">🖥️</span>
-        <h3 data-i18n="run_a_h">Installed</h3>
-        <p data-i18n="run_a_p"><code>python manage.py serve</code> runs everything in one process — no Docker needed. Prefer isolation for the CLI seats? <code>docker compose up</code> is still there, with throwaway containers per turn.</p>
-      </div>
-      <div class="card">
-        <span class="ico">🔌</span>
-        <h3 data-i18n="run_b_h">Portable <span class="tag" data-i18n="run_b_tag">pendrive</span></h3>
-        <p data-i18n="run_b_p">A whole Python bundled per-OS on a pendrive. Plug it into a bare PC — Windows or Linux, <b>no Python, no Docker</b> — double-click the launcher, and the table opens in the browser. Load your API keys and go.</p>
-      </div>
+    <div class="warn">
+      <div class="t" data-i18n="s4_warn_t">⚠ Poder de verdad</div>
+      <span data-i18n="s4_warn_p">Peligroso en manos equivocadas. Habilitalo solo en máquinas que estés autorizado a atender, y leé cada cambio antes de aprobar.</span>
     </div>
-    <p class="note" data-i18n="run_note">The portable route is the technician's kit: a stick that turns any client machine into a full worktable in seconds.</p>
   </div>
 </section>
 
-<!-- ═══════════ TRES SILLAS ═══════════ -->
-<section id="seats">
+<!-- ── 05 mirala ── -->
+<section>
   <div class="wrap">
-    <div class="eyebrow" data-i18n="seats_eyebrow">Three kinds of seat</div>
-    <h2 data-i18n="seats_h">By CLI, by API key, <span class="amp">or local.</span></h2>
-    <p class="lead" data-i18n="seats_lead">Every seat picks its own backend. Mix them at the same table.</p>
-    <div class="grid three">
-      <div class="card">
-        <span class="ico">🔑</span>
-        <h3 data-i18n="seat_cli_h">CLI account</h3>
-        <p data-i18n="seat_cli_p"><code>claude</code>, <code>opencode</code>, <code>agy</code> — uses accounts you already logged into, in your terminal. Nothing asked, nothing stored; Swarm only checks the file exists.</p>
+    <p class="eyebrow" data-i18n="s5_eyebrow">// 05 · EN VIVO</p>
+    <h2 data-i18n="s5_h">Una mesa, trabajando.</h2>
+    <p class="body-txt" data-i18n-html="s5_body">Las sillas debaten, el líder fabrica archivos de verdad (un commit por turno) y el flujo se ve a la derecha. La UI es bilingüe, aunque su alma habla español.</p>
+    <figure class="shot">
+      <img src="docs/img/mesa.png" alt="Una mesa de Swarm: las sillas debaten el pedido, /armar fabrica el script de verdad y el flujo del worker se ve a la derecha" loading="lazy">
+      <figcaption data-i18n="s5_cap">Una mesa con líder: debate, fabricación real y flujo en vivo.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Apoyá ── -->
+<section id="apoya">
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="dn_eyebrow">// APOYÁ</p>
+    <h2 data-i18n="dn_h">Bancá el caballo de batalla.</h2>
+    <p class="body-txt" data-i18n-html="dn_body">Swarm es <b>gratis y open source</b>. Si te sirve y querés que siga creciendo, podés colaborar por <b>Mercado Pago</b> — escaneá el QR o transferí al alias.</p>
+    <div class="donate">
+      <div class="qbox" aria-hidden="true">
+        <svg class="qr" version="1.1" viewBox="0 0 29 29" xmlns="http://www.w3.org/2000/svg"><path d="M2,2H3V3H2zM3,2H4V3H3zM4,2H5V3H4zM5,2H6V3H5zM6,2H7V3H6zM7,2H8V3H7zM8,2H9V3H8zM10,2H11V3H10zM12,2H13V3H12zM13,2H14V3H13zM16,2H17V3H16zM17,2H18V3H17zM20,2H21V3H20zM21,2H22V3H21zM22,2H23V3H22zM23,2H24V3H23zM24,2H25V3H24zM25,2H26V3H25zM26,2H27V3H26zM2,3H3V4H2zM8,3H9V4H8zM11,3H12V4H11zM12,3H13V4H12zM13,3H14V4H13zM14,3H15V4H14zM18,3H19V4H18zM20,3H21V4H20zM26,3H27V4H26zM2,4H3V5H2zM4,4H5V5H4zM5,4H6V5H5zM6,4H7V5H6zM8,4H9V5H8zM12,4H13V5H12zM13,4H14V5H13zM18,4H19V5H18zM20,4H21V5H20zM22,4H23V5H22zM23,4H24V5H23zM24,4H25V5H24zM26,4H27V5H26zM2,5H3V6H2zM4,5H5V6H4zM5,5H6V6H5zM6,5H7V6H6zM8,5H9V6H8zM10,5H11V6H10zM11,5H12V6H11zM14,5H15V6H14zM15,5H16V6H15zM16,5H17V6H16zM18,5H19V6H18zM20,5H21V6H20zM22,5H23V6H22zM23,5H24V6H23zM24,5H25V6H24zM26,5H27V6H26zM2,6H3V7H2zM4,6H5V7H4zM5,6H6V7H5zM6,6H7V7H6zM8,6H9V7H8zM10,6H11V7H10zM12,6H13V7H12zM14,6H15V7H14zM16,6H17V7H16zM17,6H18V7H17zM18,6H19V7H18zM20,6H21V7H20zM22,6H23V7H22zM23,6H24V7H23zM24,6H25V7H24zM26,6H27V7H26zM2,7H3V8H2zM8,7H9V8H8zM10,7H11V8H10zM12,7H13V8H12zM13,7H14V8H13zM14,7H15V8H14zM18,7H19V8H18zM20,7H21V8H20zM26,7H27V8H26zM2,8H3V9H2zM3,8H4V9H3zM4,8H5V9H4zM5,8H6V9H5zM6,8H7V9H6zM7,8H8V9H7zM8,8H9V9H8zM10,8H11V9H10zM12,8H13V9H12zM14,8H15V9H14zM16,8H17V9H16zM18,8H19V9H18zM20,8H21V9H20zM21,8H22V9H21zM22,8H23V9H22zM23,8H24V9H23zM24,8H25V9H24zM25,8H26V9H25zM26,8H27V9H26zM10,9H11V10H10zM13,9H14V10H13zM16,9H17V10H16zM18,9H19V10H18zM2,10H3V11H2zM6,10H7V11H6zM8,10H9V11H8zM9,10H10V11H9zM10,10H11V11H10zM12,10H13V11H12zM14,10H15V11H14zM18,10H19V11H18zM19,10H20V11H19zM20,10H21V11H20zM21,10H22V11H21zM22,10H23V11H22zM23,10H24V11H23zM26,10H27V11H26zM4,11H5V12H4zM6,11H7V12H6zM7,11H8V12H7zM9,11H10V12H9zM10,11H11V12H10zM11,11H12V12H11zM12,11H13V12H12zM16,11H17V12H16zM17,11H18V12H17zM18,11H19V12H18zM22,11H23V12H22zM23,11H24V12H23zM25,11H26V12H25zM5,12H6V13H5zM6,12H7V13H6zM7,12H8V13H7zM8,12H9V13H8zM10,12H11V13H10zM13,12H14V13H13zM15,12H16V13H15zM16,12H17V13H16zM17,12H18V13H17zM19,12H20V13H19zM20,12H21V13H20zM23,12H24V13H23zM24,12H25V13H24zM2,13H3V14H2zM3,13H4V14H3zM4,13H5V14H4zM5,13H6V14H5zM9,13H10V14H9zM11,13H12V14H11zM14,13H15V14H14zM17,13H18V14H17zM18,13H19V14H18zM22,13H23V14H22zM24,13H25V14H24zM25,13H26V14H25zM2,14H3V15H2zM3,14H4V15H3zM7,14H8V15H7zM8,14H9V15H8zM9,14H10V15H9zM10,14H11V15H10zM12,14H13V15H12zM13,14H14V15H13zM17,14H18V15H17zM19,14H20V15H19zM20,14H21V15H20zM21,14H22V15H21zM23,14H24V15H23zM24,14H25V15H24zM25,14H26V15H25zM26,14H27V15H26zM2,15H3V16H2zM4,15H5V16H4zM5,15H6V16H5zM9,15H10V16H9zM10,15H11V16H10zM11,15H12V16H11zM14,15H15V16H14zM16,15H17V16H16zM17,15H18V16H17zM18,15H19V16H18zM22,15H23V16H22zM25,15H26V16H25zM4,16H5V17H4zM8,16H9V17H8zM9,16H10V17H9zM12,16H13V17H12zM13,16H14V17H13zM14,16H15V17H14zM16,16H17V17H16zM17,16H18V17H17zM18,16H19V17H18zM21,16H22V17H21zM22,16H23V17H22zM23,16H24V17H23zM24,16H25V17H24zM6,17H7V18H6zM9,17H10V18H9zM10,17H11V18H10zM11,17H12V18H11zM13,17H14V18H13zM17,17H18V18H17zM19,17H20V18H19zM21,17H22V18H21zM22,17H23V18H22zM24,17H25V18H24zM25,17H26V18H25zM2,18H3V19H2zM3,18H4V19H3zM8,18H9V19H8zM9,18H10V19H9zM14,18H15V19H14zM17,18H18V19H17zM18,18H19V19H18zM19,18H20V19H19zM20,18H21V19H20zM21,18H22V19H21zM22,18H23V19H22zM23,18H24V19H23zM24,18H25V19H24zM10,19H11V20H10zM11,19H12V20H11zM16,19H17V20H16zM18,19H19V20H18zM22,19H23V20H22zM2,20H3V21H2zM3,20H4V21H3zM4,20H5V21H4zM5,20H6V21H5zM6,20H7V21H6zM7,20H8V21H7zM8,20H9V21H8zM10,20H11V21H10zM18,20H19V21H18zM20,20H21V21H20zM22,20H23V21H22zM2,21H3V22H2zM8,21H9V22H8zM14,21H15V22H14zM16,21H17V22H16zM18,21H19V22H18zM22,21H23V22H22zM23,21H24V22H23zM24,21H25V22H24zM25,21H26V22H25zM2,22H3V23H2zM4,22H5V23H4zM5,22H6V23H5zM6,22H7V23H6zM8,22H9V23H8zM10,22H11V23H10zM11,22H12V23H11zM12,22H13V23H12zM13,22H14V23H13zM14,22H15V23H14zM18,22H19V23H18zM19,22H20V23H19zM20,22H21V23H20zM21,22H22V23H21zM22,22H23V23H22zM23,22H24V23H23zM24,22H25V23H24zM2,23H3V24H2zM4,23H5V24H4zM5,23H6V24H5zM6,23H7V24H6zM8,23H9V24H8zM12,23H13V24H12zM14,23H15V24H14zM16,23H17V24H16zM17,23H18V24H17zM19,23H20V24H19zM20,23H21V24H20zM21,23H22V24H21zM24,23H25V24H24zM25,23H26V24H25zM26,23H27V24H26zM2,24H3V25H2zM4,24H5V25H4zM5,24H6V25H5zM6,24H7V25H6zM8,24H9V25H8zM12,24H13V25H12zM13,24H14V25H13zM14,24H15V25H14zM15,24H16V25H15zM16,24H17V25H16zM17,24H18V25H17zM18,24H19V25H18zM20,24H21V25H20zM23,24H24V25H23zM25,24H26V25H25zM2,25H3V26H2zM8,25H9V26H8zM11,25H12V26H11zM13,25H14V26H13zM14,25H15V26H14zM17,25H18V26H17zM19,25H20V26H19zM21,25H22V26H21zM22,25H23V26H22zM23,25H24V26H23zM24,25H25V26H24zM25,25H26V26H25zM2,26H3V27H2zM3,26H4V27H3zM4,26H5V27H4zM5,26H6V27H5zM6,26H7V27H6zM7,26H8V27H7zM8,26H9V27H8zM10,26H11V27H10zM12,26H13V27H12zM14,26H15V27H14zM17,26H18V27H17zM24,26H25V27H24zM25,26H26V27H25zM26,26H27V27H26z" fill-rule="nonzero" stroke="none"/></svg>
       </div>
-      <div class="card">
-        <span class="ico">🗝️</span>
-        <h3 data-i18n="seat_api_h">API key <span class="tag" data-i18n="seat_api_tag">portable</span></h3>
-        <p data-i18n="seat_api_p">Anthropic, OpenAI-compatible (Groq / DeepSeek / LM Studio) or OpenRouter — no binary to install. Keys are encrypted at rest in a <b>passphrase vault</b>. This is what makes the pendrive work.</p>
-      </div>
-      <div class="card">
-        <span class="ico">🦙</span>
-        <h3 data-i18n="seat_ollama_h">Local model</h3>
-        <p data-i18n="seat_ollama_p">Ollama over HTTP — a seat that runs entirely on your own hardware, for advice and chat with no cloud round-trip.</p>
+      <div class="dinfo">
+        <div class="dlabel" data-i18n="dn_label">Alias Mercado Pago</div>
+        <div class="alias">
+          <b id="aliasVal">hidralisk.online</b>
+          <button class="copy" id="copyAlias" data-i18n="dn_copy">copiar</button>
+        </div>
+        <p class="dnote" data-i18n="dn_note">Escaneá el QR con la app de Mercado Pago o transferí manualmente al alias. Gracias 🪲</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══════════ TOOLBELT ═══════════ -->
-<section id="toolbelt">
+<!-- ── Arrancar ── -->
+<section id="arrancar">
   <div class="wrap">
-    <div class="eyebrow" data-i18n="tb_eyebrow">The sharp edge</div>
-    <h2 data-i18n="tb_h">It can work on the <span class="amp">real machine</span> — carefully.</h2>
-    <p class="lead" data-i18n="tb_lead">Turn on the toolbelt (opt-in, off by default) and API-key seats get tools that act on the actual computer you plugged into — no container, no capsule. The safety net isn't a sandbox. It's discipline:</p>
-    <ul class="feat-list">
-      <li><span class="mk">✓</span><span><b data-i18n="tb_1b">Read-only runs itself.</b> <span data-i18n="tb_1t">Inspecting disk, processes and files happens automatically — from a read-only allowlist, with no shell, so pipes and redirects are inert.</span></span></li>
-      <li><span class="mk">✋</span><span><b data-i18n="tb_2b">Every change waits for your OK.</b> <span data-i18n="tb_2t">A fix never runs on its own: it queues as a pending action and posts a note on the table. You approve or reject it in the Bitácora (log).</span></span></li>
-      <li><span class="mk">📋</span><span><b data-i18n="tb_3b">Everything is logged.</b> <span data-i18n="tb_3t">Every read and every change lands in the per-table log, exportable as a support report.</span></span></li>
-    </ul>
-    <p class="note"><b data-i18n="tb_warn_b">Powerful, and dangerous in the wrong hands.</b> <span data-i18n="tb_warn_t">Only enable it on machines you're authorized to service, and read every change before approving. Full threat model in the README.</span></p>
-  </div>
-</section>
-
-<!-- ═══════════ CAPTURAS ═══════════ -->
-<section id="screens">
-  <div class="wrap">
-    <div class="eyebrow" data-i18n="sc_eyebrow">See it</div>
-    <h2 data-i18n="sc_h">A table, <span class="amp">at work.</span></h2>
-    <div class="shots">
-      <figure class="shot-hero">
-        <img src="docs/img/mesa.png" alt="A Swarm table: seats debate the request, /armar builds the script for real, and the worker's live flow shows on the right" loading="lazy">
-        <figcaption data-i18n="sc_mesa">The table: seats debate, the leader builds real files (one commit per turn), the live flow shows on the right.</figcaption>
-      </figure>
-      <figure>
-        <img src="docs/img/conexiones.png" alt="The Conexiones screen reports which CLIs are detected and manages API keys" loading="lazy">
-        <figcaption data-i18n="sc_conx">Connections: which CLIs are detected, plus the API-key vault.</figcaption>
-      </figure>
-      <figure>
-        <img src="docs/img/ayuda-en.png" alt="The in-app Help guide, bilingual, covering table commands and topologies" loading="lazy">
-        <figcaption data-i18n="sc_help">In-app Help: table commands, topologies and seat setup — bilingual.</figcaption>
-      </figure>
+    <p class="eyebrow" data-i18n="go_eyebrow">// ARRANCAR</p>
+    <h2 data-i18n="go_h">Arriba en un comando.</h2>
+    <p class="body-txt" data-i18n-html="go_body">Cloná y arrancá. Sin Docker, sin cuenta — solo Python 3.12 (o el runtime bundleado del pendrive).</p>
+    <div class="steps">
+      <div class="step"><div>
+        <div class="st-t" data-i18n="go1_t">Nativa / portátil (sin Docker)</div>
+        <code class="cmd"><span class="pr">$</span> git clone https://github.com/hidr4lisk/swarm.git &amp;&amp; cd swarm
+<span class="pr">$</span> pip install -r requirements-portable.txt
+<span class="pr">$</span> python manage.py serve</code>
+        <p data-i18n-html="go1_p">Abre <code>127.0.0.1:8799</code>. Andá a <b>Conexiones → API keys</b>, cargá una key (se guarda cifrada) y armá una mesa.</p>
+      </div></div>
+      <div class="step"><div>
+        <div class="st-t" data-i18n="go2_t">Armar el pendrive (Linux + Windows)</div>
+        <code class="cmd"><span class="pr">$</span> ./scripts/build_bundle.sh   <span class="dim"># → dist/swarm-portable/</span></code>
+        <p data-i18n-html="go2_p">Copiás <code>dist/swarm-portable/</code> a un pendrive. En cualquier PC pelada: doble-clic a <code>enjambre.sh</code> (Linux) o <code>Enjambre.bat</code> (Windows).</p>
+      </div></div>
+    </div>
+    <div class="ctas" style="justify-content:flex-start;margin-top:44px;">
+      <a class="btn btn-primary" href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener" data-i18n="go_repo">▸ REPO &amp; README</a>
+      <a class="btn btn-secondary" href="#apoya" data-i18n="go_donate">☕ APOYAR</a>
     </div>
   </div>
 </section>
 
-<!-- ═══════════ GET IT ═══════════ -->
-<section id="get">
-  <div class="wrap">
-    <div class="eyebrow" data-i18n="get_eyebrow">Get it</div>
-    <h2 data-i18n="get_h">Up in <span class="amp">one command.</span></h2>
-    <div class="grid two">
-      <div class="card">
-        <h3 data-i18n="get_native_h">Installed / native</h3>
-        <pre><code><span class="c"># clone, install, launch — no Docker</span>
-git clone https://github.com/hidr4lisk/swarm
-cd swarm
-pip install -r requirements-portable.txt
-python manage.py <span class="p">serve</span></code></pre>
-        <p class="note" data-i18n="get_native_note">Opens <code>http://127.0.0.1:8799</code>. Prefer isolation for CLI seats? <code>docker compose up</code> → port 8080.</p>
-      </div>
-      <div class="card">
-        <h3 data-i18n="get_portable_h">Portable pendrive</h3>
-        <pre><code><span class="c"># build the stick once (Linux + Windows)</span>
-./scripts/build_bundle.sh
-<span class="c"># → dist/swarm-portable/  ... copy to a pendrive</span>
-<span class="c"># then, on any bare PC:</span>
-<span class="p">double-click</span> enjambre.sh   <span class="c"># Linux</span>
-<span class="p">double-click</span> Enjambre.bat  <span class="c"># Windows</span></code></pre>
-        <p class="note" data-i18n="get_portable_note">No Python, no Docker on the target machine. Load your API keys in Connections and go.</p>
-      </div>
-    </div>
-    <div class="cta" style="margin-top:34px">
-      <a class="btn btn-primary" href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener" data-i18n="get_repo">▸ Repo &amp; full README</a>
-      <a class="btn btn-ghost" href="https://hidralisk.online" target="_blank" rel="noopener" data-i18n="get_donate">☕ Support the project</a>
-    </div>
-  </div>
-</section>
-
-<footer class="site-footer">
-  <span class="foot-line">
-    <span class="foot-brand">Hidr4lisk_Swarm</span>
-    <span class="foot-sep">·</span>
-    <a href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener">GitHub</a>
-    <span class="foot-sep">·</span>
-    <a href="https://hidralisk.online" target="_blank" rel="noopener">hidralisk.online</a>
-    <span class="foot-sep">·</span>
-    <a href="mailto:hidralisk.online@gmail.com"><span data-i18n="foot_feedback">Feedback</span>: hidralisk.online@gmail.com</a>
-  </span>
+<footer>
+  <span class="brand">Hidr4lisk_Swarm</span> · MIT ·
+  <a href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener">github.com/hidr4lisk/swarm</a> ·
+  <span data-i18n="foot">varias mentes, una mesa</span> 🪲
 </footer>
 
 <script>
-  const LANG_KEY = 'swarm_lang';
-  let LANG = localStorage.getItem(LANG_KEY) || 'en';
-
-  const DICT = {
-    hero_eyebrow:   { es: "Open source · Linux y Windows · sin cuenta" },
-    hero_lead:      { es: "Una mesa de trabajo multi-agente en tu navegador. Varias IAs se sientan a la misma mesa — charlan, debaten y actúan — coordinadas por un líder, sobre tus propios CLIs o API keys." },
-    cta_get:        { es: "▸ Descargar" },
-    cta_see:        { es: "Ver una mesa" },
-    mesa_cap:       { es: "una mesa · muchas mentes" },
-    role_leader:    { es: "líder" }, role_arch: { es: "arq" }, role_build: { es: "fabrica" },
-    role_red:       { es: "red team" }, role_qa: { es: "qa" }, role_you: { es: "vos" },
-    mesa_req:       { es: "“revisá esta máquina y arreglá el servicio caído” <b>→</b> debaten, actúan, reportan" },
-
-    what_eyebrow:   { es: "La idea" },
-    what_h:         { es: 'Una mesa. <span class="amp">Muchas mentes.</span>' },
-    what_lead:      { es: "Cada silla es una IA con su propia voz y su tarea. Dejás un pedido en la mesa; lo discuten en plano o bajo un líder, y el líder cierra — con una respuesta, o fabricando archivos de verdad. Es tu navegador, tu máquina, tus cuentas. Toda la UI es bilingüe (ES/EN), aunque su alma habla español, rioplatense para ser precisos." },
-    what_1b:        { es: "Muchas mesitas." }, what_1t: { es: "Una mesa por tarea, con las sillas que quieras, en topología plana o de líder." },
-    what_2b:        { es: "En vivo, en el navegador." }, what_2t: { es: "Los turnos aparecen a medida que pasan; el flujo del líder se ve al costado. Nada que mirar en una terminal." },
-    what_3b:        { es: "Personas con voz." }, what_3t: { es: "Retratos estilo RTS, colores y roles — arquitectura, fabricar, red team, QA, investigación." },
-
-    run_eyebrow:    { es: "Dos formas de correrlo" },
-    run_h:          { es: 'Instalalo, <span class="amp">o llevalo en un pendrive.</span>' },
-    run_lead:       { es: "Mismo app, mismo SQLite. Dos envoltorios — elegí el que le sirve a la máquina que tenés enfrente." },
-    run_a_h:        { es: "Instalado" },
-    run_a_p:        { es: '<code>python manage.py serve</code> levanta todo en un proceso — sin Docker. ¿Preferís aislar las sillas de CLI? <code>docker compose up</code> sigue ahí, con contenedores descartables por turno.' },
-    run_b_h:        { es: "Portátil" }, run_b_tag: { es: "pendrive" },
-    run_b_p:        { es: "Un Python entero bundleado por SO en un pendrive. Lo enchufás en una PC pelada — Windows o Linux, <b>sin Python, sin Docker</b> — doble-clic al launcher y la mesa abre en el navegador. Cargás tus API keys y le das masa." },
-    run_note:       { es: "La ruta portátil es el kit del técnico: un pendrive que convierte cualquier máquina de cliente en una mesa completa en segundos." },
-
-    seats_eyebrow:  { es: "Tres tipos de silla" },
-    seats_h:        { es: 'Por CLI, por API key, <span class="amp">o local.</span>' },
-    seats_lead:     { es: "Cada silla elige su backend. Mezclalas en la misma mesa." },
-    seat_cli_h:     { es: "Cuenta de CLI" },
-    seat_cli_p:     { es: '<code>claude</code>, <code>opencode</code>, <code>agy</code> — usa cuentas que ya logueaste en tu terminal. No pide ni guarda nada; Swarm solo chequea que el archivo exista.' },
-    seat_api_h:     { es: "API key" }, seat_api_tag: { es: "portátil" },
-    seat_api_p:     { es: "Anthropic, compatible-OpenAI (Groq / DeepSeek / LM Studio) u OpenRouter — sin binario que instalar. Las keys se guardan cifradas en una <b>bóveda con passphrase</b>. Es lo que hace posible el pendrive." },
-    seat_ollama_h:  { es: "Modelo local" },
-    seat_ollama_p:  { es: "Ollama por HTTP — una silla que corre entera en tu propio hardware, para consejo y charla sin ir a la nube." },
-
-    tb_eyebrow:     { es: "El filo" },
-    tb_h:           { es: 'Puede operar la <span class="amp">máquina real</span> — con cuidado.' },
-    tb_lead:        { es: "Prendé el toolbelt (opt-in, apagado por default) y las sillas por API key reciben herramientas que actúan sobre la computadora a la que enchufaste — sin contenedor, sin cápsula. La red de seguridad no es un sandbox. Es disciplina:" },
-    tb_1b:          { es: "Lo de solo-lectura corre solo." }, tb_1t: { es: "Revisar disco, procesos y archivos pasa automático — desde una allowlist de solo-lectura, sin shell, así pipes y redirecciones quedan inertes." },
-    tb_2b:          { es: "Todo cambio espera tu OK." }, tb_2t: { es: "Un arreglo nunca corre solo: encola una acción pendiente y lo avisa en la mesa. Vos la aprobás o rechazás en la Bitácora." },
-    tb_3b:          { es: "Todo queda logueado." }, tb_3t: { es: "Cada lectura y cada cambio va a la bitácora de la mesa, exportable como informe de soporte." },
-    tb_warn_b:      { es: "Poderoso, y peligroso en manos equivocadas." }, tb_warn_t: { es: "Habilitalo solo en máquinas que estés autorizado a atender, y leé cada cambio antes de aprobar. Modelo de amenaza completo en el README." },
-
-    sc_eyebrow:     { es: "Miralo" },
-    sc_h:           { es: 'Una mesa, <span class="amp">trabajando.</span>' },
-    sc_mesa:        { es: "La mesa: las sillas debaten, el líder fabrica archivos de verdad (un commit por turno), el flujo en vivo se ve a la derecha." },
-    sc_conx:        { es: "Conexiones: qué CLIs quedaron detectados, más la bóveda de API keys." },
-    sc_help:        { es: "Ayuda in-app: comandos de la mesa, topologías y config de sillas — bilingüe." },
-
-    get_eyebrow:    { es: "Descargar" },
-    get_h:          { es: 'Arriba en <span class="amp">un comando.</span>' },
-    get_native_h:   { es: "Instalado / nativo" },
-    get_native_note:{ es: 'Abre <code>http://127.0.0.1:8799</code>. ¿Preferís aislar las sillas CLI? <code>docker compose up</code> → puerto 8080.' },
-    get_portable_h: { es: "Pendrive portátil" },
-    get_portable_note:{ es: "Sin Python ni Docker en la máquina destino. Cargá tus API keys en Conexiones y le das masa." },
-    get_repo:       { es: "▸ Repo y README completo" },
-    get_donate:     { es: "☕ Apoyá el proyecto" },
-    foot_feedback:  { es: "Feedback" },
-  };
-
-  function T(key) {
-    const e = DICT[key];
-    if (LANG === 'es' && e && e.es != null) return e.es;
-    return null; // 'en' = el texto ya escrito en el HTML
+/* ── i18n (ES = texto del HTML; EN = este diccionario) ── */
+const I18N = {
+  en: {
+    tagline: 'A <b>multi-agent worktable</b> in your browser: several AIs chat, debate and <b>act</b> — coordinated by a leader.',
+    badges: 'multi-agent · API keys or CLIs · portable · open source (MIT)',
+    cta_go: '▸ GET STARTED',
+    relnote: 'runs installed or from a pendrive · Linux &amp; Windows · no account',
+    s1_eyebrow: '// 01 · ONE TABLE, MANY MINDS', s1_h: 'Several AIs, one table.',
+    s1_body: 'Each <b>seat</b> is an AI with its own voice and job. You drop a request; they discuss it flat or under a <b>leader</b>, and the leader closes — with an answer, or by <b>acting</b>. Your browser, your machine, your accounts.',
+    s1_l1: 'split: Arch checks the disk, Red looks at the service…',
+    s1_l2: 'disk 82% — /var/log ate 12 GB',
+    s1_l3: 'nginx down: missing reload after logrotate',
+    s1_l4: 'proposal: clean logs + reload nginx', s1_l5: '⧗ waiting for your OK',
+    s1_punch: 'Many small tables, one per task. Live, in the browser.',
+    s2_eyebrow: '// 02 · TWO WAYS TO RUN IT', s2_h: 'Installed, or on a pendrive.',
+    s2_body: 'Same app, same SQLite. Two wrappers — pick the one that fits the machine in front of you.',
+    s2_at: 'INSTALLED',
+    s2_ap: 'One command: <code>python manage.py serve</code>. No Docker. (Or <code>docker compose up</code> to isolate the CLI seats.)',
+    s2_bt: 'PORTABLE ⟳',
+    s2_bp: 'A whole Python bundled per-OS on a pendrive. Bare PC, <b>no Python, no Docker</b> → double-click and the table opens in the browser.',
+    s2_punch: 'The technician\'s kit: a stick that turns any client PC into a full worktable.',
+    s3_eyebrow: '// 03 · THREE KINDS OF SEAT', s3_h: 'By CLI, by API key, or local.',
+    s3_body: 'Every seat picks its own backend. Mix them at the same table.',
+    s3_cli: '— accounts you already logged in, nothing stored',
+    s3_api: '— keys encrypted in a passphrase vault',
+    s3_local: '— runs entirely on your own hardware',
+    s3_punch: 'The API-key route needs no binary — it\'s what makes the pendrive possible.',
+    s4_eyebrow: '// 04 · THE SHARP EDGE', s4_h: 'It can touch the real machine — carefully.',
+    s4_body: 'Turn on the <b>toolbelt</b> (opt-in, off by default) and API-key seats get tools that act on the actual computer you plugged into — no container, no capsule. The safety net is <b>not</b> a sandbox; it\'s discipline:',
+    s4_i1: '<span><b>Read-only runs itself.</b> Inspecting disk, processes and files: allowlist with no shell, runs without asking.</span>',
+    s4_i2: '<span><b>Every change waits for your OK.</b> A fix never runs on its own: it queues and you approve or reject it in the Bitácora (log).</span>',
+    s4_i3: '<span><b>Everything is logged.</b> Every read and every change lands in the per-table log, exportable as a report.</span>',
+    s4_warn_t: '⚠ Real power',
+    s4_warn_p: 'Dangerous in the wrong hands. Only enable it on machines you\'re authorized to service, and read every change before approving.',
+    s5_eyebrow: '// 05 · SEE IT', s5_h: 'A table, at work.',
+    s5_body: 'The seats debate, the leader builds real files (one commit per turn) and the flow shows on the right. The UI is bilingual, though its soul speaks Spanish.',
+    s5_cap: 'A table with a leader: debate, real building, live flow.',
+    dn_eyebrow: '// SUPPORT', dn_h: 'Back the workhorse.',
+    dn_body: 'Swarm is <b>free and open source</b>. If it helps you and you want it to keep growing, you can chip in via <b>Mercado Pago</b> — scan the QR or transfer to the alias.',
+    dn_label: 'Mercado Pago alias', dn_copy: 'copy',
+    dn_note: 'Scan the QR with the Mercado Pago app or transfer manually to the alias. Thanks 🪲',
+    go_eyebrow: '// GET STARTED', go_h: 'Up in one command.',
+    go_body: 'Clone and run. No Docker, no account — just Python 3.12 (or the pendrive\'s bundled runtime).',
+    go1_t: 'Native / portable (no Docker)',
+    go1_p: 'Opens <code>127.0.0.1:8799</code>. Go to <b>Connections → API keys</b>, load a key (stored encrypted) and start a table.',
+    go2_t: 'Build the pendrive (Linux + Windows)',
+    go2_p: 'Copy <code>dist/swarm-portable/</code> to a pendrive. On any bare PC: double-click <code>enjambre.sh</code> (Linux) or <code>Enjambre.bat</code> (Windows).',
+    go_repo: '▸ REPO &amp; README', go_donate: '☕ SUPPORT',
+    foot: 'many minds, one table'
   }
-  function applyI18n() {
-    document.documentElement.lang = LANG;
-    document.querySelectorAll('.lang-btn').forEach(b => {
-      const on = b.dataset.lang === LANG;
-      b.classList.toggle('active', on);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-    if (LANG === 'en') return; // HTML ya está en inglés
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-      const s = T(el.dataset.i18n);
-      if (s != null) el.innerHTML = s;
-    });
-  }
-  function setLang(l) { if (l !== LANG) { localStorage.setItem(LANG_KEY, l); location.reload(); } }
+};
 
-  document.getElementById('toolSelect').addEventListener('change', function () {
-    if (this.value) window.location.href = this.value;
+function applyLang(lang){
+  const dict = I18N[lang];
+  document.documentElement.lang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b=>{
+    const on = b.dataset.lang === lang;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
   });
-  document.querySelectorAll('.lang-btn').forEach(b =>
-    b.addEventListener('click', () => setLang(b.dataset.lang)));
-  applyI18n();
+  if(!dict) return;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k = el.getAttribute('data-i18n');
+    if(dict[k] !== undefined) el.textContent = dict[k];
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el=>{
+    const k = el.getAttribute('data-i18n-html');
+    if(dict[k] !== undefined) el.innerHTML = dict[k];
+  });
+}
+function setLang(lang){
+  try{ localStorage.setItem('swarm_lang', lang); }catch(e){}
+  if(lang === 'es'){ if(document.documentElement.lang !== 'es') location.reload(); return; }
+  applyLang(lang);
+}
+document.querySelectorAll('.lang-btn').forEach(b=>
+  b.addEventListener('click', ()=>setLang(b.dataset.lang)));
+document.getElementById('toolSelect').addEventListener('change', e=>{
+  if(e.target.value) window.location.href = e.target.value;
+});
+const copyBtn = document.getElementById('copyAlias');
+copyBtn.addEventListener('click', ()=>{
+  const val = document.getElementById('aliasVal').textContent.trim();
+  const done = ()=>{ copyBtn.classList.add('ok'); const t=copyBtn.textContent;
+    copyBtn.textContent = (document.documentElement.lang==='en'?'copied ✓':'copiado ✓');
+    setTimeout(()=>{ copyBtn.classList.remove('ok'); copyBtn.textContent=t; }, 1600); };
+  if(navigator.clipboard) navigator.clipboard.writeText(val).then(done).catch(done);
+  else done();
+});
+let saved=null;
+try{ saved = localStorage.getItem('swarm_lang'); }catch(e){}
+if(saved === 'en') applyLang('en');
 </script>
 </body>
 </html>
