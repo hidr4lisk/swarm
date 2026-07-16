@@ -89,11 +89,15 @@
         <p class="enj-muted" style="font-size:.7rem;margin:.2rem 0 .3rem;">{% trans 'Se guardan solos al cambiar. Vacío = cuadrado de color.' %}</p>
     </details>
 
-    <form method="post" action="{% url 'enjambre:crear_silla' %}" class="enj-row" style="margin:0 0 1rem;gap:.5rem;">
-        {% csrf_token %}
-        <input type="text" name="nombre" placeholder="{% trans 'Nombre de la silla nueva' %}" maxlength="100">
-        <button class="enj-btn" type="submit"><i class="fas fa-plus"></i> {% trans 'Agregar silla' %}</button>
-    </form>
+    <div class="enj-row enj-toolbar" style="margin:0 0 1rem;gap:.5rem;flex-wrap:wrap;">
+        <input type="search" id="silla-buscar" class="enj-buscar" autocomplete="off"
+               placeholder="{% trans 'Buscar silla…' %}" aria-label="{% trans 'Buscar silla' %}"
+               style="flex:1;min-width:180px;">
+        <form method="post" action="{% url 'enjambre:crear_silla' %}" style="margin:0;">
+            {% csrf_token %}
+            <button class="enj-btn" type="submit"><i class="fas fa-plus"></i> {% trans 'Nueva silla' %}</button>
+        </form>
+    </div>
 
     {# Modelos por cliente para el JS (poblar el <select> de modelo) #}
     {{ clientes_meta|json_script:"clientes-meta" }}
@@ -144,10 +148,14 @@
                     </div>
                     <div style="flex:1;min-width:0;" data-modelo-wrap>
                         <label class="enj-fieldlabel">{% trans 'Modelo' %}</label>
-                        <input type="text" name="modelo" data-modelo list="modelos-{{ s.key }}"
-                               value="{{ s.modelo_sel }}" placeholder="(default)" autocomplete="off"
-                               title="{% trans 'Elegí uno sugerido o tipeá cualquier ID de modelo de tus proveedores' %}">
-                        <datalist id="modelos-{{ s.key }}"></datalist>
+                        <div class="enj-modelo-row">
+                            <input type="text" name="modelo" data-modelo list="modelos-{{ s.key }}"
+                                   value="{{ s.modelo_sel }}" placeholder="(default)" autocomplete="off"
+                                   title="{% trans 'Elegí del catálogo (botón) o tipeá cualquier ID' %}">
+                            <button type="button" class="enj-ghost enj-modelo-pick" data-pick-modelo
+                                    title="{% trans 'Elegir del catálogo' %}"><i class="fas fa-list"></i></button>
+                            <datalist id="modelos-{{ s.key }}"></datalist>
+                        </div>
                     </div>
                 </div>
                 <div data-endpoint-wrap hidden>
@@ -204,10 +212,66 @@
         {% endfor %}
     </div>
 </div>
+
+<style>
+.enj-modelo-row { display: flex; gap: .3rem; align-items: stretch; }
+.enj-modelo-row input { flex: 1; min-width: 0; }
+.enj-modelo-pick { flex-shrink: 0; }
+.enj-modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+    justify-content: center; padding: 1rem; background: rgba(0, 0, 0, .55); }
+.enj-modal[hidden] { display: none; }
+.enj-modal-box { background: var(--surface-color, #14181f); border: 1px solid var(--border-color);
+    border-radius: 14px; width: min(560px, 100%); max-height: 82vh; display: flex;
+    flex-direction: column; box-shadow: 0 12px 40px rgba(0, 0, 0, .5); }
+.enj-modal-head { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem;
+    border-bottom: 1px solid var(--border-color); }
+.enj-modal-head strong { flex: 1; min-width: 0; }
+.enj-modal-tools { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .7rem 1rem; }
+.enj-modal-tools input[type=search] { flex: 1; min-width: 160px; }
+.enj-modal-note { padding: 0 1rem .4rem; font-size: .8rem; color: var(--text-muted); }
+.enj-modal-list { overflow-y: auto; padding: .3rem .6rem 1rem; }
+.enj-modelo-item { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left;
+    background: transparent; border: 0; border-radius: 8px; padding: .5rem .6rem; cursor: pointer;
+    color: var(--text-main); font: inherit; }
+.enj-modelo-item:hover { background: rgba(var(--accent-rgb), .12); }
+.enj-modelo-item .mid { flex: 1; min-width: 0; font-family: monospace; font-size: .82rem; word-break: break-all; }
+.enj-free-badge { flex-shrink: 0; font-size: .68rem; font-weight: 700; letter-spacing: .04em;
+    padding: .1rem .4rem; border-radius: 999px; background: rgba(46, 204, 64, .16); color: #2ecc40; }
+</style>
+
+<div class="enj-modal" id="modelo-modal" hidden data-modal>
+    <div class="enj-modal-box">
+        <div class="enj-modal-head">
+            <strong data-modal-title>{% trans 'Modelos' %}</strong>
+            <span class="enj-muted" style="font-size:.78rem;" data-modal-count></span>
+            <button type="button" class="enj-ghost" data-modal-close aria-label="{% trans 'Cerrar' %}"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="enj-modal-tools">
+            <input type="search" data-modal-search placeholder="{% trans 'Buscar modelo…' %}" autocomplete="off">
+            <label class="enj-check enj-check-sm"><input type="checkbox" data-modal-free> {% trans 'Solo free' %} ⭐</label>
+        </div>
+        <div class="enj-modal-note" data-modal-note hidden></div>
+        <div class="enj-modal-list" data-modal-list></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// ── Buscador de sillas (filtro client-side por nombre) ──
+(function () {
+    var q = document.getElementById('silla-buscar');
+    var grid = document.querySelector('.enj-sillas-grid');
+    if (!q || !grid) return;
+    q.addEventListener('input', function () {
+        var v = q.value.trim().toLowerCase();
+        Array.prototype.forEach.call(grid.children, function (cell) {
+            var el = cell.querySelector('.enj-card-nombre');
+            var name = (el ? el.value : '').toLowerCase();
+            cell.style.display = (!v || name.indexOf(v) !== -1) ? '' : 'none';
+        });
+    });
+})();
 // ── Avatar: recorte cuadrado 128px en canvas → JPEG data-URI < ~40KB (sin backend de imágenes) ──
 function enjCropAvatar(file, cb) {
     if (!file || !/^image\//.test(file.type)) return;
@@ -274,6 +338,86 @@ function enjWireAvatar(scope, onDirty) {
         onDirty();
     });
 }
+
+// ── Modal: catálogo de modelos por proveedor (en vivo + fallback, flag free) ──
+(function () {
+    var modal = document.getElementById('modelo-modal');
+    if (!modal) return;
+    var listEl = modal.querySelector('[data-modal-list]');
+    var titleEl = modal.querySelector('[data-modal-title]');
+    var countEl = modal.querySelector('[data-modal-count]');
+    var noteEl = modal.querySelector('[data-modal-note]');
+    var searchEl = modal.querySelector('[data-modal-search]');
+    var freeEl = modal.querySelector('[data-modal-free]');
+    var URLM = "{% url 'enjambre:modelos_disponibles' %}";
+    var current = { card: null, models: [] };
+
+    function close() { modal.hidden = true; }
+    function open() { modal.hidden = false; searchEl.value = ''; freeEl.checked = false; }
+
+    function render() {
+        var q = searchEl.value.trim().toLowerCase(), onlyFree = freeEl.checked, shown = 0;
+        listEl.innerHTML = '';
+        current.models.forEach(function (m) {
+            if (onlyFree && !m.free) return;
+            if (q && m.id.toLowerCase().indexOf(q) === -1) return;
+            shown++;
+            var btn = document.createElement('button');
+            btn.type = 'button'; btn.className = 'enj-modelo-item';
+            var mid = document.createElement('span'); mid.className = 'mid'; mid.textContent = m.id;
+            btn.appendChild(mid);
+            if (m.free) {
+                var b = document.createElement('span'); b.className = 'enj-free-badge'; b.textContent = '★ FREE';
+                btn.appendChild(b);
+            }
+            btn.addEventListener('click', function () { choose(m.id); });
+            listEl.appendChild(btn);
+        });
+        countEl.textContent = shown + ' / ' + current.models.length;
+        if (!shown) listEl.innerHTML = '<p class="enj-muted" style="padding:.6rem;">{% trans "Nada que coincida." %}</p>';
+    }
+    function choose(id) {
+        var card = current.card;
+        if (card) {
+            var inp = card.querySelector('[data-modelo]');
+            if (inp) {
+                inp.value = id;
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                card.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
+        }
+        close();
+    }
+    function load(card) {
+        current.card = card; current.models = [];
+        var sel = card.querySelector('[data-cliente]');
+        var ck = sel ? sel.value : '';
+        var label = (sel && sel.selectedOptions[0]) ? sel.selectedOptions[0].textContent.trim() : ck;
+        titleEl.textContent = '{% trans "Modelos" %} · ' + label;
+        countEl.textContent = '…'; noteEl.hidden = true;
+        listEl.innerHTML = '<p class="enj-muted" style="padding:.6rem;">{% trans "Cargando…" %}</p>';
+        open();
+        fetch(URLM + '?cliente=' + encodeURIComponent(ck), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                current.models = d.models || [];
+                if (d.nota) { noteEl.textContent = '⚠ ' + d.nota; noteEl.hidden = false; }
+                else if (d.source === 'live') { noteEl.textContent = '✔ {% trans "lista en vivo del proveedor" %} · ' + d.free + ' free'; noteEl.hidden = false; }
+                render();
+            })
+            .catch(function () { listEl.innerHTML = '<p class="enj-muted" style="padding:.6rem;">{% trans "No se pudo cargar." %}</p>'; });
+    }
+
+    document.querySelectorAll('[data-card]').forEach(function (card) {
+        var btn = card.querySelector('[data-pick-modelo]');
+        if (btn) btn.addEventListener('click', function () { load(card); });
+    });
+    searchEl.addEventListener('input', render);
+    freeEl.addEventListener('change', render);
+    modal.querySelector('[data-modal-close]').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
+})();
 
 (function () {
     var META = JSON.parse((document.getElementById('clientes-meta') || {}).textContent || '{}');

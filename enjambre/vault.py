@@ -29,6 +29,11 @@ from cryptography.fernet import Fernet, InvalidToken
 # Proveedores por API key soportados (espejo de los api-* de clientes.py).
 PROVIDERS = ('anthropic', 'openai', 'openrouter')
 
+# Passphrase mínima al CREAR la bóveda. El salt va EN CLARO en secrets.enc (para listar
+# providers sin abrir), así que una passphrase vacía/trivial se forzaría al toque → rompería
+# el threat model. Se exige solo al crear; después la passphrase ya quedó fijada.
+MIN_PASSPHRASE = 8
+
 # Parámetros scrypt (interactivos, razonables en una notebook modesta).
 _SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2 ** 15, 8, 1
 # scrypt necesita ~128·N·r·p = 32 MiB para estos parámetros; el default de OpenSSL (maxmem=32 MiB)
@@ -148,14 +153,20 @@ def _write_vault(passphrase, tokens, salt):
 
 
 def set_key(passphrase, provider, token):
-    """Guarda/actualiza la key de un proveedor. La PRIMERA key fija la passphrase de la bóveda;
-    las siguientes deben usar la MISMA passphrase (si no, no puede descifrar lo existente).
-    Devuelve (ok, error)."""
+    """Guarda/actualiza la key de un proveedor. La PRIMERA key fija la passphrase de la bóveda
+    (mín. MIN_PASSPHRASE); las siguientes deben usar la MISMA passphrase (si no, no puede
+    descifrar lo existente). Al guardar OK deja la bóveda DESBLOQUEADA: acabás de probar la
+    passphrase, así que la key queda usable sin un paso extra. Devuelve (ok, error)."""
     if provider not in PROVIDERS:
         return False, 'proveedor desconocido'
     token = (token or '').strip()
     if not token:
         return False, 'la key está vacía'
+    # Una API key es siempre ASCII imprimible. Si trae un emoji/carácter raro (típico: pegaste sin
+    # querer el texto de un error), rechazala acá: si no, urllib revienta al mandar el header
+    # Authorization con un latin-1 codec error (bug real cazado en la VM).
+    if not token.isascii() or any(ord(ch) < 0x20 for ch in token):
+        return False, 'la API key tiene caracteres inválidos (¿pegaste texto de más?)'
     if has_vault():
         meta = json.loads(_vault_path().read_text())
         salt = base64.b64decode(meta['salt'])
@@ -164,12 +175,14 @@ def set_key(passphrase, provider, token):
         except (InvalidToken, ValueError, KeyError):
             return False, 'passphrase incorrecta'
     else:
+        # Crear la bóveda: exigir una passphrase real (no vacía ni solo espacios ni corta).
+        if len(passphrase or '') < MIN_PASSPHRASE or not (passphrase or '').strip():
+            return False, f'elegí una passphrase de al menos {MIN_PASSPHRASE} caracteres'
         salt = os.urandom(16)
         tokens = {}
     tokens[provider] = token
     _write_vault(passphrase, tokens, salt)
-    if is_unlocked():          # si estaba abierta, refrescar el runtime
-        _write_runtime(tokens)
+    _write_runtime(tokens)     # auto-desbloqueo: la key queda activa en un solo paso
     return True, ''
 
 

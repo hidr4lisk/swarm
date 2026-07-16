@@ -188,7 +188,10 @@ header {
     align-items: center;
     line-height: 1;
 }
-.gov-banner .gov-flag { font-size: 15px; }
+.gov-banner .gov-flag { display: inline-flex; align-items: center; }
+/* La bandera lleva width/height explícitos en el <svg> (APB: se ve aunque el CSS no cargue).
+   Acá solo el acabado — sin tocar el tamaño para no pisar los atributos. */
+.gov-banner .gov-flag svg { display: block; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .18); }
 .gov-banner .gov-stars { color: #f5c518; letter-spacing: 3px; font-size: 13px; }
 @media (max-width: 1100px) { .gov-banner { display: none; } }
 

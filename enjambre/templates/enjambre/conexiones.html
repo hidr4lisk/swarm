@@ -29,7 +29,15 @@
     .cx-lock { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex;
                align-items: center; justify-content: center; font-size: 15px;
                background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
-    .cx-vault.abierta .cx-lock { background: rgba(46,204,64,.16); color: #2ecc40; }
+    .cx-vault.state-abierta .cx-lock { background: rgba(46,204,64,.16); color: #2ecc40; }
+    .cx-vaulttxt { display: flex; flex-direction: column; gap: .12rem; min-width: 130px; }
+    .cx-vaulttxt strong { font-size: .95rem; line-height: 1.2; }
+    /* Botones según estado: en "nueva" no hay ninguno (la acción es Guardar la 1ª key abajo). */
+    .cx-vault [data-act="unlock"], .cx-vault [data-act="lock"] { display: none; }
+    .cx-vault.state-cerrada [data-act="unlock"] { display: inline-flex; }
+    .cx-vault.state-abierta  [data-act="lock"]  { display: inline-flex; }
+    .cx-hint { font-size: .82rem; color: var(--accent-color); margin: .1rem 0 1rem;
+               display: flex; align-items: center; gap: .45rem; }
     .cx-pass { flex: 1; min-width: 150px; }
     .cx-pass input { width: 100%; box-sizing: border-box; }
     .cx-key-token { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
@@ -108,25 +116,30 @@
     <div class="cx-panel" data-panel="keys" hidden data-vault>
         <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
             {% blocktrans %}Las sillas por <strong>API key</strong> (Anthropic / OpenAI-compatible / OpenRouter)
-            no necesitan ningún CLI: hablan directo con el proveedor. Sus keys se guardan
-            <strong>cifradas con una passphrase</strong> en <code>data/secrets.enc</code> — si se pierde el
-            pendrive sin la passphrase, no hay tokens en claro. Para que las sillas las usen en una mesa,
-            <strong>desbloqueá</strong> la bóveda.{% endblocktrans %}
+            hablan directo con el proveedor, sin CLI. Las keys se guardan <strong>cifradas con tu
+            passphrase</strong> en <code>data/secrets.enc</code>: si se pierde el pendrive sin la passphrase,
+            no hay tokens en claro.{% endblocktrans %}
         </p>
 
-        <div class="cx-vault {% if vault_desbloqueada %}abierta{% endif %}" data-vaultbar>
-            <span class="cx-lock"><i class="fas {% if vault_desbloqueada %}fa-lock-open{% else %}fa-lock{% endif %}" data-lockicon></i></span>
-            <div class="cx-pass">
-                <label class="cx-note" for="cx-pass-input">{% trans 'Passphrase de la bóveda' %}</label>
-                <input id="cx-pass-input" type="password" data-pass autocomplete="off"
-                       placeholder="{% trans '••••••••' %}">
+        <div class="cx-vault state-{{ vault_state }}" data-vaultbar data-state="{{ vault_state }}"
+             data-nconf="{{ vault_nconf }}" data-minpass="{{ vault_min_pass }}">
+            <span class="cx-lock"><i class="fas fa-lock" data-lockicon></i></span>
+            <div class="cx-vaulttxt">
+                <strong data-vaulttitle></strong>
+                <span class="cx-note" data-vaultsub></span>
             </div>
-            <button class="enj-btn" type="button" data-act="unlock" {% if vault_desbloqueada %}hidden{% endif %}>
-                <i class="fas fa-lock-open"></i> {% trans 'Desbloquear' %}</button>
-            <button class="enj-ghost" type="button" data-act="lock" {% if not vault_desbloqueada %}hidden{% endif %}>
-                <i class="fas fa-lock"></i> {% trans 'Bloquear' %}</button>
+            <div class="cx-pass">
+                <label class="cx-note" for="cx-pass-input" data-passlabel></label>
+                <input id="cx-pass-input" type="password" data-pass autocomplete="off" placeholder="••••••••">
+            </div>
+            <button class="enj-btn" type="button" data-act="unlock"><i class="fas fa-lock-open"></i> {% trans 'Desbloquear' %}</button>
+            <button class="enj-ghost" type="button" data-act="lock"><i class="fas fa-lock"></i> {% trans 'Bloquear' %}</button>
         </div>
         <div class="cx-msg" data-vaultmsg role="status"></div>
+
+        <p class="cx-hint" data-hint {% if vault_state != 'nueva' %}hidden{% endif %}>
+            <i class="fas fa-arrow-down"></i> {% trans 'Pegá tu primera key abajo y tocá Guardar — queda creada y activa en un solo paso.' %}
+        </p>
 
         <div class="enj-grid" style="grid-template-columns:1fr;">
             {% for k in keys %}
@@ -150,8 +163,7 @@
         </div>
 
         <p class="cx-note" style="margin-top:1rem;">
-            {% blocktrans %}La <strong>primera</strong> key que guardes fija la passphrase de la bóveda; las
-            siguientes usan la misma. La passphrase nunca se guarda ni se loguea.{% endblocktrans %}
+            {% trans 'La passphrase nunca se guarda ni se loguea; se usa solo para cifrar y descifrar tus keys.' %}
         </p>
     </div>
 </div>
@@ -169,17 +181,32 @@
     });
 })();
 
-// ── Bóveda de API keys ────────────────────────────────────────────────────────
+// ── Bóveda de API keys (máquina de 3 estados: nueva / cerrada / abierta) ───────
 (function () {
     var vault = document.querySelector('[data-vault]');
     if (!vault) return;
-    var token = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
-    var passInput = vault.querySelector('[data-pass]');
+    var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
     var bar = vault.querySelector('[data-vaultbar]');
+    var passInput = vault.querySelector('[data-pass]');
     var lockIcon = vault.querySelector('[data-lockicon]');
+    var titleEl = vault.querySelector('[data-vaulttitle]');
+    var subEl = vault.querySelector('[data-vaultsub]');
+    var passLabel = vault.querySelector('[data-passlabel]');
+    var hint = vault.querySelector('[data-hint]');
     var msg = vault.querySelector('[data-vaultmsg]');
-    var btnUnlock = vault.querySelector('[data-act="unlock"]');
-    var btnLock = vault.querySelector('[data-act="lock"]');
+    var minPass = parseInt(bar.dataset.minpass || '8', 10);
+
+    var T = {
+        nueva:   { icon: 'fa-lock',      title: '{% trans "Creá tu bóveda" %}',
+                   sub: '{% trans "Elegí una passphrase y guardá tu primera key: queda cifrada y activa en un paso." %}',
+                   pass: '{% trans "Elegí una passphrase (mín. 8)" %}' },
+        cerrada: { icon: 'fa-lock',      title: '{% trans "Bóveda cerrada" %}',
+                   sub: '{% trans "Ingresá tu passphrase para activar las keys en esta sesión." %}',
+                   pass: '{% trans "Tu passphrase" %}' },
+        abierta: { icon: 'fa-lock-open', title: '{% trans "Bóveda abierta" %}',
+                   sub: '{% trans "Las sillas API ya pueden usar sus keys." %}',
+                   pass: '{% trans "Tu passphrase" %}' },
+    };
 
     function say(text, kind) {
         msg.textContent = text || '';
@@ -190,14 +217,26 @@
         Object.keys(fields).forEach(function (k) { fd.append(k, fields[k]); });
         return fetch("{% url 'enjambre:vault_keys' %}", {
             method: 'POST', body: fd,
-            headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' },
         }).then(function (r) { return r.json(); });
     }
-    function setUnlocked(on) {
-        bar.classList.toggle('abierta', on);
-        lockIcon.className = 'fas ' + (on ? 'fa-lock-open' : 'fa-lock');
-        btnUnlock.hidden = on;
-        btnLock.hidden = !on;
+    function setState(state, nconf) {
+        var t = T[state] || T.nueva;
+        bar.dataset.state = state;
+        bar.className = 'cx-vault state-' + state;
+        lockIcon.className = 'fas ' + t.icon;
+        titleEl.textContent = t.title;
+        var sub = t.sub;
+        if (state === 'cerrada' && nconf > 0) {
+            sub = nconf + ' {% trans "key(s) guardada(s)." %} ' + sub;
+        }
+        subEl.textContent = sub;
+        passLabel.textContent = t.pass;
+        if (hint) hint.hidden = (state !== 'nueva');
+    }
+    function stateFrom(d) {
+        if (d.desbloqueada) return 'abierta';
+        return (d.configurados && d.configurados.length) ? 'cerrada' : 'nueva';
     }
     function markConfigured(list) {
         vault.querySelectorAll('[data-key]').forEach(function (card) {
@@ -209,20 +248,23 @@
         });
     }
 
-    btnUnlock.addEventListener('click', function () {
+    // Estado inicial (server-side)
+    setState(bar.dataset.state, parseInt(bar.dataset.nconf || '0', 10));
+
+    vault.querySelector('[data-act="unlock"]').addEventListener('click', function () {
         var pass = passInput.value;
-        if (!pass) { say('{% trans "Escribí la passphrase." %}', 'err'); return; }
+        if (!pass) { say('{% trans "Escribí tu passphrase." %}', 'err'); return; }
         post({ accion: 'unlock', passphrase: pass }).then(function (d) {
-            setUnlocked(d.desbloqueada);
-            say(d.ok ? '{% trans "Bóveda desbloqueada — las sillas API ya pueden usar sus keys." %}' : (d.error || 'Error'),
-                d.ok ? 'ok' : 'err');
-        }).catch(function () { say('Error de red', 'err'); });
+            setState(stateFrom(d), (d.configurados || []).length);
+            if (d.ok) { passInput.value = ''; say('{% trans "Bóveda desbloqueada — las sillas API ya pueden usar sus keys." %}', 'ok'); }
+            else { say(d.error || 'Error', 'err'); }
+        }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
     });
-    btnLock.addEventListener('click', function () {
+    vault.querySelector('[data-act="lock"]').addEventListener('click', function () {
         post({ accion: 'lock' }).then(function (d) {
-            setUnlocked(false);
+            setState(stateFrom(d), (d.configurados || []).length);
             say('{% trans "Bóveda bloqueada." %}', 'ok');
-        }).catch(function () { say('Error de red', 'err'); });
+        }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
     });
 
     vault.querySelectorAll('[data-key]').forEach(function (card) {
@@ -230,22 +272,25 @@
         var tokenInput = card.querySelector('[data-token]');
         card.querySelector('[data-act="set"]').addEventListener('click', function () {
             var pass = passInput.value, tok = tokenInput.value;
-            if (!pass) { say('{% trans "Escribí la passphrase (arriba) para cifrar la key." %}', 'err'); return; }
             if (!tok.trim()) { say('{% trans "Pegá la API key primero." %}', 'err'); return; }
+            if (!pass) { say('{% trans "Elegí una passphrase arriba para cifrar la key." %}', 'err'); return; }
+            if (bar.dataset.state === 'nueva' && pass.length < minPass) {
+                say('{% trans "La passphrase tiene que tener al menos 8 caracteres." %}', 'err'); return;
+            }
             post({ accion: 'set', provider: provider, token: tok, passphrase: pass }).then(function (d) {
-                if (d.ok) { tokenInput.value = ''; markConfigured(d.configurados); setUnlocked(d.desbloqueada);
-                            say('{% trans "Key guardada y cifrada." %}', 'ok'); }
+                if (d.ok) { tokenInput.value = ''; markConfigured(d.configurados); setState(stateFrom(d), (d.configurados || []).length);
+                            say('{% trans "Key guardada, cifrada y activada." %}', 'ok'); }
                 else { say(d.error || 'Error', 'err'); }
-            }).catch(function () { say('Error de red', 'err'); });
+            }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
         });
         var rm = card.querySelector('[data-act="remove"]');
         if (rm) rm.addEventListener('click', function () {
             var pass = passInput.value;
-            if (!pass) { say('{% trans "Escribí la passphrase para quitar la key." %}', 'err'); return; }
+            if (!pass) { say('{% trans "Escribí tu passphrase para quitar la key." %}', 'err'); return; }
             post({ accion: 'remove', provider: provider, passphrase: pass }).then(function (d) {
-                if (d.ok) { markConfigured(d.configurados); say('{% trans "Key quitada." %}', 'ok'); }
+                if (d.ok) { markConfigured(d.configurados); setState(stateFrom(d), (d.configurados || []).length); say('{% trans "Key quitada." %}', 'ok'); }
                 else { say(d.error || 'Error', 'err'); }
-            }).catch(function () { say('Error de red', 'err'); });
+            }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
         });
     });
 })();

@@ -243,10 +243,15 @@ def crear_sesion(request):
     if not _can_access(request):
         return HttpResponseForbidden("Sin acceso al Enjambre.")
     if request.method == 'POST':
-        nombre = request.POST.get('nombre', '').strip() or 'Mesa'
+        nombre = request.POST.get('nombre', '').strip()
         # Single-user sin login: no hay usuario autenticado que registrar como creador.
         creador = request.user if request.user.is_authenticated else None
-        sesion = Sesion.objects.create(nombre=nombre, creador=creador)
+        sesion = Sesion.objects.create(nombre=nombre or 'Mesa', creador=creador)
+        # Sin nombre (botón «+ Nueva») → nombre default numerado por id, distinguible en la lista
+        # y renombrable con el lápiz. El buscador de arriba filtra; acá solo se crea.
+        if not nombre:
+            sesion.nombre = f'Mesa {sesion.pk}'
+            sesion.save(update_fields=['nombre'])
         # Arranca con las sillas activas que el usuario puede usar (consulta = solo permitidas,
         # nunca vacío para que el fallback "todas las activas" del engine no cuele una paga).
         iniciales = Participante.objects.filter(activo=True)
@@ -905,13 +910,18 @@ def crear_silla(request):
     if not _puede_controlar(request):
         return HttpResponseForbidden("Solo control.")
     if request.method == 'POST':
-        nombre = (request.POST.get('nombre') or 'Nueva silla').strip()[:100]
+        nombre_in = (request.POST.get('nombre') or '').strip()[:100]
+        nombre = nombre_in or 'Silla'
         cmd, cmdt = build_comando('opencode', '')
         orden = (Participante.objects.aggregate(m=Max('orden'))['m'] or 0) + 1
         silla = Participante.objects.create(
             key=_key_unica(nombre), nombre=nombre, comando=cmd, comando_trabajo=cmdt,
             activo=True, permitir_consulta=False, orden=orden,
         )
+        # Sin nombre (botón «+ Nueva») → nombre default numerado por id (se renombra inline).
+        if not nombre_in:
+            silla.nombre = f'Silla {silla.pk}'
+            silla.save(update_fields=['nombre'])
         log_event(request.user, 'ENJAMBRE_SILLA_CREATE', 'enjambre', {'silla': silla.key}, request)
     return redirect('enjambre:gestionar_sillas')
 
@@ -1007,13 +1017,18 @@ def conexiones(request):
     configurados = vault.configured_providers()
     keys = [{'id': p, 'label': prov_labels.get(p, p), 'ok': p in configurados}
             for p in vault.PROVIDERS]
+    desbloqueada, existe = vault.is_unlocked(), vault.has_vault()
+    vault_state = 'abierta' if desbloqueada else ('cerrada' if existe else 'nueva')
     return render(request, 'enjambre/conexiones.html', {
         'filas': filas,
         'chequeado_at': chequeado_at,
         'puede_controlar': _puede_controlar(request),
         'keys': keys,
-        'vault_desbloqueada': vault.is_unlocked(),
-        'vault_existe': vault.has_vault(),
+        'vault_desbloqueada': desbloqueada,
+        'vault_existe': existe,
+        'vault_state': vault_state,
+        'vault_min_pass': vault.MIN_PASSPHRASE,
+        'vault_nconf': len(configurados),
     })
 
 
@@ -1037,7 +1052,12 @@ def vault_keys(request):
         ok, error = vault.remove_key(passphrase, request.POST.get('provider', ''))
     elif accion == 'unlock':
         ok = vault.unlock(passphrase)
-        error = '' if ok else 'passphrase incorrecta (o bóveda vacía)'
+        if ok:
+            error = ''
+        elif not vault.has_vault():
+            error = 'todavía no hay bóveda — guardá tu primera key para crearla'
+        else:
+            error = 'passphrase incorrecta'
     elif accion == 'lock':
         vault.lock()
     else:
@@ -1050,6 +1070,59 @@ def vault_keys(request):
                              'desbloqueada': vault.is_unlocked(),
                              'configurados': vault.configured_providers()})
     return redirect('enjambre:conexiones')
+
+
+@requiere_acceso
+def modelos_disponibles(request):
+    """Lista los modelos REALES del proveedor de un cliente, para el modal de la silla. Trae en
+    vivo lo que se puede (OpenRouter público; OpenAI/Anthropic con la key del vault; opencode por
+    CLI si está instalado) y flaggea los free. Si no se puede, cae a la lista curada de
+    clientes.py con una nota. Solo control."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    from django.conf import settings as dj_settings
+    from .clientes import CLIENTES, es_api
+    from . import providers, vault
+    ckey = request.GET.get('cliente', '')
+    c = CLIENTES.get(ckey) or {}
+    curada = [{'id': m, 'free': providers._es_free_id(m)} for m in c.get('modelos', []) if m]
+    source, models, nota = 'curated', curada, ''
+
+    if es_api(ckey):
+        provider = c.get('api')
+        key = vault.get_key(provider) if vault.is_unlocked() else ''
+        base = getattr(dj_settings, 'SWARM_OPENAI_BASE_URL', '') if provider == 'openai' else ''
+        src, live, note = providers.listar_modelos(provider, api_key=key, base_url=base)
+        if src == 'live' and live:
+            source, models, nota = 'live', live, ''
+        else:
+            nota = f'{note} — te muestro las sugeridas' if note else 'te muestro las sugeridas'
+    elif ckey == 'opencode':
+        import shutil
+        import subprocess
+        try:
+            if shutil.which('opencode'):
+                r = subprocess.run(['opencode', 'models'], capture_output=True, text=True, timeout=15)
+                ids = [ln.strip() for ln in (r.stdout or '').splitlines() if ln.strip()]
+                if ids:
+                    source = 'live'
+                    models = [{'id': i, 'free': providers._es_free_id(i)} for i in ids]
+                else:
+                    nota = 'opencode no devolvió modelos — te muestro las sugeridas'
+            else:
+                nota = 'opencode no está instalado en esta máquina — te muestro las sugeridas'
+        except Exception:  # noqa: BLE001
+            nota = 'no se pudo consultar opencode — te muestro las sugeridas'
+
+    seen, uniq = set(), []
+    for m in models:
+        mid = m.get('id', '')
+        if mid and mid not in seen:
+            seen.add(mid)
+            uniq.append(m)
+    uniq.sort(key=lambda m: (not m.get('free'), m['id'].lower()))
+    return JsonResponse({'source': source, 'nota': nota, 'models': uniq,
+                         'total': len(uniq), 'free': sum(1 for m in uniq if m.get('free'))})
 
 
 @requiere_acceso

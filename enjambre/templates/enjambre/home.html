@@ -69,11 +69,15 @@
         </div>
     </div>
 
-    <form method="post" action="{% url 'enjambre:crear_sesion' %}" class="enj-row" style="margin:1rem 0;">
-        {% csrf_token %}
-        <input name="nombre" placeholder="{% trans 'Nombre de la mesa' %}" maxlength="200">
-        <button type="submit" class="enj-btn">{% trans 'Nueva mesa' %}</button>
-    </form>
+    <div class="enj-row enj-toolbar" style="margin:1rem 0;gap:.5rem;flex-wrap:wrap;">
+        <input type="search" id="mesa-buscar" class="enj-buscar" autocomplete="off"
+               placeholder="{% trans 'Buscar mesa…' %}" aria-label="{% trans 'Buscar mesa' %}"
+               style="flex:1;min-width:180px;">
+        <form method="post" action="{% url 'enjambre:crear_sesion' %}" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="enj-btn"><i class="fas fa-plus"></i> {% trans 'Nueva mesa' %}</button>
+        </form>
+    </div>
 
     <div class="enj-grid">
         {% for s in sesiones %}
@@ -131,6 +135,21 @@
 
 {% block extra_js %}
 <script>
+// ── Buscador de mesas (filtro client-side por nombre) ──
+(function () {
+    var q = document.getElementById('mesa-buscar');
+    var grid = document.querySelector('.enj-grid');
+    if (!q || !grid) return;
+    q.addEventListener('input', function () {
+        var v = q.value.trim().toLowerCase();
+        grid.querySelectorAll('.enj-card').forEach(function (card) {
+            var el = card.querySelector('[data-name]');
+            var name = (el ? el.textContent : '').toLowerCase();
+            card.style.display = (!v || name.indexOf(v) !== -1) ? '' : 'none';
+        });
+    });
+})();
+
 // ── Tarjetas: auto-guardado de sillas (AJAX) + renombrar mesa inline ──
 (function () {
     function getCookie(name) {

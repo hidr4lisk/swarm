@@ -122,8 +122,10 @@ No hace falta instalar nada (ni Python ni Docker).
   · Linux:   doble-clic en  enjambre.sh   (o  ./enjambre.sh  en una terminal)
   · Windows: doble-clic en  Enjambre.bat
 
-Se abre el navegador en http://127.0.0.1:8799. Andá a "Conexiones → API keys", cargá tus
-API keys (se guardan CIFRADAS con una passphrase que elegís vos) y ya podés armar mesas.
+Se abre el navegador en http://127.0.0.1:8799. Andá a "Conexiones → API keys": elegí una
+passphrase (mín. 8), pegá tu primera API key y tocá Guardar. Con ese único paso la bóveda queda
+creada, cifrada y ACTIVA — ya podés armar mesas. Cuando reabras Swarm, desbloqueá con esa misma
+passphrase.
 
 Tus datos (base + bóveda de keys) viven en la carpeta data/ de este pendrive.
 
