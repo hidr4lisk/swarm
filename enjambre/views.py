@@ -1105,10 +1105,12 @@ def modelos_disponibles(request):
         return HttpResponseForbidden("Solo control.")
     from django.conf import settings as dj_settings
     from .clientes import CLIENTES, es_api
-    from . import providers, vault
+    from . import providers, vault, toolbelt
     ckey = request.GET.get('cliente', '')
     c = CLIENTES.get(ckey) or {}
-    curada = [{'id': m, 'free': providers._es_free_id(m)} for m in c.get('modelos', []) if m]
+    # tools=None (desconocido) en la lista curada y en opencode: no informan capacidad de tool-use.
+    curada = [{'id': m, 'free': providers._es_free_id(m), 'tools': None}
+              for m in c.get('modelos', []) if m]
     source, models, nota = 'curated', curada, ''
 
     if es_api(ckey):
@@ -1129,7 +1131,7 @@ def modelos_disponibles(request):
                 ids = [ln.strip() for ln in (r.stdout or '').splitlines() if ln.strip()]
                 if ids:
                     source = 'live'
-                    models = [{'id': i, 'free': providers._es_free_id(i)} for i in ids]
+                    models = [{'id': i, 'free': providers._es_free_id(i), 'tools': None} for i in ids]
                 else:
                     nota = 'opencode no devolvió modelos — te muestro las sugeridas'
             else:
@@ -1143,9 +1145,17 @@ def modelos_disponibles(request):
         if mid and mid not in seen:
             seen.add(mid)
             uniq.append(m)
-    uniq.sort(key=lambda m: (not m.get('free'), m['id'].lower()))
+    # Con el toolbelt encendido, los que soportan tools van primero (son los que operan la máquina);
+    # si no, ordenamos por free primero. En ambos casos, alfabético como desempate.
+    belt_on = toolbelt.habilitado()
+    if belt_on:
+        uniq.sort(key=lambda m: (m.get('tools') is not True, not m.get('free'), m['id'].lower()))
+    else:
+        uniq.sort(key=lambda m: (not m.get('free'), m['id'].lower()))
     return JsonResponse({'source': source, 'nota': nota, 'models': uniq,
-                         'total': len(uniq), 'free': sum(1 for m in uniq if m.get('free'))})
+                         'total': len(uniq), 'free': sum(1 for m in uniq if m.get('free')),
+                         'tools': sum(1 for m in uniq if m.get('tools') is True),
+                         'belt_on': belt_on})
 
 
 @requiere_acceso

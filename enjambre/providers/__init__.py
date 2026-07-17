@@ -85,21 +85,26 @@ def listar_modelos(provider, api_key='', base_url=''):
                 free = _es_free_id(mid) or (
                     str(p.get('prompt', '1')) in ('0', '0.0')
                     and str(p.get('completion', '1')) in ('0', '0.0'))
-                out.append({'id': mid, 'free': bool(free)})
+                # `tools` en supported_parameters = el modelo soporta function-calling → sirve para
+                # el toolbelt. Si el modelo no lo soporta, la silla ignora las herramientas.
+                sp = m.get('supported_parameters') or []
+                out.append({'id': mid, 'free': bool(free), 'tools': 'tools' in sp})
             return 'live', out, ''
         if provider == 'openai':
             if not api_key:
                 return 'error', [], 'desbloqueá la bóveda para listar los modelos con tu key'
             base = (base_url or 'https://api.openai.com/v1').rstrip('/')
             data = _http_get_json(base + '/models', {'Authorization': 'Bearer ' + api_key})
-            return 'live', [{'id': m.get('id', ''), 'free': _es_free_id(m.get('id', ''))}
+            # OpenAI /models no informa capacidades → no afirmamos tools (None = desconocido).
+            return 'live', [{'id': m.get('id', ''), 'free': _es_free_id(m.get('id', '')), 'tools': None}
                             for m in data.get('data', [])], ''
         if provider == 'anthropic':
             if not api_key:
                 return 'error', [], 'desbloqueá la bóveda para listar los modelos con tu key'
             data = _http_get_json('https://api.anthropic.com/v1/models',
                                   {'x-api-key': api_key, 'anthropic-version': '2023-06-01'})
-            return 'live', [{'id': m.get('id', ''), 'free': False}
+            # Todos los modelos Claude soportan tool-use.
+            return 'live', [{'id': m.get('id', ''), 'free': False, 'tools': True}
                             for m in data.get('data', [])], ''
     except Exception as e:  # noqa: BLE001 — red/SSL/parse → el caller muestra la lista curada
         return 'error', [], str(e)
