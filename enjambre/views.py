@@ -1019,6 +1019,7 @@ def conexiones(request):
             for p in vault.PROVIDERS]
     desbloqueada, existe = vault.is_unlocked(), vault.has_vault()
     vault_state = 'abierta' if desbloqueada else ('cerrada' if existe else 'nueva')
+    from . import toolbelt
     return render(request, 'enjambre/conexiones.html', {
         'filas': filas,
         'chequeado_at': chequeado_at,
@@ -1029,7 +1030,29 @@ def conexiones(request):
         'vault_state': vault_state,
         'vault_min_pass': vault.MIN_PASSPHRASE,
         'vault_nconf': len(configurados),
+        'toolbelt_on': toolbelt.habilitado(),
+        'toolbelt_forzado': toolbelt.forzado_por_env(),
     })
+
+
+@requiere_acceso
+def toolbelt_toggle(request):
+    """Prende/apaga el toolbelt (que las sillas API operen la máquina real) desde la interfaz, sin
+    editar el launcher. Persiste como flag en el data dir; se lee en vivo. Solo control. AJAX."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    if request.method != 'POST':
+        return redirect('enjambre:conexiones')
+    from . import toolbelt
+    quiere = request.POST.get('on') in ('1', 'true', 'on')
+    if toolbelt.forzado_por_env():
+        estado = True  # forzado desde el entorno → no se apaga desde la UI
+    else:
+        estado = toolbelt.set_habilitado(quiere)
+    log_event(request.user, 'ENJAMBRE_TOOLBELT', 'enjambre', {'on': estado}, request)
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'ok': True, 'on': estado, 'forzado': toolbelt.forzado_por_env()})
+    return redirect('enjambre:conexiones')
 
 
 @requiere_acceso

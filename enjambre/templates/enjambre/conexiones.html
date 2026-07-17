@@ -46,6 +46,32 @@
     .cx-msg.ok  { color: #2ecc40; }
     .cx-msg.err { color: #e74c3c; }
     .cx-note { font-size: .8rem; color: var(--text-muted); }
+
+    /* Toolbelt: switch + tarjeta de estado */
+    .cx-belt { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+               padding: 1rem 1.1rem; border-radius: 12px; border: 1px solid var(--border-color);
+               background: rgba(var(--accent-rgb), .06); margin-bottom: 1rem; }
+    .cx-belt.on { border-color: rgba(46,204,64,.55); background: rgba(46,204,64,.08); }
+    .cx-belticon { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; display: flex;
+                   align-items: center; justify-content: center; font-size: 17px;
+                   background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
+    .cx-belt.on .cx-belticon { background: rgba(46,204,64,.16); color: #2ecc40; }
+    .cx-belttxt { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 150px; }
+    .cx-belttxt strong { font-size: .98rem; }
+    .cx-switch { position: relative; width: 54px; height: 30px; flex-shrink: 0; }
+    .cx-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .cx-slider { position: absolute; inset: 0; border-radius: 999px; cursor: pointer;
+                 background: rgba(192,57,43,.45); transition: background .15s; }
+    .cx-slider::before { content: ''; position: absolute; height: 22px; width: 22px; left: 4px;
+                 top: 4px; border-radius: 50%; background: #fff; transition: transform .15s; }
+    .cx-switch input:checked + .cx-slider { background: rgba(46,204,64,.8); }
+    .cx-switch input:checked + .cx-slider::before { transform: translateX(24px); }
+    .cx-switch input:disabled + .cx-slider { opacity: .5; cursor: not-allowed; }
+    .cx-safety { list-style: none; padding: 0; margin: .2rem 0 1rem; display: flex;
+                 flex-direction: column; gap: .55rem; }
+    .cx-safety li { display: flex; gap: .6rem; align-items: flex-start; font-size: .86rem;
+                    line-height: 1.4; }
+    .cx-safety i { color: var(--accent-color); margin-top: .18rem; flex-shrink: 0; width: 1rem; text-align: center; }
 </style>
 {% endblock %}
 
@@ -69,6 +95,9 @@
         </button>
         <button class="cx-tab" type="button" role="tab" data-tab="keys" aria-selected="false">
             <i class="fas fa-key"></i> {% trans 'API keys' %}
+        </button>
+        <button class="cx-tab" type="button" role="tab" data-tab="belt" aria-selected="false">
+            <i class="fas fa-toolbox"></i> {% trans 'Toolbelt' %}
         </button>
     </div>
 
@@ -164,6 +193,50 @@
 
         <p class="cx-note" style="margin-top:1rem;">
             {% trans 'La passphrase nunca se guarda ni se loguea; se usa solo para cifrar y descifrar tus keys.' %}
+        </p>
+    </div>
+
+    {# ── Panel 3: Toolbelt (las sillas API operan la máquina real) ── #}
+    <div class="cx-panel" data-panel="belt" hidden data-belt
+         data-on="{{ toolbelt_on|yesno:'1,0' }}" data-forced="{{ toolbelt_forzado|yesno:'1,0' }}">
+        <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+            {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas por API key dejan de solo conversar
+            y pueden <strong>inspeccionar y operar la computadora donde corre Swarm</strong> (la del cliente). Es el
+            corazón del soporte: la silla mira el sistema <strong>real</strong> en vez de adivinar.{% endblocktrans %}
+        </p>
+
+        <div class="cx-belt {% if toolbelt_on %}on{% endif %}" data-beltbar>
+            <span class="cx-belticon"><i class="fas fa-toolbox"></i></span>
+            <div class="cx-belttxt">
+                <strong data-belttitle>{% if toolbelt_on %}{% trans 'Toolbelt encendido' %}{% else %}{% trans 'Toolbelt apagado' %}{% endif %}</strong>
+                <span class="cx-note" data-beltsub>
+                    {% if toolbelt_forzado %}{% trans 'Forzado por SWARM_TOOLBELT en el launcher — se controla desde ahí, no acá.' %}
+                    {% elif toolbelt_on %}{% trans 'Las sillas API pueden operar esta máquina.' %}
+                    {% else %}{% trans 'Las sillas API solo conversan; no ven la máquina.' %}{% endif %}
+                </span>
+            </div>
+            <label class="cx-switch" title="{% trans 'Encender / apagar el toolbelt' %}">
+                <input type="checkbox" data-beltswitch {% if toolbelt_on %}checked{% endif %} {% if toolbelt_forzado %}disabled{% endif %}>
+                <span class="cx-slider"></span>
+            </label>
+        </div>
+        <div class="cx-msg" data-beltmsg role="status"></div>
+
+        <ul class="cx-safety">
+            <li><i class="fas fa-magnifying-glass"></i>
+                <span>{% blocktrans %}<strong>Lectura automática:</strong> ver el SO, procesos, disco, archivos y comandos de
+                <strong>solo lectura</strong> (allowlist por sistema) — sin pedir permiso, para diagnosticar rápido.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-shield-halved"></i>
+                <span>{% blocktrans %}<strong>Cambios con tu OK:</strong> instalar, editar o reiniciar algo queda <strong>pendiente</strong>
+                en la Bitácora de la mesa hasta que vos lo apruebes. <strong>Nunca se ejecuta solo.</strong>{% endblocktrans %}</span></li>
+            <li><i class="fas fa-book"></i>
+                <span>{% blocktrans %}<strong>Todo queda registrado</strong> en la Bitácora de cada mesa (lecturas y cambios).{% endblocktrans %}</span></li>
+        </ul>
+
+        <p class="cx-note">
+            {% blocktrans %}Apagado por defecto. Necesita una silla por API key con un modelo que soporte
+            <strong>herramientas</strong> (function-calling); si el modelo no las soporta, la silla las ignora.
+            Pedile <code>system_report</code> para probar.{% endblocktrans %}
         </p>
     </div>
 </div>
@@ -291,6 +364,44 @@
                 if (d.ok) { markConfigured(d.configurados); setState(stateFrom(d), (d.configurados || []).length); say('{% trans "Key quitada." %}', 'ok'); }
                 else { say(d.error || 'Error', 'err'); }
             }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
+        });
+    });
+})();
+
+// ── Toolbelt (toggle en vivo: prende/apaga que las sillas API operen la máquina) ──
+(function () {
+    var belt = document.querySelector('[data-belt]');
+    if (!belt) return;
+    var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var bar = belt.querySelector('[data-beltbar]');
+    var sw = belt.querySelector('[data-beltswitch]');
+    var titleEl = belt.querySelector('[data-belttitle]');
+    var subEl = belt.querySelector('[data-beltsub]');
+    var msg = belt.querySelector('[data-beltmsg]');
+
+    function paint(on) {
+        bar.className = 'cx-belt' + (on ? ' on' : '');
+        titleEl.textContent = on ? '{% trans "Toolbelt encendido" %}' : '{% trans "Toolbelt apagado" %}';
+        subEl.textContent = on ? '{% trans "Las sillas API pueden operar esta máquina." %}'
+                               : '{% trans "Las sillas API solo conversan; no ven la máquina." %}';
+    }
+    sw.addEventListener('change', function () {
+        var quiere = sw.checked;
+        var fd = new FormData();
+        fd.append('on', quiere ? '1' : '0');
+        fetch("{% url 'enjambre:toolbelt_toggle' %}", {
+            method: 'POST', body: fd,
+            headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            sw.checked = !!d.on;
+            paint(!!d.on);
+            msg.textContent = d.on ? '{% trans "Toolbelt encendido — pedile a una silla API «corré system_report»." %}'
+                                   : '{% trans "Toolbelt apagado." %}';
+            msg.className = 'cx-msg ok';
+        }).catch(function () {
+            sw.checked = !quiere;  // revertir el switch si falló
+            msg.textContent = '{% trans "Error de red" %}';
+            msg.className = 'cx-msg err';
         });
     });
 })();

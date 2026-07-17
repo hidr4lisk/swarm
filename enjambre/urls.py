@@ -29,6 +29,7 @@ urlpatterns = [
     path('ayuda/', views.ayuda, name='ayuda'),
     path('conexiones/', views.conexiones, name='conexiones'),
     path('conexiones/vault/', views.vault_keys, name='vault_keys'),
+    path('conexiones/toolbelt/', views.toolbelt_toggle, name='toolbelt_toggle'),
     path('conexiones/modelos/', views.modelos_disponibles, name='modelos_disponibles'),
     path('sillas/', views.gestionar_sillas, name='gestionar_sillas'),
     path('sillas/avatares/', views.guardar_avatares, name='guardar_avatares'),

@@ -20,6 +20,7 @@ import platform
 import shlex
 import shutil
 import subprocess
+from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
@@ -57,9 +58,41 @@ _DENY_OPS_WIN = ('&', '|', '>', '<', '^')
 
 
 # ── Estado ──────────────────────────────────────────────────────────────────────
-def habilitado():
-    """El toolbelt está OFF salvo que se prenda explícito (setting o env SWARM_TOOLBELT)."""
+# El toggle de la UI persiste como un flag en el data dir (el pendrive): el usuario NO edita el
+# launcher. Se lee EN VIVO en cada turno → prender/apagar tiene efecto al instante, sin reiniciar
+# (web y worker comparten proceso en `serve`; y aunque no lo compartieran, ambos leen el mismo flag).
+def _flag_path():
+    return Path(getattr(settings, 'SWARM_DATA_DIR', Path(settings.BASE_DIR) / 'data')) / '.toolbelt_on'
+
+
+def forzado_por_env():
+    """True si el toolbelt está forzado ON por setting/entorno (SWARM_TOOLBELT). Es el override
+    avanzado del launcher: cuando está, la UI muestra el toggle bloqueado (se controla desde ahí)."""
     return bool(getattr(settings, 'SWARM_TOOLBELT', False) or os.environ.get('SWARM_TOOLBELT'))
+
+
+def habilitado():
+    """El toolbelt está OFF por default. Se prende desde la interfaz (toggle → flag en el data dir)
+    o forzado por SWARM_TOOLBELT (setting/env, override avanzado)."""
+    try:
+        return forzado_por_env() or _flag_path().exists()
+    except OSError:
+        return forzado_por_env()
+
+
+def set_habilitado(on):
+    """Prende/apaga el toolbelt desde la UI (persistente en el data dir). Devuelve el estado real.
+    Si está forzado por el entorno, no se puede apagar desde acá → queda ON."""
+    p = _flag_path()
+    try:
+        if on:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text('1')
+        else:
+            p.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return habilitado()
 
 
 # ── Esquemas de herramientas (formato Anthropic) + conversión a OpenAI ────────────

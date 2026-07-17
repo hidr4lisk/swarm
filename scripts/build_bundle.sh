@@ -93,7 +93,9 @@ export PYTHONPATH="$DIR/app:$DIR/runtime/linux/site-packages"
 export DJANGO_SETTINGS_MODULE="swarm.settings"
 export DATABASE_URL="sqlite:///$DIR/data/db.sqlite3"
 export SWARM_DATA_DIR="$DIR/data"
-# Para que las sillas operen esta máquina (toolbelt), descomentá:
+# El toolbelt (que las sillas operen esta máquina) se prende desde la interfaz:
+# Conexiones → Toolbelt → switch. NO hace falta tocar este archivo. La línea de abajo es un
+# override opcional para forzarlo SIEMPRE encendido desde el launcher:
 # export SWARM_TOOLBELT=1
 exec "$DIR/runtime/linux/python/bin/python3" "$DIR/app/manage.py" serve "$@"
 SH
@@ -108,7 +110,9 @@ set "PYTHONPATH=%DIR%app;%DIR%runtime\win\site-packages"
 set "DJANGO_SETTINGS_MODULE=swarm.settings"
 set "DATABASE_URL=sqlite:///%DIR%data/db.sqlite3"
 set "SWARM_DATA_DIR=%DIR%data"
-rem Para que las sillas operen esta maquina (toolbelt), descomenta:
+rem El toolbelt (que las sillas operen esta maquina) se prende desde la interfaz:
+rem en Conexiones, pestana Toolbelt, activa el switch. NO hace falta tocar este archivo. La linea
+rem de abajo es un override opcional para forzarlo SIEMPRE encendido desde el launcher:
 rem set "SWARM_TOOLBELT=1"
 "%DIR%runtime\win\python\python.exe" "%DIR%app\manage.py" serve %*
 endlocal
@@ -130,9 +134,11 @@ passphrase.
 Tus datos (base + bóveda de keys) viven en la carpeta data/ de este pendrive.
 
 Para que las sillas puedan OPERAR la máquina donde enchufás el pendrive (revisar disco, procesos,
-proponer arreglos), editá el launcher y descomentá la línea SWARM_TOOLBELT. Ojo: es poderoso —
-leé cada cambio propuesto antes de aprobarlo en la Bitácora. Solo en máquinas que estés autorizado
-a atender.
+proponer arreglos), prendé el TOOLBELT desde la interfaz: "Conexiones → Toolbelt" y activá el
+switch (arranca apagado, no hace falta editar nada). Ojo: es poderoso — las LECTURAS son
+automáticas, pero cada CAMBIO queda pendiente en la Bitácora hasta que vos lo aprobás. Solo en
+máquinas que estés autorizado a atender. Necesita una silla por API key con un modelo que soporte
+herramientas (function-calling).
 TXT
 
 echo "✅ Listo: $OUT"

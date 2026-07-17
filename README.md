@@ -160,9 +160,13 @@ the vault's passphrase; the rest use the same one. Caveats, said plainly:
   an attacker who already controls the running machine.
 - `data/secrets.enc` and the runtime file are git-ignored — they never reach the repo.
 
-**Toolbelt — sillas operate the real system (opt-in, `SWARM_TOOLBELT`, off by default).** This
+**Toolbelt — sillas operate the real system (opt-in, off by default).** This
 is the sharp edge of Swarm. When enabled, API-key sillas get tools that act on **the actual
-machine you plugged into** — no container, no capsule. The safety net is **not** a sandbox; it is:
+machine you plugged into** — no container, no capsule. You turn it on from the UI
+(**Conexiones → Toolbelt → switch**), which flips live with no restart — no need to edit the
+launcher; the `SWARM_TOOLBELT` env var is an optional override that forces it always-on. It needs
+an API-key silla whose model supports tool-use (function-calling). The safety net is **not** a
+sandbox; it is:
 
 - **Read-only by default, auto-run.** `inspect` only runs binaries on a read-only allowlist,
   with **no shell** (pipes/redirects are inert) and a denylist for write-flags (`find -delete`).
@@ -343,10 +347,13 @@ fija la passphrase de la bóveda; las siguientes usan la misma. Los peros, sin v
   contra un atacante que ya controla la máquina en uso.
 - `data/secrets.enc` y el archivo runtime están en `.gitignore` — nunca llegan al repo.
 
-**Toolbelt — las sillas operan el sistema real (opt-in, `SWARM_TOOLBELT`, apagado por default).**
+**Toolbelt — las sillas operan el sistema real (opt-in, apagado por default).**
 Es el filo de Swarm. Habilitado, las sillas por API key reciben herramientas que actúan sobre **la
-máquina a la que enchufaste el pendrive** — sin contenedor, sin cápsula. La red de seguridad **no**
-es un sandbox; es esto:
+máquina a la que enchufaste el pendrive** — sin contenedor, sin cápsula. Se prende desde la interfaz
+(**Conexiones → Toolbelt → switch**), que cambia en vivo sin reiniciar — no hace falta editar el
+launcher; la variable `SWARM_TOOLBELT` es un override opcional que lo fuerza siempre encendido.
+Necesita una silla por API key cuyo modelo soporte herramientas (function-calling). La red de
+seguridad **no** es un sandbox; es esto:
 
 - **Read-only por default, auto.** `inspect` solo corre binarios de una allowlist de solo-lectura,
   **sin shell** (pipes/redirecciones son inertes) y con denylist de banderas que escriben
