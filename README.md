@@ -60,7 +60,8 @@ overnight crawl. On any bare PC (no Python, no Docker): double-click **`enjambre
 whether to install Swarm on that PC for a fast next boot (unpacks the runtime to the local
 disk, ~280 MB) or to run **trace-free** (unpacked to a temp dir, wiped on exit, re-unpacked
 each time). No file to edit — you choose once **per machine** (remembered in that PC's local
-cache, not on the stick, so every new PC asks again). Your DB, tables, seats and encrypted
+cache, not on the stick, so every new PC asks again). Chose trace-free and changed your mind?
+The next launch on that PC offers to install it (or to stop asking). Your DB, tables, seats and encrypted
 vault always live in the stick's `data/` folder and travel with it between Windows and Linux,
 whichever you pick — same tables on any PC. Requires `bash`, `curl` and `tar` to *build* (not
 to use); run the build on a machine with internet, or just grab the release zip above.

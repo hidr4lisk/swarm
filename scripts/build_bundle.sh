@@ -155,6 +155,19 @@ else
     if [ -t 0 ]; then read -r -t 60 -p "  ¿Instalar en esta PC? [S/n]: " ans || ans=""; else ans=""; fi
     case "${ans:-S}" in [nN]*) MODE="efimero";; *) MODE="persistente";; esac
     printf '%s' "$MODE" > "$MODE_FILE"
+  elif [ "$MODE" = "efimero" ] && [ ! -f "$BASE/noask" ] && [ -t 0 ]; then
+    # Ya elegiste efímero antes → ofrecer instalar por si te arrepentís, sin molestar de más
+    echo
+    echo "  Esta PC está configurada SIN persistencia (Swarm se re-arma en cada arranque)."
+    echo "    [I] Instalar acá (arranca rápido la próxima)"
+    echo "    [M] Mantener sin rastro   (default, sigue en 6s)"
+    echo "    [N] No preguntarme más"
+    read -r -t 6 -p "  Elegí [i/M/n]: " up || up=""
+    case "${up:-M}" in
+      [iI]*) MODE="persistente"; printf '%s' "$MODE" > "$MODE_FILE";;   # pasa a persistente
+      [nN]*) : > "$BASE/noask";;                                        # no volver a ofrecer en esta PC
+      *) :;;                                                            # mantener efímero
+    esac
   fi
   if [ "$MODE" = "persistente" ]; then
     extract "$CACHE"
@@ -203,8 +216,10 @@ set "CLEANUP="
 if exist "%CACHE%\.ok" (set "RUNTIME=%CACHE%" & goto run)
 
 set "MODE="
+set "FIRSTTIME="
 if exist "%MODEFILE%" set /p MODE=<"%MODEFILE%"
 if defined MODE goto have_mode
+set "FIRSTTIME=1"
 echo.
 echo   Primera vez en esta PC.
 echo   Instalar Swarm en esta PC para que arranque rapido la proxima vez?
@@ -214,7 +229,26 @@ if errorlevel 2 (set "MODE=efimero") else (set "MODE=persistente")
 > "%MODEFILE%" echo %MODE%
 
 :have_mode
-if /I "%MODE%"=="efimero" goto ephemeral
+if /I not "%MODE%"=="efimero" goto persistent
+rem Ya elegiste efimero antes: ofrecer instalar por si te arrepentis (no apenas lo elegis, ni si pediste no molestar)
+if defined FIRSTTIME goto ephemeral
+if exist "%BASE%\noask" goto ephemeral
+echo.
+echo   Esta PC esta configurada SIN persistencia (Swarm se re-arma en cada arranque).
+echo     [I] Instalar aca (arranca rapido la proxima)
+echo     [M] Mantener sin rastro   (default, sigue en 6s)
+echo     [N] No preguntarme mas
+choice /C IMN /T 6 /D M /M "  Elegi"
+if errorlevel 3 goto noask_set
+if errorlevel 2 goto ephemeral
+set "MODE=persistente"
+> "%MODEFILE%" echo persistente
+goto persistent
+:noask_set
+type nul > "%BASE%\noask"
+goto ephemeral
+
+:persistent
 set "RUNTIME=%CACHE%"
 if exist "%CACHE%\.ok" goto run
 echo Descomprimiendo el runtime (una vez)...
@@ -259,8 +293,9 @@ La PRIMERA vez te pregunta (en la terminal/consola) si querés INSTALAR Swarm en
 arranque rápido la próxima vez —descomprime el runtime al disco local, deja ~280 MB— o usarlo en
 modo SIN RASTRO (se borra al cerrar y se re-arma en cada arranque). No hay que editar ningún
 archivo: elegís una vez POR PC (se recuerda en esa PC, no en el pendrive → cada máquina nueva
-vuelve a preguntar). Tus datos —mesas, sillas y bóveda— viven SIEMPRE en la carpeta data/ del
-pendrive y se mueven con él entre Windows y Linux, elijas lo que elijas.
+vuelve a preguntar). Si elegiste SIN RASTRO y te arrepentís, el próximo arranque te ofrece
+instalarlo en esa PC (o "no preguntarme más"). Tus datos —mesas, sillas y bóveda— viven SIEMPRE
+en la carpeta data/ del pendrive y se mueven con él entre Windows y Linux, elijas lo que elijas.
 
 Se abre el navegador en http://127.0.0.1:8799. Andá a "Conexiones → API keys": elegí una
 passphrase (mín. 8), pegá tu primera API key y tocá Guardar. Con ese único paso la bóveda queda
