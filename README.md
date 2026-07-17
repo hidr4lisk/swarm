@@ -8,6 +8,11 @@ A **multi-agent worktable** in your browser: several AIs sit at the same table �
 OpenAI-compatible, OpenRouter). **Install it, or carry the whole thing on a pendrive**
 and plug it into any bare PC — Windows or Linux, no Python, no Docker.
 
+**They don't just talk — they can operate the machine.** Flip on the **toolbelt** (opt-in,
+off by default, one switch in *Conexiones → Toolbelt*) and API-key seats get tools to inspect
+and fix the real computer you plugged into: read-only runs itself, every change waits for your
+OK, everything logged. → [Toolbelt](#threat-model--read-this-before-using-it)
+
 🌐 **Project page:** <https://hidr4lisk.github.io/swarm>
 
 ![A Swarm table: the seats debate the request, /armar builds the script for real (one commit per turn) and the worker's live flow shows on the right](docs/img/mesa.png)
@@ -200,6 +205,11 @@ mesa — **charlan, debaten y actúan** — coordinadas por un líder. Corrélas
 **CLIs** ya logueados (`claude`, `opencode`, `agy`) o sobre tus propias **API keys**
 (Anthropic, compatible-OpenAI, OpenRouter). **Instalalo, o llevate todo en un pendrive**
 y enchufalo en cualquier PC pelada — Windows o Linux, sin Python, sin Docker.
+
+**No solo hablan — pueden operar la máquina.** Prendé el **toolbelt** (opt-in, apagado por
+default, un switch en *Conexiones → Toolbelt*) y las sillas por API key reciben herramientas para
+inspeccionar y arreglar la computadora real en la que estás: lo de solo-lectura corre solo, cada
+cambio espera tu OK, todo queda logueado. → [Toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo)
 
 🌐 **Página del proyecto:** <https://hidr4lisk.github.io/swarm>
 
