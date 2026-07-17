@@ -46,11 +46,16 @@ table. That's it: no Docker, no CLI, no account.
 ./scripts/build_bundle.sh        # → dist/swarm-portable/
 ```
 
-Copy `dist/swarm-portable/` to a pendrive. On any bare PC (no Python, no Docker):
-double-click **`enjambre.sh`** (Linux) or **`Enjambre.bat`** (Windows) — the whole app
-boots from the stick with a Python bundled per-OS, and the table opens in the browser.
-Your DB and encrypted vault live in the stick's `data/` folder. Requires `bash`, `curl`
-and `tar` to *build* (not to use); run the build on a machine with internet.
+Copy `dist/swarm-portable/` to a pendrive — it's just **a handful of big files**
+(`runtime-linux.tar.gz`, `runtime-win.tar.gz`, the launchers and `app/`), not the ~18k
+tiny files of an unpacked Python, so the copy is a fast sequential write instead of an
+overnight crawl. On any bare PC (no Python, no Docker): double-click **`enjambre.sh`**
+(Linux, "Run in terminal") or **`Enjambre.bat`** (Windows). The **first run asks once**
+whether to install Swarm on that PC for a fast next boot (unpacks the runtime to the local
+disk, ~280 MB) or to run **trace-free** (unpacked to a temp dir, wiped on exit, re-unpacked
+each time). No file to edit — you choose once and it's remembered. Your DB and encrypted
+vault always live in the stick's `data/` folder, whichever you pick. Requires `bash`,
+`curl` and `tar` to *build* (not to use); run the build on a machine with internet.
 
 </details>
 

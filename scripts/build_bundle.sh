@@ -31,6 +31,30 @@ REQ="$ROOT/requirements-portable.txt"
 WIN_PYTAG="cp312"       # etiqueta de wheels para el cross-build de Windows (ajustá si cambia PY_VER)
 WIN_PYVER="3.12"
 
+# ── Poda del runtime ────────────────────────────────────────────────────────────────
+# El bundle sin podar son ~515 MB en ~18k archivos (casi todo runtime). Un server Django
+# HEADLESS no usa el suite de tests del stdlib, tkinter/idle, headers, símbolos debug ni el
+# admin de Django (no está en INSTALLED_APPS). Sacarlos baja a ~280 MB/~9k archivos → menos
+# para comprimir, transferir y descomprimir. Se aplica igual a Linux y Windows (stdlib en
+# lib/python3.12 vs Lib respectivamente).
+prune_runtime() {  # $1 = dir del runtime (contiene python/ + site-packages/)
+  local rt="$1" py="$1/python" std=""
+  local cand
+  for cand in "$py/lib/python3.12" "$py/Lib"; do [ -d "$cand" ] && std="$cand" && break; done
+  [ -n "$std" ] || { echo "  ⚠ no encontré el stdlib en $py — no podo"; return 0; }
+  # stdlib que un server no usa
+  rm -rf "$std/test" "$std/idlelib" "$std/turtledemo" "$std/tkinter" \
+         "$std/lib2to3" "$std/pydoc_data" "$std/ensurepip" "$std/config-3.12"* 2>/dev/null || true
+  # artefactos de build/dev que no corren nada
+  rm -rf "$py/include" "$py/tcl" "$py/libs" 2>/dev/null || true          # headers, datos tk, import-libs (win)
+  find "$py" -maxdepth 1 -name '*.pdb' -delete 2>/dev/null || true       # símbolos debug (win)
+  rm -rf "$rt/site-packages/django/contrib/admin" 2>/dev/null || true    # admin no está instalado
+  # basura común, en stdlib y en nuestro site-packages
+  find "$rt" -depth -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+  find "$rt" -type f \( -name '*.pyc' -o -name '*.po' -o -name '*.a' \) -delete 2>/dev/null || true
+  find "$rt/site-packages" -depth -type d \( -name tests -o -name test \) -exec rm -rf {} + 2>/dev/null || true
+}
+
 echo "▶ Swarm portable → $OUT  (Python $PY_VER, PBS $PBS_TAG)"
 rm -rf "$OUT"
 mkdir -p "$OUT/app" "$OUT/runtime/linux" "$OUT/runtime/win" "$OUT/data"
@@ -82,31 +106,131 @@ for whl in "$OUT/runtime/win/_wheels"/*.whl; do
 done
 rm -rf "$OUT/runtime/win/_wheels"
 
-# ── 4) Launchers ───────────────────────────────────────────────────────────────────
+# ── 4) Podar y EMPAQUETAR cada runtime en UN tar.gz por SO ──────────────────────────
+# Clave de la portabilidad: al pendrive tienen que llegar POCOS archivos grandes. Los ~18k
+# archivos del runtime van DENTRO de runtime-<so>.tar.gz (copia secuencial = rápida). El
+# launcher lo descomprime UNA vez en el disco local de la PC (no en el pendrive lento).
+pack_runtime() {  # $1 = so (linux|win)
+  local so="$1"
+  local src="$OUT/runtime/$so"
+  echo "▶ Podando runtime $so…"
+  prune_runtime "$src"
+  echo "▶ Empaquetando runtime-$so.tar.gz…"
+  tar -C "$src" -czf "$OUT/runtime-$so.tar.gz" python site-packages
+  # Sello de versión: si cambia el tar, cambia el hash → el launcher re-extrae al cache nuevo.
+  sha256sum "$OUT/runtime-$so.tar.gz" | cut -c1-12 | tr -d '\n' > "$OUT/runtime-$so.ver"
+}
+pack_runtime linux
+pack_runtime win
+rm -rf "$OUT/runtime"     # el árbol suelto ya vive dentro de los tar.gz
+
+# ── 5) Launchers ───────────────────────────────────────────────────────────────────
 echo "▶ Launchers…"
 cat > "$OUT/enjambre.sh" <<'SH'
 #!/usr/bin/env bash
-# Doble-clic (o ./enjambre.sh) para arrancar Swarm en Linux. Sin instalar nada.
+# Arrancá Swarm en Linux SIN instalar nada:  ./enjambre.sh  (o doble-clic → "Ejecutar en terminal").
+# El runtime viaja comprimido en runtime-linux.tar.gz. La PRIMERA vez pregunta si lo instala en
+# esta PC (arranque rápido) o lo usa en modo sin-rastro. No hay que editar ningún archivo.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-export PYTHONPATH="$DIR/app:$DIR/runtime/linux/site-packages"
+ARCHIVE="$DIR/runtime-linux.tar.gz"
+VER="$(cat "$DIR/runtime-linux.ver" 2>/dev/null || echo dev)"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/swarm-portable/$VER"
+MODE_FILE="$DIR/data/.portable_mode"
+mkdir -p "$DIR/data"
+
+extract() { echo "▶ Descomprimiendo el runtime (una vez)…"; mkdir -p "$1"; tar -xzf "$ARCHIVE" -C "$1"; }
+
+RUNTIME=""; EPHEMERAL=""
+if [ -f "$CACHE/.ok" ]; then
+  RUNTIME="$CACHE"                       # ya instalado en esta PC → arranque directo, sin preguntar
+else
+  MODE="$(cat "$MODE_FILE" 2>/dev/null || echo "")"   # ¿preferencia ya elegida en este pendrive?
+  if [ -z "$MODE" ]; then
+    echo
+    echo "  Primera vez en esta PC."
+    echo "  ¿Instalar Swarm acá para que arranque rápido la próxima vez? (deja ~280 MB en esta PC)"
+    echo "  Respondé 'n' para modo SIN RASTRO (se borra al cerrar; se re-arma en cada arranque)."
+    if [ -t 0 ]; then read -r -t 60 -p "  ¿Instalar en esta PC? [S/n]: " ans || ans=""; else ans=""; fi
+    case "${ans:-S}" in [nN]*) MODE="efimero";; *) MODE="persistente";; esac
+    printf '%s' "$MODE" > "$MODE_FILE"
+  fi
+  if [ "$MODE" = "persistente" ]; then
+    extract "$CACHE"
+    "$CACHE/python/bin/python3" -m compileall -q "$CACHE" >/dev/null 2>&1 || true
+    touch "$CACHE/.ok"; RUNTIME="$CACHE"
+  else
+    RUNTIME="$(mktemp -d)"; EPHEMERAL=1
+    trap 'rm -rf "$RUNTIME"' EXIT INT TERM
+    extract "$RUNTIME"
+  fi
+fi
+
+export PYTHONPATH="$DIR/app:$RUNTIME/site-packages"
+export PYTHONNOUSERSITE=1   # ignorar ~/.local del equipo ajeno: el bundle es hermético
 export DJANGO_SETTINGS_MODULE="swarm.settings"
 export DATABASE_URL="sqlite:///$DIR/data/db.sqlite3"
-export SWARM_DATA_DIR="$DIR/data"
+export SWARM_DATA_DIR="$DIR/data"       # los datos SIEMPRE viven en el pendrive, no en el cache
 # El toolbelt (que las sillas operen esta máquina) se prende desde la interfaz:
 # Conexiones → Toolbelt → switch. NO hace falta tocar este archivo. La línea de abajo es un
 # override opcional para forzarlo SIEMPRE encendido desde el launcher:
 # export SWARM_TOOLBELT=1
-exec "$DIR/runtime/linux/python/bin/python3" "$DIR/app/manage.py" serve "$@"
+PY="$RUNTIME/python/bin/python3"
+if [ -n "$EPHEMERAL" ]; then
+  "$PY" "$DIR/app/manage.py" serve "$@"   # sin exec: al salir, el trap borra el temp
+else
+  exec "$PY" "$DIR/app/manage.py" serve "$@"
+fi
 SH
 chmod +x "$OUT/enjambre.sh"
 
 cat > "$OUT/Enjambre.bat" <<'BAT'
 @echo off
-rem Doble-clic para arrancar Swarm en Windows. Sin instalar nada.
-setlocal
+rem Doble-clic para arrancar Swarm en Windows. Sin instalar nada. El runtime viaja comprimido en
+rem runtime-win.tar.gz; la PRIMERA vez pregunta si lo instala en esta PC o lo usa sin dejar rastro.
+setlocal EnableDelayedExpansion
 set "DIR=%~dp0"
-set "PYTHONPATH=%DIR%app;%DIR%runtime\win\site-packages"
+if not exist "%DIR%data" mkdir "%DIR%data"
+set "VER=dev"
+if exist "%DIR%runtime-win.ver" set /p VER=<"%DIR%runtime-win.ver"
+set "CACHE=%LOCALAPPDATA%\swarm-portable\%VER%"
+set "MODEFILE=%DIR%data\.portable_mode"
+set "CLEANUP="
+
+if exist "%CACHE%\.ok" (set "RUNTIME=%CACHE%" & goto run)
+
+set "MODE="
+if exist "%MODEFILE%" set /p MODE=<"%MODEFILE%"
+if defined MODE goto have_mode
+echo.
+echo   Primera vez en esta PC.
+echo   Instalar Swarm en esta PC para que arranque rapido la proxima vez?
+echo   Deja ~280 MB en el disco. Elegi N para modo SIN RASTRO (se borra al cerrar).
+choice /C SN /T 60 /D S /M "  Instalar en esta PC"
+if errorlevel 2 (set "MODE=efimero") else (set "MODE=persistente")
+> "%MODEFILE%" echo %MODE%
+
+:have_mode
+if /I "%MODE%"=="efimero" goto ephemeral
+set "RUNTIME=%CACHE%"
+if exist "%CACHE%\.ok" goto run
+echo Descomprimiendo el runtime (una vez)...
+if not exist "%CACHE%" mkdir "%CACHE%"
+tar -xzf "%DIR%runtime-win.tar.gz" -C "%CACHE%"
+"%CACHE%\python\python.exe" -m compileall -q "%CACHE%" >nul 2>&1
+type nul > "%CACHE%\.ok"
+goto run
+
+:ephemeral
+set "RUNTIME=%TEMP%\swarm-%RANDOM%%RANDOM%"
+set "CLEANUP=%RUNTIME%"
+mkdir "%RUNTIME%"
+echo Descomprimiendo el runtime (modo sin rastro)...
+tar -xzf "%DIR%runtime-win.tar.gz" -C "%RUNTIME%"
+
+:run
+set "PYTHONPATH=%DIR%app;%RUNTIME%\site-packages"
+set "PYTHONNOUSERSITE=1"
 set "DJANGO_SETTINGS_MODULE=swarm.settings"
 set "DATABASE_URL=sqlite:///%DIR%data/db.sqlite3"
 set "SWARM_DATA_DIR=%DIR%data"
@@ -114,7 +238,9 @@ rem El toolbelt (que las sillas operen esta maquina) se prende desde la interfaz
 rem en Conexiones, pestana Toolbelt, activa el switch. NO hace falta tocar este archivo. La linea
 rem de abajo es un override opcional para forzarlo SIEMPRE encendido desde el launcher:
 rem set "SWARM_TOOLBELT=1"
-"%DIR%runtime\win\python\python.exe" "%DIR%app\manage.py" serve %*
+"%RUNTIME%\python\python.exe" "%DIR%app\manage.py" serve %*
+
+if defined CLEANUP if exist "%CLEANUP%" rmdir /S /Q "%CLEANUP%"
 endlocal
 BAT
 
@@ -123,8 +249,14 @@ SWARM — enjambre multi-agente PORTÁTIL
 ======================================
 No hace falta instalar nada (ni Python ni Docker).
 
-  · Linux:   doble-clic en  enjambre.sh   (o  ./enjambre.sh  en una terminal)
+  · Linux:   doble-clic en  enjambre.sh  → "Ejecutar en terminal"  (o  ./enjambre.sh  en una terminal)
   · Windows: doble-clic en  Enjambre.bat
+
+La PRIMERA vez te pregunta (en la terminal/consola) si querés INSTALAR Swarm en esta PC para que
+arranque rápido la próxima vez —descomprime el runtime al disco local, deja ~280 MB— o usarlo en
+modo SIN RASTRO (se borra al cerrar y se re-arma en cada arranque). No hay que editar ningún
+archivo: elegís una vez y se recuerda. Tus datos viven SIEMPRE en la carpeta data/ del pendrive,
+elijas lo que elijas.
 
 Se abre el navegador en http://127.0.0.1:8799. Andá a "Conexiones → API keys": elegí una
 passphrase (mín. 8), pegá tu primera API key y tocá Guardar. Con ese único paso la bóveda queda
@@ -142,4 +274,6 @@ herramientas (function-calling).
 TXT
 
 echo "✅ Listo: $OUT"
+echo "   Al pendrive copiás POCOS archivos grandes (runtime-*.tar.gz + launchers + app/ + data/)."
+echo "   Tamaño:  $(du -sh "$OUT" 2>/dev/null | cut -f1)   ·   archivos sueltos en la raíz: $(find "$OUT" -maxdepth 1 -type f | wc -l)"
 echo "   Probalo:  cd '$OUT' && ./enjambre.sh"
