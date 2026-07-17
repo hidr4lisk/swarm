@@ -135,9 +135,10 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ARCHIVE="$DIR/runtime-linux.tar.gz"
 VER="$(cat "$DIR/runtime-linux.ver" 2>/dev/null || echo dev)"
-CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/swarm-portable/$VER"
-MODE_FILE="$DIR/data/.portable_mode"
-mkdir -p "$DIR/data"
+BASE="${XDG_CACHE_HOME:-$HOME/.cache}/swarm-portable"
+CACHE="$BASE/$VER"
+MODE_FILE="$BASE/mode"          # elección recordada POR ESTA PC (no en el pendrive) → cada PC nueva pregunta
+mkdir -p "$BASE" "$DIR/data"
 
 extract() { echo "▶ Descomprimiendo el runtime (una vez)…"; mkdir -p "$1"; tar -xzf "$ARCHIVE" -C "$1"; }
 
@@ -145,7 +146,7 @@ RUNTIME=""; EPHEMERAL=""
 if [ -f "$CACHE/.ok" ]; then
   RUNTIME="$CACHE"                       # ya instalado en esta PC → arranque directo, sin preguntar
 else
-  MODE="$(cat "$MODE_FILE" 2>/dev/null || echo "")"   # ¿preferencia ya elegida en este pendrive?
+  MODE="$(cat "$MODE_FILE" 2>/dev/null || echo "")"   # ¿preferencia ya elegida en ESTA PC?
   if [ -z "$MODE" ]; then
     echo
     echo "  Primera vez en esta PC."
@@ -193,8 +194,10 @@ set "DIR=%~dp0"
 if not exist "%DIR%data" mkdir "%DIR%data"
 set "VER=dev"
 if exist "%DIR%runtime-win.ver" set /p VER=<"%DIR%runtime-win.ver"
-set "CACHE=%LOCALAPPDATA%\swarm-portable\%VER%"
-set "MODEFILE=%DIR%data\.portable_mode"
+set "BASE=%LOCALAPPDATA%\swarm-portable"
+if not exist "%BASE%" mkdir "%BASE%"
+set "CACHE=%BASE%\%VER%"
+set "MODEFILE=%BASE%\mode"
 set "CLEANUP="
 
 if exist "%CACHE%\.ok" (set "RUNTIME=%CACHE%" & goto run)
@@ -255,8 +258,9 @@ No hace falta instalar nada (ni Python ni Docker).
 La PRIMERA vez te pregunta (en la terminal/consola) si querés INSTALAR Swarm en esta PC para que
 arranque rápido la próxima vez —descomprime el runtime al disco local, deja ~280 MB— o usarlo en
 modo SIN RASTRO (se borra al cerrar y se re-arma en cada arranque). No hay que editar ningún
-archivo: elegís una vez y se recuerda. Tus datos viven SIEMPRE en la carpeta data/ del pendrive,
-elijas lo que elijas.
+archivo: elegís una vez POR PC (se recuerda en esa PC, no en el pendrive → cada máquina nueva
+vuelve a preguntar). Tus datos —mesas, sillas y bóveda— viven SIEMPRE en la carpeta data/ del
+pendrive y se mueven con él entre Windows y Linux, elijas lo que elijas.
 
 Se abre el navegador en http://127.0.0.1:8799. Andá a "Conexiones → API keys": elegí una
 passphrase (mín. 8), pegá tu primera API key y tocá Guardar. Con ese único paso la bóveda queda

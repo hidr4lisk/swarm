@@ -26,8 +26,14 @@ Two ways to run it — pick the one that fits the machine in front of you.
 
 ### Route A — Native / portable (no Docker) · Linux & Windows
 
-The lightest way, and the one that runs off a pendrive. Only needs Python 3.12 (or the
-bundled runtime); seats run on **API keys** — no CLI binaries required.
+**Just want the pendrive? Don't clone anything —
+[download `swarm-portable.zip`](https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip)**
+(ready to use, Windows + Linux, ~100 MB), unzip it straight onto a stick and double-click
+`Enjambre.bat` / `enjambre.sh`. No Python, no Docker, no build. The rest of this section is
+for running from source or building the stick yourself.
+
+The lightest way from source, and the one that runs off a pendrive. Only needs Python 3.12
+(or the bundled runtime); seats run on **API keys** — no CLI binaries required.
 
 ```bash
 git clone https://github.com/hidr4lisk/swarm.git && cd swarm
@@ -53,9 +59,11 @@ overnight crawl. On any bare PC (no Python, no Docker): double-click **`enjambre
 (Linux, "Run in terminal") or **`Enjambre.bat`** (Windows). The **first run asks once**
 whether to install Swarm on that PC for a fast next boot (unpacks the runtime to the local
 disk, ~280 MB) or to run **trace-free** (unpacked to a temp dir, wiped on exit, re-unpacked
-each time). No file to edit — you choose once and it's remembered. Your DB and encrypted
-vault always live in the stick's `data/` folder, whichever you pick. Requires `bash`,
-`curl` and `tar` to *build* (not to use); run the build on a machine with internet.
+each time). No file to edit — you choose once **per machine** (remembered in that PC's local
+cache, not on the stick, so every new PC asks again). Your DB, tables, seats and encrypted
+vault always live in the stick's `data/` folder and travel with it between Windows and Linux,
+whichever you pick — same tables on any PC. Requires `bash`, `curl` and `tar` to *build* (not
+to use); run the build on a machine with internet, or just grab the release zip above.
 
 </details>
 

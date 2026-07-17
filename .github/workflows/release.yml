@@ -1,0 +1,51 @@
+# Publica el pendrive "listo para usar" como asset de un GitHub Release.
+# El build corre en un runner Linux (ubuntu-latest) → NADIE necesita Linux para tener el zip.
+# Se dispara al pushear un tag vX.Y.Z; o a mano ("Run workflow") para probar el build sin cortar release.
+name: portable-release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write        # para crear el Release y subir el asset
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # build_bundle.sh usa bash/curl/tar (presentes) + el pip del Python PBS que baja él mismo.
+      # Cross-buildea las wheels de Windows desde Linux → el zip sirve para Windows Y Linux.
+      - name: Buildear el bundle portátil (Linux + Windows en una carpeta)
+        run: ./scripts/build_bundle.sh
+
+      - name: Empaquetar el pendrive en un zip
+        run: cd dist && zip -r -q ../swarm-portable.zip swarm-portable
+
+      # Queda descargable desde la corrida aunque no sea un tag (para probar el build).
+      - name: Guardar el zip como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-portable
+          path: swarm-portable.zip
+
+      - name: Publicar el Release (solo en push de tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          Pendrive **listo para usar** — Windows + Linux, sin instalar nada.
+
+          Bajá `swarm-portable.zip`, descomprimilo directo a un pendrive y corré
+          **Enjambre.bat** (Windows) o **enjambre.sh** (Linux). No necesitás Python,
+          Docker ni clonar el repo. La primera vez cada PC pregunta si instalar el
+          runtime ahí (arranque rápido) o correr sin dejar rastro. Tus mesas, sillas
+          y bóveda viven en `data/` del pendrive y se mueven con él entre PCs.
+          EOF
+          gh release create "$GITHUB_REF_NAME" swarm-portable.zip \
+            --title "Swarm — pendrive $GITHUB_REF_NAME" --notes-file notes.md \
+          || gh release upload "$GITHUB_REF_NAME" swarm-portable.zip --clobber
