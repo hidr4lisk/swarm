@@ -52,9 +52,11 @@ def ruta_creds(cli):
 
 def ruta_corta(ruta):
     """Versión para MOSTRAR: colapsa el home a `~` (no expone el usuario del host en
-    pantalla ni en capturas). Solo display; la detección usa la ruta completa."""
+    pantalla ni en capturas). Solo display; la detección usa la ruta completa.
+    Por regex y no Path.home(): en el worker Docker las rutas son del HOST (/home/x)
+    y el home del contenedor es /root — no coincidirían. Cubre Linux y Windows."""
     import re
-    return re.sub(r'^(/home/[^/]+|/root)(?=/|$)', '~', ruta)
+    return re.sub(r'^(/home/[^/]+|/root|[A-Za-z]:[\\/]Users[\\/][^\\/]+)(?=[\\/]|$)', '~', ruta)
 
 
 def _sonda_docker(ruta):

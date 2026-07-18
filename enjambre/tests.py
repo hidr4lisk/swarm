@@ -231,6 +231,16 @@ class ConexionesTests(TestCase):
         self.assertEqual(ruta_corta('/srv/creds/x.json'), '/srv/creds/x.json')  # fuera del home, intacta
         self.assertEqual(ruta_corta('/home/pepe'), '~')
 
+    def test_ruta_corta_colapsa_el_home_windows(self):
+        self.assertEqual(ruta_corta(r'C:\Users\Fede\.local\share\opencode\auth.json'),
+                         r'~\.local\share\opencode\auth.json')
+        self.assertEqual(ruta_corta('C:/Users/Fede/.claude/.credentials.json'),
+                         '~/.claude/.credentials.json')
+        self.assertEqual(ruta_corta(r'D:\Users\Fede'), '~')                     # otra unidad, también home
+        self.assertEqual(ruta_corta(r'C:\Users'), r'C:\Users')                  # sin usuario, intacta
+        self.assertEqual(ruta_corta(r'C:\ProgramData\x.json'), r'C:\ProgramData\x.json')  # fuera del home
+        self.assertEqual(ruta_corta(r'C:\Users\Fede2024\creds'), r'~\creds')    # usuario alfanumérico
+
     def test_detectar_por_existencia(self):
         with tempfile.NamedTemporaryFile() as f:
             env = {
