@@ -154,6 +154,7 @@ h2{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.15;letter-spacing:-.5px;ma
 #arrancar{border-bottom:none;}
 .steps{counter-reset:st;margin-top:40px;display:flex;flex-direction:column;gap:30px;}
 .step{display:flex;gap:20px;}
+.step>div{min-width:0;flex:1;} /* sin esto, los <code> pre fuerzan el ancho y desbordan en celu */
 .step::before{counter-increment:st;content:counter(st,decimal-leading-zero);
   color:var(--accent);font-weight:700;font-size:1.15rem;flex-shrink:0;}
 .step .st-t{font-weight:700;margin-bottom:8px;font-size:1.05rem;}
@@ -177,6 +178,17 @@ footer a{color:var(--text-dim);}
   .slots .arr{display:none;}
   .donate{justify-content:center;text-align:center;}
   .donate .alias{justify-content:center;}
+  /* CTAs apilados, ancho completo — más cómodos al dedo */
+  .hero .ctas{flex-direction:column;align-items:center;gap:12px;}
+  .hero .ctas .btn{width:100%;max-width:340px;text-align:center;}
+  /* terminales: la conversación wrappea en vez de cortarse */
+  .term .scr{font-size:.86rem;line-height:1.7;}
+  .term .scr .row{white-space:normal;overflow-wrap:anywhere;}
+  .term .scr .row+.row{margin-top:6px;}
+  /* comandos: respetan saltos de línea pero wrappean lo largo */
+  .step .cmd{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.82rem;}
+  .step{gap:14px;}
+  h2{overflow-wrap:break-word;}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto;}
