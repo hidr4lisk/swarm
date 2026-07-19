@@ -258,9 +258,18 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, work
     elif workdir_ro:
         env['ENJAMBRE_WORKDIR_RO'] = str(workdir_ro)
         cwd = str(workdir_ro)
+    argv = list(comando or participante.comando)
+    pref = _runner_prefix()
+    if not pref and argv:
+        # Sin runner el CLI se invoca directo: si el binario no está en el PATH del
+        # proceso (doble-clic del pendrive), resolver_bin lo busca en los dirs típicos.
+        from .conexiones import resolver_bin
+        ruta = resolver_bin(argv[0])
+        if ruta:
+            argv[0] = ruta
     try:
         result = subprocess.run(
-            _runner_prefix() + list(comando or participante.comando) + [prompt],
+            pref + argv + [prompt],
             capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd,
         )
         salida = (limpiar_salida(result.stdout) or limpiar_salida(result.stderr)

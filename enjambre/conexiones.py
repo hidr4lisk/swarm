@@ -16,10 +16,10 @@ lee de ahí (no tiene docker.sock) y cae al chequeo directo si no existe (dev).
 """
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
-from django.conf import settings
 from django.utils import timezone
 
 # Qué necesita cada CLI y cómo se loguea (para mostrar en la pantalla).
@@ -88,6 +88,33 @@ def detectar(con_sonda=False):
         else:
             estados[cli] = False
     return estados
+
+
+# ── Resolución de binarios (doble-clic sin PATH de shell) ────────────────────────
+# Los instaladores de los CLIs agregan su dir solo al rc de la shell (.zshrc/.bashrc).
+# Lanzado con doble-clic desde el escritorio, ese PATH no viene → which() falla aunque
+# el CLI esté instalado y logueado (bug real: Lab 2026-07-19, opencode en
+# ~/.opencode/bin agregado únicamente en .zshrc). Fallback: dirs típicos de instalación.
+_DIRS_BIN = [
+    '~/.opencode/bin',           # instalador oficial de opencode (Linux/mac/Windows)
+    '~/.local/bin',              # pipx/uv/instaladores de claude y agy
+    '~/.claude/local',           # claude instalado local
+    '~/bin',
+    '~/AppData/Roaming/npm',     # npm global (Windows)
+    '~/.npm-global/bin',
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+]
+
+
+def resolver_bin(cli):
+    """Ruta del ejecutable del CLI, o None. PATH primero; si no está, los dirs típicos.
+    shutil.which(path=…) aplica PATHEXT en Windows (encuentra .cmd/.exe solo)."""
+    hit = shutil.which(cli)
+    if hit:
+        return hit
+    extra = os.pathsep.join(str(Path(d).expanduser()) for d in _DIRS_BIN)
+    return shutil.which(cli, path=extra)
 
 
 def archivo_estado():

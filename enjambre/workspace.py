@@ -15,7 +15,7 @@ from pathlib import Path
 
 from django.conf import settings
 
-from .engine import ejecutar_cli, es_ruido
+from .engine import ejecutar_cli
 from .models import Mensaje, Tarea, Workspace
 
 # Identidad para los commits del enjambre (no depende del git config del repo).

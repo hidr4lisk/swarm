@@ -1131,11 +1131,13 @@ def modelos_disponibles(request):
         else:
             nota = f'{note} — te muestro las sugeridas' if note else 'te muestro las sugeridas'
     elif ckey == 'opencode':
-        import shutil
         import subprocess
+
+        from .conexiones import resolver_bin
         try:
-            if shutil.which('opencode'):
-                r = subprocess.run(['opencode', 'models'], capture_output=True, text=True, timeout=15)
+            oc = resolver_bin('opencode')
+            if oc:
+                r = subprocess.run([oc, 'models'], capture_output=True, text=True, timeout=15)
                 ids = [ln.strip() for ln in (r.stdout or '').splitlines() if ln.strip()]
                 if ids:
                     source = 'live'

@@ -12,8 +12,6 @@ Escalones:
       instalado ≠ logueado, y "instalado pero sin login" es el estado más probable → CTA propio.
   2 — API keys: la bóveda tiene al menos un proveedor configurado.
 """
-import shutil
-
 from .clientes import CLIENTES, api_de
 
 # Proveedores API que funcionan sin credencial (hoy: pollinations).
@@ -27,7 +25,7 @@ def escalones():
 
     sin_key_activa = any(api_de(p) in _SIN_KEY_APIS
                          for p in Participante.objects.filter(activo=True))
-    oc_instalado = bool(shutil.which('opencode'))
+    oc_instalado = bool(conexiones.resolver_bin('opencode'))
     oc_logueado = bool(conexiones.detectar().get('opencode'))
     con_keys = bool(vault.configured_providers())
 

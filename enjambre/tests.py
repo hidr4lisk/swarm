@@ -21,7 +21,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .clientes import build_comando
-from .conexiones import detectar, ruta_corta
+from . import conexiones as conexiones_mod
+from .conexiones import detectar, resolver_bin, ruta_corta
 from .engine import (
     Enjambre, ejecutar_cli, ejecutar_http, es_ruido, limpiar_salida, parse_comando,
 )
@@ -253,6 +254,20 @@ class ConexionesTests(TestCase):
         self.assertTrue(estados['claude'])
         self.assertFalse(estados['opencode'])
         self.assertFalse(estados['agy'])
+
+    def test_resolver_bin_path_primero(self):
+        self.assertTrue(resolver_bin('sh'))  # en PATH → lo devuelve de ahí
+
+    def test_resolver_bin_fallback_a_dirs_tipicos(self):
+        # Binario fuera del PATH pero en un dir típico de instalación (el caso
+        # doble-clic del pendrive: el rc de la shell no cargó su export PATH).
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / 'clifantasma'
+            fake.write_text('#!/bin/sh\n')
+            fake.chmod(0o755)
+            with mock.patch.object(conexiones_mod, '_DIRS_BIN', [d]):
+                self.assertEqual(resolver_bin('clifantasma'), str(fake))
+        self.assertIsNone(resolver_bin('clifantasma'))  # sin ese dir, no está
 
 
 class VistasTests(TestCase):
@@ -682,7 +697,7 @@ class OnboardingTests(TestCase):
 
     def test_arranque_de_fabrica(self):
         from . import onboarding
-        with mock.patch('enjambre.onboarding.shutil.which', return_value=None), \
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None), \
                 mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}), \
                 mock.patch('enjambre.vault.configured_providers', return_value=[]):
             e = onboarding.escalones()
@@ -695,7 +710,7 @@ class OnboardingTests(TestCase):
     def test_opencode_instalado_sin_login(self):
         # El estado más probable del escalón 1: binario sí, credencial no → CTA de login.
         from . import onboarding
-        with mock.patch('enjambre.onboarding.shutil.which', return_value='/usr/bin/opencode'), \
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/opencode'), \
                 mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}):
             e = onboarding.escalones()
         self.assertFalse(e[1]['listo'])
@@ -704,7 +719,7 @@ class OnboardingTests(TestCase):
 
     def test_escalera_completa(self):
         from . import onboarding
-        with mock.patch('enjambre.onboarding.shutil.which', return_value='/usr/bin/opencode'), \
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/opencode'), \
                 mock.patch('enjambre.conexiones.detectar', return_value={'opencode': True}), \
                 mock.patch('enjambre.vault.configured_providers', return_value=['openrouter']):
             e = onboarding.escalones()
@@ -714,7 +729,7 @@ class OnboardingTests(TestCase):
     def test_chispa_apagada_apaga_el_escalon_0(self):
         from . import onboarding
         Participante.objects.filter(key='chispa').update(activo=False)
-        with mock.patch('enjambre.onboarding.shutil.which', return_value=None), \
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None), \
                 mock.patch('enjambre.conexiones.detectar', return_value={}), \
                 mock.patch('enjambre.vault.configured_providers', return_value=[]):
             self.assertFalse(onboarding.escalones()[0]['listo'])
