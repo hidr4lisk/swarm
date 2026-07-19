@@ -259,11 +259,15 @@ class VistasTests(TestCase):
     """El flujo real del usuario, con el test client (sin login: single-user)."""
 
     def test_seeds_vienen_apagadas_y_sin_keys(self):
+        # Los CLIs siguen apagados (requieren login). La ÚNICA activa de fábrica es Chispa
+        # (escalón 0: sin credencial, no hay nada que filtrar).
         sillas = {p.key: p for p in Participante.objects.all()}
         self.assertIn('claude', sillas)
         self.assertIn('opencode', sillas)
-        for p in sillas.values():
-            self.assertFalse(p.activo)
+        self.assertFalse(sillas['claude'].activo)
+        self.assertFalse(sillas['opencode'].activo)
+        activas = [p.key for p in sillas.values() if p.activo]
+        self.assertEqual(activas, ['chispa'])
 
     def test_paginas_principales_responden(self):
         for nombre in ('enjambre:home', 'enjambre:gestionar_sillas',
@@ -405,3 +409,312 @@ class ParamTokensTests(TestCase):
         from .providers.openai_compat import _param_tokens
         self.assertEqual(_param_tokens('https://openrouter.ai/api/v1'), 'max_tokens')
         self.assertEqual(_param_tokens('https://api.groq.com/openai/v1'), 'max_tokens')
+
+
+class SinKeyGateTests(TestCase):
+    """El gate de API key del dispatcher: los proveedores SIN_KEY (pollinations) pasan sin
+    credencial; el resto sigue exigiéndola. Es el cambio más delicado del escalón 0."""
+
+    def test_pollinations_sin_key_no_devuelve_marcador_de_sin_key(self):
+        from .providers import chat
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'hola'}}]})):
+            self.assertEqual(chat('pollinations', 'openai-fast', 'hi', '', timeout=5), 'hola')
+
+    def test_openai_sin_key_sigue_gateado(self):
+        from .providers import chat
+        salida = chat('openai', 'gpt-5.2', 'hi', '', timeout=5)
+        self.assertIn('sin API key', salida)
+
+    def test_chat_agentic_pollinations_degrada_a_charla_plana(self):
+        # SEGURIDAD: un endpoint anónimo no dirige el toolbelt — chat_agentic cae a chat().
+        from .providers import chat_agentic
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'ok'}}]})) as m:
+            salida = chat_agentic('pollinations', 'openai-fast', 'hi', '', 5,
+                                  sesion=None, participante=None)
+        self.assertEqual(salida, 'ok')
+        # el payload NO lleva tools (charla plana, no loop agéntico)
+        payload = m.call_args[0][1]
+        self.assertNotIn('tools', payload)
+
+
+class PollinationsClienteTests(TestCase):
+    """El cliente del escalón 0: URL final correcta y Bearer con/sin token."""
+
+    def _llamar(self, api_key):
+        from .providers import pollinations
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'x'}}]})) as m:
+            pollinations.chat('', 'hola', api_key, timeout=5)
+        return m.call_args[0]  # (url, payload, headers, timeout)
+
+    def test_url_modelo_default_y_atribucion(self):
+        url, payload, headers, _ = self._llamar('')
+        self.assertEqual(url, 'https://text.pollinations.ai/openai/chat/completions')
+        self.assertEqual(payload['model'], 'openai-fast')
+        self.assertIn('Referer', headers)
+        # base_url custom → habla max_tokens, no max_completion_tokens (verificado con curl)
+        self.assertIn('max_tokens', payload)
+
+    def test_bearer_vacio_y_con_token(self):
+        _, _, headers, _ = self._llamar('')
+        self.assertEqual(headers['Authorization'], 'Bearer ')  # verificado inocuo en vivo
+        _, _, headers, _ = self._llamar('tok123')
+        self.assertEqual(headers['Authorization'], 'Bearer tok123')
+
+
+class ClientePollinationsTests(TestCase):
+    """El registro del cliente sin_key: derivaciones y el precio $0 del escalón 0."""
+
+    def _silla(self, **kw):
+        base = dict(key='chispa-t', nombre='Chispa',
+                    comando=['api-pollinations', '--model', 'openai-fast'])
+        base.update(kw)
+        return Participante.objects.create(**base)
+
+    def test_derivaciones(self):
+        from .clientes import api_de, cliente_de, edita_archivos, es_api, modelo_de
+        p = self._silla()
+        self.assertTrue(es_api('api-pollinations'))
+        self.assertEqual(api_de(p), 'pollinations')
+        self.assertEqual(cliente_de(p), 'api-pollinations')
+        self.assertEqual(modelo_de(p), 'openai-fast')
+        self.assertFalse(edita_archivos(p))  # api:* no fabrica por CLI
+
+    def test_endpoint_url_gana_sobre_api(self):
+        from .clientes import api_de
+        p = self._silla(key='chispa-ollama', endpoint_url='http://lab:11434')
+        self.assertEqual(api_de(p), '')
+
+    def test_precio_cero(self):
+        # Regresión: 'openai-fast' no matchea PRECIOS_POR_MODELO ni FREE_MARKERS → sin la regla
+        # sin_key caería al default (3/15) y la silla gratis marcaría costo falso.
+        from .clientes import precio_silla
+        self.assertEqual(precio_silla(self._silla()), (0.0, 0.0))
+
+    def test_vault_acepta_token_opcional(self):
+        from . import vault
+        self.assertIn('pollinations', vault.TODOS)
+        self.assertNotIn('pollinations', vault.PROVIDERS)
+
+    def test_listar_modelos_filtra_tier_anonimo(self):
+        from .providers import listar_modelos
+        catalogo = [
+            {'name': 'openai-fast', 'tier': 'anonymous', 'tools': True},
+            {'name': 'gemini-fast', 'tier': 'seed', 'tools': True},
+        ]
+        with mock.patch('enjambre.providers._http_get_json', return_value=catalogo):
+            source, out, nota = listar_modelos('pollinations')
+        self.assertEqual(source, 'live')
+        self.assertEqual([m['id'] for m in out], ['openai-fast'])  # sin token, solo anónimo
+        self.assertTrue(out[0]['free'] and out[0]['tools'])
+        self.assertIn('15 s', nota)
+        with mock.patch('enjambre.providers._http_get_json', return_value=catalogo):
+            _, out, nota = listar_modelos('pollinations', api_key='tok')
+        self.assertEqual(len(out), 2)  # con token entra el tier seed
+        self.assertEqual(nota, '')
+
+
+class RatelimitTests(TestCase):
+    """El espaciador del tier gratis: espacia, persiste a archivo y castiga tras 429."""
+
+    def setUp(self):
+        from . import ratelimit
+        ratelimit._ultimo.clear()
+        ratelimit._castigo.clear()
+        self.tmp = tempfile.mkdtemp()
+
+    def _con_data_dir(self):
+        return override_settings(SWARM_DATA_DIR=self.tmp)
+
+    def test_espacia_dos_requests(self):
+        import time as t
+        from . import ratelimit
+        with self._con_data_dir(), \
+                mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.2, 0.1)}), \
+                mock.patch('enjambre.vault.get_key', return_value=''):
+            t0 = t.monotonic()
+            ratelimit.esperar('x')
+            ratelimit.esperar('x')
+            self.assertGreaterEqual(t.monotonic() - t0, 0.2)
+
+    def test_token_acelera(self):
+        from . import ratelimit
+        with mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.2, 0.1)}):
+            with mock.patch('enjambre.vault.get_key', return_value='tok'):
+                self.assertEqual(ratelimit.intervalo_de('x'), 0.1)
+            with mock.patch('enjambre.vault.get_key', return_value=''):
+                self.assertEqual(ratelimit.intervalo_de('x'), 0.2)
+
+    def test_key_sin_limite_es_noop(self):
+        import time as t
+        from . import ratelimit
+        t0 = t.monotonic()
+        ratelimit.esperar('openai')  # no está en INTERVALOS
+        self.assertLess(t.monotonic() - t0, 0.05)
+
+    def test_persiste_el_sello_a_archivo(self):
+        import json as j
+        from . import ratelimit
+        with self._con_data_dir(), \
+                mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.01, 0.01)}), \
+                mock.patch('enjambre.vault.get_key', return_value=''):
+            ratelimit.esperar('x')
+            data = j.loads((Path(self.tmp) / '.ratelimit.json').read_text())
+        self.assertIn('x', data)
+
+    def test_castigo_estira_la_ventana(self):
+        import time as t
+        from . import ratelimit
+        with self._con_data_dir(), \
+                mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.05, 0.05)}), \
+                mock.patch('enjambre.vault.get_key', return_value=''):
+            ratelimit.esperar('x')
+            ratelimit.castigar('x', 0.4)  # Retry-After simulado
+            t0 = t.monotonic()
+            ratelimit.esperar('x')
+            self.assertGreaterEqual(t.monotonic() - t0, 0.3)
+
+    def test_throttle_key_llega_desde_pollinations(self):
+        from .providers import pollinations
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'x'}}]})) as m:
+            pollinations.chat('', 'hola', '', timeout=5)
+        self.assertEqual(m.call_args.kwargs.get('throttle_key'), 'pollinations')
+
+
+class ClasificarErroresTests(TestCase):
+    """El contrato del que depende la cascada: cada marcador que el camino API puede emitir."""
+
+    def test_tabla_completa(self):
+        from .providers.errores import clasificar
+        casos = {
+            'Listo, el script quedó en ordenar.sh': 'ok',
+            '(sin respuesta)': 'ok',   # el modelo contestó vacío — no es error
+            '(❌ HTTP 429: rate limited)': 'reintentable',
+            '(❌ HTTP 500)': 'reintentable',
+            '(❌ HTTP 529: overloaded)': 'reintentable',
+            '(⏰ timeout tras 180s)': 'reintentable',
+            '(❌ respuesta no-JSON del proveedor)': 'reintentable',
+            '(❌ sin conexión: [Errno -3] …)': 'reintentable',
+            '(❌ HTTP 400: bad request)': 'terminal',
+            '(❌ HTTP 401: invalid key)': 'terminal',
+            '(❌ HTTP 404: model not found)': 'terminal',
+            '(❌ sin API key para este proveedor — …)': 'terminal',
+            '(❌ proveedor API desconocido: x)': 'terminal',
+            '(❌ API key inválida: tiene caracteres raros — …)': 'terminal',
+            '(❌ respuesta inesperada del proveedor)': 'terminal',
+        }
+        for marcador, esperado in casos.items():
+            with self.subTest(marcador=marcador):
+                self.assertEqual(clasificar(marcador), esperado)
+
+
+class RetryHttpJsonTests(TestCase):
+    """La capa 1 de la cascada: retry de transitorios en _http_json, sin retry de terminales."""
+
+    def _correr(self, intentos):
+        from .providers import _http_json
+        with mock.patch('enjambre.providers._intento', side_effect=intentos) as m, \
+                mock.patch('enjambre.providers.time.sleep'):
+            resultado = _http_json('http://x/v1/chat/completions', {}, {}, timeout=5)
+        return resultado, m.call_count
+
+    def test_429_reintenta_y_sale_ok(self):
+        (ok, data), llamadas = self._correr([
+            (False, ('(❌ HTTP 429: rate limited)', None)),
+            (True, {'choices': []}),
+        ])
+        self.assertTrue(ok)
+        self.assertEqual(llamadas, 2)
+
+    def test_400_no_reintenta(self):
+        (ok, marcador), llamadas = self._correr([(False, ('(❌ HTTP 400: bad request)', None))])
+        self.assertFalse(ok)
+        self.assertEqual(llamadas, 1)
+        self.assertIn('400', marcador)
+
+    def test_sin_conexion_no_reintenta(self):
+        (ok, marcador), llamadas = self._correr([(False, '(❌ sin conexión: DNS caído)')])
+        self.assertFalse(ok)
+        self.assertEqual(llamadas, 1)
+
+    def test_transitorio_persistente_agota_los_intentos(self):
+        from .providers import MAX_INTENTOS
+        fallo = (False, ('(❌ HTTP 503)', None))
+        (ok, marcador), llamadas = self._correr([fallo] * MAX_INTENTOS)
+        self.assertFalse(ok)
+        self.assertEqual(llamadas, MAX_INTENTOS)
+        self.assertIn('503', marcador)
+
+    def test_respeta_retry_after(self):
+        from .providers import _http_json
+        with mock.patch('enjambre.providers._intento', side_effect=[
+                (False, ('(❌ HTTP 429)', '7')), (True, {})]), \
+                mock.patch('enjambre.providers.time.sleep') as s:
+            _http_json('http://x', {}, {}, timeout=5)
+        s.assert_called_once_with(7.0)
+
+    def test_timeout_sale_como_reloj_y_reintenta(self):
+        (ok, marcador), llamadas = self._correr([
+            (False, '(⏰ timeout tras 5s)'), (False, '(⏰ timeout tras 5s)'),
+            (True, {'r': 1})])
+        self.assertTrue(ok)
+        self.assertEqual(llamadas, 3)
+
+
+class SeedChispaTests(TestCase):
+    """La migración 0006: Chispa existe, apunta a Pollinations y es la única activa de fábrica."""
+
+    def test_chispa_sembrada_activa_y_gratis(self):
+        from .clientes import api_de, precio_silla
+        chispa = Participante.objects.get(key='chispa')
+        self.assertTrue(chispa.activo)
+        self.assertTrue(chispa.permitir_consulta)
+        self.assertEqual(api_de(chispa), 'pollinations')
+        self.assertEqual(precio_silla(chispa), (0.0, 0.0))
+        self.assertEqual(Participante.objects.filter(activo=True).count(), 1)
+
+
+class OnboardingTests(TestCase):
+    """El estado de la escalera, con filesystem y bóveda mockeados (sin red, sin binarios)."""
+
+    def test_arranque_de_fabrica(self):
+        from . import onboarding
+        with mock.patch('enjambre.onboarding.shutil.which', return_value=None), \
+                mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}), \
+                mock.patch('enjambre.vault.configured_providers', return_value=[]):
+            e = onboarding.escalones()
+        self.assertTrue(e[0]['listo'])    # Chispa sembrada y activa
+        self.assertFalse(e[1]['listo'])
+        self.assertFalse(e[1]['instalado'])
+        self.assertFalse(e[2]['listo'])
+        self.assertFalse(onboarding.completa())
+
+    def test_opencode_instalado_sin_login(self):
+        # El estado más probable del escalón 1: binario sí, credencial no → CTA de login.
+        from . import onboarding
+        with mock.patch('enjambre.onboarding.shutil.which', return_value='/usr/bin/opencode'), \
+                mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}):
+            e = onboarding.escalones()
+        self.assertFalse(e[1]['listo'])
+        self.assertTrue(e[1]['instalado'])
+        self.assertFalse(e[1]['logueado'])
+
+    def test_escalera_completa(self):
+        from . import onboarding
+        with mock.patch('enjambre.onboarding.shutil.which', return_value='/usr/bin/opencode'), \
+                mock.patch('enjambre.conexiones.detectar', return_value={'opencode': True}), \
+                mock.patch('enjambre.vault.configured_providers', return_value=['openrouter']):
+            e = onboarding.escalones()
+            self.assertTrue(all(x['listo'] for x in e))
+            self.assertTrue(onboarding.completa())
+
+    def test_chispa_apagada_apaga_el_escalon_0(self):
+        from . import onboarding
+        Participante.objects.filter(key='chispa').update(activo=False)
+        with mock.patch('enjambre.onboarding.shutil.which', return_value=None), \
+                mock.patch('enjambre.conexiones.detectar', return_value={}), \
+                mock.patch('enjambre.vault.configured_providers', return_value=[]):
+            self.assertFalse(onboarding.escalones()[0]['listo'])

@@ -961,3 +961,51 @@ msgstr "couldn't upload"
 #: enjambre/templates/enjambre/mesa.html
 msgid "error de red"
 msgstr "network error"
+
+#: enjambre/templates/enjambre/conexiones.html
+msgid "Anda sin key"
+msgstr "Works without a key"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "Tu escalera"
+msgstr "Your ladder"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "de cero a mesa completa"
+msgstr "from zero to a full table"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "Silla gratis (sin cuentas): Chispa charla ya"
+msgstr "Free chair (no accounts): Chispa chats right away"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "opencode CLI (login gratis): ~6 modelos free y fabricar con /armar"
+msgstr "opencode CLI (free login): ~6 free models plus building with /armar"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "API keys en la bóveda: todos los modelos"
+msgstr "API keys in the vault: every model"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "lista — 1 mensaje cada 15 s, modelo chico"
+msgstr "ready — 1 message every 15 s, small model"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "encendé una silla Pollinations en Sillas"
+msgstr "turn on a Pollinations chair in Chairs"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "detectado y logueado"
+msgstr "installed and logged in"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "bóveda configurada"
+msgstr "vault configured"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "pestaña «API keys» acá abajo"
+msgstr "\"API keys\" tab below"
+
+#: enjambre/templates/enjambre/_escalera.html
+msgid "La silla gratis manda lo que escribís (y el contexto de la mesa) a un servicio público sin cuenta (Pollinations). Para trabajo sensible, usá sillas con tus propias keys o un modelo local."
+msgstr "The free chair sends what you type (and the table context) to a public no-account service (Pollinations). For sensitive work, use chairs with your own keys or a local model."

@@ -25,7 +25,7 @@ def _param_tokens(base_url):
     return 'max_completion_tokens' if not base_url else 'max_tokens'
 
 
-def chat(model, prompt, api_key, timeout, base_url='', extra_headers=None):
+def chat(model, prompt, api_key, timeout, base_url='', extra_headers=None, throttle_key=''):
     base = (base_url or DEFAULT_BASE).rstrip('/')
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
     if extra_headers:
@@ -35,7 +35,8 @@ def chat(model, prompt, api_key, timeout, base_url='', extra_headers=None):
         _param_tokens(base_url): MAX_TOKENS,
         'messages': [{'role': 'user', 'content': prompt}],
     }
-    ok, data = _http_json(base + '/chat/completions', payload, headers, timeout)
+    ok, data = _http_json(base + '/chat/completions', payload, headers, timeout,
+                          throttle_key=throttle_key)
     if not ok:
         return data
     try:

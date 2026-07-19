@@ -228,11 +228,15 @@ def home(request):
     todas = list(Participante.objects.order_by('orden', 'key'))  # para el menú de gestión
     for p in todas:
         p.persona_default = persona_default(p)  # default de fábrica para el botón Reset
+    from . import onboarding
+    # El banner de la escalera se muestra hasta completar el escalón 2 (keys en la bóveda).
+    escalera = None if onboarding.completa() else onboarding.escalones()
     return render(request, 'enjambre/home.html', {
         'sesiones': sesiones,
         'sillas_activas': activas,
         'todas_sillas': todas,
         'puede_controlar': _puede_controlar(request),
+        'escalera': escalera,
     })
 
 
@@ -851,7 +855,8 @@ def gestionar_sillas(request):
     # Metadata por cliente para el front (poblar el <select> de modelo y mostrar/ocultar campos).
     clientes_meta = {k: {'modelos': c.get('modelos', []),
                          'http': bool(c.get('http')),
-                         'model': bool(c.get('model_flag'))}
+                         'model': bool(c.get('model_flag')),
+                         'sin_key': bool(c.get('sin_key'))}
                      for k, c in CLIENTES.items()}
     from .models import AvataresEnjambre
     esp = AvataresEnjambre.get()
@@ -1013,14 +1018,17 @@ def conexiones(request):
     from . import vault
     prov_labels = {'anthropic': 'Anthropic (Claude)',
                    'openai': 'OpenAI-compatible (OpenAI / Groq / DeepSeek…)',
-                   'openrouter': 'OpenRouter (incluye :free)'}
+                   'openrouter': 'OpenRouter (incluye :free)',
+                   'pollinations': 'Pollinations (anda sin key; el token gratis acelera 3×)'}
     configurados = vault.configured_providers()
-    keys = [{'id': p, 'label': prov_labels.get(p, p), 'ok': p in configurados}
-            for p in vault.PROVIDERS]
+    keys = [{'id': p, 'label': prov_labels.get(p, p), 'ok': p in configurados,
+             'opcional': p in vault.PROVIDERS_OPCIONALES}
+            for p in vault.TODOS]
     desbloqueada, existe = vault.is_unlocked(), vault.has_vault()
     vault_state = 'abierta' if desbloqueada else ('cerrada' if existe else 'nueva')
-    from . import toolbelt
+    from . import onboarding, toolbelt
     return render(request, 'enjambre/conexiones.html', {
+        'escalera': onboarding.escalones(),
         'filas': filas,
         'chequeado_at': chequeado_at,
         'puede_controlar': _puede_controlar(request),

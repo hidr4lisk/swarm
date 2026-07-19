@@ -89,6 +89,7 @@
     </div>
 
     {% csrf_token %}
+    {% include 'enjambre/_escalera.html' %}
     <div class="cx-tabs" role="tablist">
         <button class="cx-tab" type="button" role="tab" data-tab="clis" aria-selected="true">
             <i class="fas fa-terminal"></i> {% trans 'CLIs logueados' %}
@@ -176,8 +177,8 @@
                 <div class="cx-fila">
                     <strong>{{ k.label }}</strong>
                     <span class="cx-estado">
-                        <span class="cx-dot {% if k.ok %}on{% else %}off{% endif %}" data-keydot></span>
-                        <span data-keystate>{% if k.ok %}{% trans 'Configurada' %}{% else %}{% trans 'Sin key' %}{% endif %}</span>
+                        <span class="cx-dot {% if k.ok or k.opcional %}on{% else %}off{% endif %}" data-keydot></span>
+                        <span data-keystate>{% if k.ok %}{% trans 'Configurada' %}{% elif k.opcional %}{% trans 'Anda sin key' %}{% else %}{% trans 'Sin key' %}{% endif %}</span>
                     </span>
                 </div>
                 <div class="cx-key-token">

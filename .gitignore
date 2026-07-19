@@ -23,6 +23,9 @@ PLAN.md
 # Bóveda de API keys (ruta portable): cifrada, pero JAMÁS al repo (menos aún público)
 data/secrets.enc
 data/.secrets.runtime.json
+data/.ratelimit.json
+data/.ratelimit.tmp
+data/.ratelimit.lock/
 secrets.enc
 .secrets.runtime.json
 

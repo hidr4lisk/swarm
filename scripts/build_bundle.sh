@@ -297,10 +297,15 @@ vuelve a preguntar). Si elegiste SIN RASTRO y te arrepentís, el próximo arranq
 instalarlo en esa PC (o "no preguntarme más"). Tus datos —mesas, sillas y bóveda— viven SIEMPRE
 en la carpeta data/ del pendrive y se mueven con él entre Windows y Linux, elijas lo que elijas.
 
-Se abre el navegador en http://127.0.0.1:8799. Andá a "Conexiones → API keys": elegí una
-passphrase (mín. 8), pegá tu primera API key y tocá Guardar. Con ese único paso la bóveda queda
-creada, cifrada y ACTIVA — ya podés armar mesas. Cuando reabras Swarm, desbloqueá con esa misma
-passphrase.
+Se abre el navegador en http://127.0.0.1:8799 — y ya hay una silla esperándote: CHISPA, la
+silla gratis, responde sin configurar nada (sin cuenta; un modelo chico, 1 mensaje cada 15 s;
+lo que escribís viaja a un servicio público —Pollinations—, así que lo sensible dejalo para
+sillas con tus keys). Escribí en la mesa y listo.
+
+Para más modelos y velocidad: "Conexiones → API keys": elegí una passphrase (mín. 8), pegá tu
+primera API key y tocá Guardar. Con ese único paso la bóveda queda creada, cifrada y ACTIVA.
+Cuando reabras Swarm, desbloqueá con esa misma passphrase. La pantalla Conexiones muestra tu
+ESCALERA: qué desbloquea cada escalón (silla gratis → CLI opencode → API keys).
 
 Tus datos (base + bóveda de keys) viven en la carpeta data/ de este pendrive.
 

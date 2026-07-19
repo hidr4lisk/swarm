@@ -27,7 +27,11 @@ from django.conf import settings
 from cryptography.fernet import Fernet, InvalidToken
 
 # Proveedores por API key soportados (espejo de los api-* de clientes.py).
+# PROVIDERS la REQUIEREN; los OPCIONALES andan sin key (tier anónimo) y el token solo mejora el
+# servicio (Pollinations: 1 req/5 s en vez de 1/15 s, con token gratis de auth.pollinations.ai).
 PROVIDERS = ('anthropic', 'openai', 'openrouter')
+PROVIDERS_OPCIONALES = ('pollinations',)
+TODOS = PROVIDERS + PROVIDERS_OPCIONALES
 
 # Passphrase mínima al CREAR la bóveda. El salt va EN CLARO en secrets.enc (para listar
 # providers sin abrir), así que una passphrase vacía/trivial se forzaría al toque → rompería
@@ -157,7 +161,7 @@ def set_key(passphrase, provider, token):
     (mín. MIN_PASSPHRASE); las siguientes deben usar la MISMA passphrase (si no, no puede
     descifrar lo existente). Al guardar OK deja la bóveda DESBLOQUEADA: acabás de probar la
     passphrase, así que la key queda usable sin un paso extra. Devuelve (ok, error)."""
-    if provider not in PROVIDERS:
+    if provider not in TODOS:
         return False, 'proveedor desconocido'
     token = (token or '').strip()
     if not token:

@@ -51,6 +51,8 @@
         </button>
     </div>
 
+    {% if escalera %}{% include 'enjambre/_escalera.html' %}{% endif %}
+
     {# Modal de donaciones: alias de transferencia, claro que son donaciones voluntarias. #}
     <div class="enj-donar-back" id="donar-modal" hidden>
         <div class="enj-donar-card" role="dialog" aria-modal="true" aria-labelledby="donar-title">
