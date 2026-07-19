@@ -1019,6 +1019,7 @@ def conexiones(request):
     prov_labels = {'anthropic': 'Anthropic (Claude)',
                    'openai': 'OpenAI-compatible (OpenAI / Groq / DeepSeek…)',
                    'openrouter': 'OpenRouter (incluye :free)',
+                   'gemini': 'Gemini (key de Google AI Studio)',
                    'pollinations': 'Pollinations (anda sin key; el token gratis acelera 3×)'}
     configurados = vault.configured_providers()
     keys = [{'id': p, 'label': prov_labels.get(p, p), 'ok': p in configurados,

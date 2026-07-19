@@ -479,6 +479,49 @@ class PollinationsClienteTests(TestCase):
         self.assertEqual(headers['Authorization'], 'Bearer tok123')
 
 
+class GeminiClienteTests(TestCase):
+    """El proveedor gemini: URL final del endpoint OpenAI-compat de Google, Bearer y registro."""
+
+    def _llamar(self, model=''):
+        from .providers import gemini
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'x'}}]})) as m:
+            gemini.chat(model, 'hola', 'AIza-test', timeout=5)
+        return m.call_args[0]  # (url, payload, headers, timeout)
+
+    def test_url_base_fija_y_modelo_default(self):
+        url, payload, headers, _ = self._llamar()
+        self.assertEqual(
+            url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+        self.assertEqual(payload['model'], 'gemini-3.5-flash')
+        self.assertEqual(headers['Authorization'], 'Bearer AIza-test')
+
+    def test_dispatcher_rutea_y_sin_key_es_marcador(self):
+        from . import providers
+        with mock.patch('enjambre.providers.gemini.chat', return_value='ok') as m:
+            self.assertEqual(providers.chat('gemini', 'g', 'hola', 'k', 5), 'ok')
+        m.assert_called_once()
+        self.assertTrue(providers.chat('gemini', 'g', 'hola', '', 5).startswith('(❌ sin API key'))
+
+    def test_registro_y_vault(self):
+        from . import vault
+        from .clientes import api_de, es_api, modelo_de
+        self.assertIn('gemini', vault.PROVIDERS)
+        p = Participante.objects.create(
+            key='gem-t', nombre='Gema', comando=['api-gemini', '--model', 'gemini-3.1-pro'])
+        self.assertTrue(es_api('api-gemini'))
+        self.assertEqual(api_de(p), 'gemini')
+        self.assertEqual(modelo_de(p), 'gemini-3.1-pro')
+
+    def test_listar_modelos_pela_el_prefijo_models(self):
+        from . import providers
+        data = {'data': [{'id': 'models/gemini-3.5-flash'}, {'id': 'models/gemini-3.1-pro'}]}
+        with mock.patch('enjambre.providers._http_get_json', return_value=data):
+            src, models, _ = providers.listar_modelos('gemini', api_key='AIza-test')
+        self.assertEqual(src, 'live')
+        self.assertEqual([m['id'] for m in models], ['gemini-3.5-flash', 'gemini-3.1-pro'])
+
+
 class ClientePollinationsTests(TestCase):
     """El registro del cliente sin_key: derivaciones y el precio $0 del escalón 0."""
 

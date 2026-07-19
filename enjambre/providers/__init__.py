@@ -179,6 +179,17 @@ def listar_modelos(provider, api_key='', base_url=''):
             # Todos los modelos Claude soportan tool-use.
             return 'live', [{'id': m.get('id', ''), 'free': False, 'tools': True}
                             for m in data.get('data', [])], ''
+        if provider == 'gemini':
+            if not api_key:
+                return 'error', [], 'desbloqueá la bóveda para listar los modelos con tu key'
+            from .gemini import GEMINI_BASE
+            data = _http_get_json(GEMINI_BASE + '/models',
+                                  {'Authorization': 'Bearer ' + api_key})
+            # Los ids vienen prefijados «models/…» — se pela para que el --model quede limpio.
+            # El listado no informa capacidades → tools=None (desconocido).
+            return 'live', [{'id': (m.get('id') or '').removeprefix('models/'),
+                             'free': False, 'tools': None}
+                            for m in data.get('data', [])], ''
     except Exception as e:  # noqa: BLE001 — red/SSL/parse → el caller muestra la lista curada
         return 'error', [], str(e)
     return 'error', [], 'este proveedor no tiene listado en vivo'
@@ -205,6 +216,9 @@ def chat(provider, model, prompt, api_key, timeout, base_url=''):
     if provider == 'openrouter':
         from . import openrouter as p
         return p.chat(model, prompt, api_key, timeout)
+    if provider == 'gemini':
+        from . import gemini as p
+        return p.chat(model, prompt, api_key, timeout)
     return f"(❌ proveedor API desconocido: {provider})"
 
 
@@ -229,5 +243,8 @@ def chat_agentic(provider, model, prompt, api_key, timeout, sesion, participante
                               base_url=base_url, system=system)
     if provider == 'openrouter':
         from . import openrouter as p
+        return p.chat_agentic(model, prompt, api_key, timeout, sesion, participante, system=system)
+    if provider == 'gemini':
+        from . import gemini as p
         return p.chat_agentic(model, prompt, api_key, timeout, sesion, participante, system=system)
     return f"(❌ proveedor API desconocido: {provider})"

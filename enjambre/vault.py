@@ -29,7 +29,7 @@ from cryptography.fernet import Fernet, InvalidToken
 # Proveedores por API key soportados (espejo de los api-* de clientes.py).
 # PROVIDERS la REQUIEREN; los OPCIONALES andan sin key (tier anónimo) y el token solo mejora el
 # servicio (Pollinations: 1 req/5 s en vez de 1/15 s, con token gratis de auth.pollinations.ai).
-PROVIDERS = ('anthropic', 'openai', 'openrouter')
+PROVIDERS = ('anthropic', 'openai', 'openrouter', 'gemini')
 PROVIDERS_OPCIONALES = ('pollinations',)
 TODOS = PROVIDERS + PROVIDERS_OPCIONALES
 

@@ -100,6 +100,14 @@ CLIENTES = {
             'google/gemini-3-flash',
         ],
     },
+    'api-gemini': {
+        'label': 'Gemini (API key de Google AI Studio)',
+        'api': 'gemini',
+        'comando': ['api-gemini'],
+        'model_flag': '--model',
+        # Curada de respaldo; el modal trae la lista real en vivo con la key de la bóveda.
+        'modelos': ['', 'gemini-3.5-flash', 'gemini-3.1-pro', 'gemini-3-flash'],
+    },
     'api-pollinations': {
         'label': 'Pollinations (gratis, sin cuenta)',
         'api': 'pollinations',
