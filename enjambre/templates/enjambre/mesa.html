@@ -223,7 +223,7 @@
     <section class="enj-chat">
         <div id="mensajes">
             {% for m in mensajes %}
-            <div class="msg" data-id="{{ m.id }}" data-raw="{{ m.texto }}"{% if m.es_humano %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
+            <div class="msg" data-id="{{ m.id }}" data-raw="{{ m.texto }}"{% if m.es_humano %} data-humano="1"{% endif %} style="border-left-color:{{ m.color }};border-right-color:{{ m.color }};{% if m.es_ruido %}opacity:.5;{% endif %}">
                 <span class="msg-portrait" style="--pc:{{ m.color }};">
                     {% if m.avatar %}<img class="msg-avatar" src="{{ m.avatar }}" alt="">{% else %}<span class="msg-avatar msg-avatar--ph" style="background:{{ m.color }};"></span>{% endif %}
                 </span>
@@ -525,6 +525,7 @@
         const c = m.color || '{{ color_humano }}';
         if (m.es_humano) div.dataset.humano = '1';
         div.style.borderLeftColor = c;
+        div.style.borderRightColor = c;  // el humano lleva la barra a la derecha (row-reverse)
         const inner = m.avatar
             ? '<img class="msg-avatar" src="' + esc(m.avatar) + '" alt="">'
             : '<span class="msg-avatar msg-avatar--ph" style="background:' + c + ';"></span>';

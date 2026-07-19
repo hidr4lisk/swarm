@@ -108,6 +108,12 @@ tema elegido en la web, igual que el resto de los módulos.
             border-left: 3px solid var(--enj-msg-bar); background: var(--enj-msg-bg);
             animation: enj-in .25s ease; }
 .enj .msg-body { flex: 1; min-width: 0; }
+/* Mensajes del humano: estilo WhatsApp, espejo de las sillas → anclados a la derecha
+   (cuerpo | retrato). Flex row-reverse; la barra de color pasa al borde derecho (el color
+   lo pone el inline border-right-color, espejo del border-left-color de las sillas). */
+.enj .msg[data-humano="1"] { flex-direction: row-reverse; width: fit-content; max-width: 85%;
+    margin-left: auto; border-left-width: 0; border-right: 3px solid var(--enj-msg-bar); }
+.enj .msg[data-humano="1"] .msg-head { justify-content: flex-end; }
 /* Retrato = command-card de unidad RTS: marco de brackets + anillo de selección en el color
    del jugador (--pc). Fallback (msg-avatar--ph) = cuadrado macizo de ese color. */
 .enj .msg-portrait { position: relative; width: 46px; height: 46px; flex-shrink: 0; display: block;
