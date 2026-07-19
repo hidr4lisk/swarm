@@ -199,14 +199,44 @@ footer a{color:var(--text-dim);}
   .step{gap:14px;}
   h2{overflow-wrap:break-word;}
 }
+/* ── Boot glitch (mismo efecto que warp/shield/tech) ── */
+#glitch-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none;animation:go-hide 2s ease-out forwards;}
+#glitch-overlay::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.3) 0,rgba(0,0,0,.3) 1px,transparent 1px,transparent 3px);}
+#glitch-overlay::after{content:'';position:absolute;left:0;right:0;height:2px;background:var(--accent);opacity:.85;animation:go-scanline 2s steps(1,end) forwards;}
+@keyframes go-hide{0%,70%{opacity:1;}100%{opacity:0;}}
+@keyframes go-scanline{
+  0%{top:10%;transform:scaleX(.8) translateX(-5px);}8%{top:72%;transform:scaleX(.4) translateX(12px);}
+  16%{top:25%;transform:scaleX(.9) translateX(-8px);}24%{top:58%;transform:scaleX(.6) translateX(4px);}
+  32%{top:40%;transform:scaleX(1) translateX(-15px);}40%{top:85%;transform:scaleX(.3) translateX(7px);}
+  48%{top:15%;transform:scaleX(.7) translateX(-3px);}56%{top:62%;transform:scaleX(.5) translateX(10px);}
+  64%{top:33%;transform:scaleX(.2) translateX(-1px);}72%{top:50%;transform:scaleX(.1) translateX(2px);opacity:.5;}
+  100%{opacity:0;}
+}
+.hero h1{animation:title-glitch 2s steps(1,end) forwards;}
+@keyframes title-glitch{
+  0%{text-shadow:3px 0 #ff0040,-3px 0 #00f0cc;filter:blur(.5px);}
+  8%{text-shadow:-4px 0 #ff0040,2px 0 #00f0cc;transform:translateX(3px);}
+  16%{text-shadow:2px 0 #ff0040,-4px 0 #00f0cc;transform:translateX(-2px);filter:none;}
+  24%{text-shadow:-2px 0 #ff0040,3px 0 #00f0cc;transform:translateX(1px);}
+  32%{text-shadow:4px 0 #ff0040,-2px 0 #00f0cc;filter:blur(.3px);}
+  40%{text-shadow:-3px 0 #ff0040,1px 0 #00f0cc;transform:translateX(-1px);}
+  48%{text-shadow:1px 0 rgba(152,180,166,.5);transform:none;}
+  56%{text-shadow:-2px 0 #ff0040,2px 0 #00f0cc;}
+  64%{text-shadow:2px 0 rgba(152,180,166,.3);}
+  72%{text-shadow:-1px 0 #ff0040,1px 0 #00f0cc;}
+  80%,100%{text-shadow:none;filter:none;transform:none;}
+}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto;}
   .btn:hover{transform:none;}
   .hero .prompt .cur,.wait{animation:none;}
+  .hero h1{animation:none;}
+  #glitch-overlay{display:none;}
 }
 </style>
 </head>
 <body>
+<div id="glitch-overlay" aria-hidden="true"></div>
 
 <div class="top-bar">
   <div class="top-bar__inner">
@@ -488,6 +518,33 @@ copyBtn.addEventListener('click', ()=>{
 let saved=null;
 try{ saved = localStorage.getItem('swarm_lang'); }catch(e){}
 if(saved === 'en') applyLang('en');
+</script>
+<script>
+/* ── Boot glitch: scramble del título (por nodo de texto — no rompe los <span> del h1) ── */
+(function(){
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const h1 = document.querySelector('.hero h1');
+  if (!h1) return;
+  const nodes = [];
+  (function walk(n){ for (const c of n.childNodes) { if (c.nodeType === 3) nodes.push({n:c, t:c.nodeValue}); else walk(c); } })(h1);
+  const chars = '!@#$%^&*<>[]{}01';
+  const len = nodes.reduce((a,x) => a + x.t.length, 0);
+  let frame = 0;
+  const total = 40;
+  const id = setInterval(() => {
+    let off = 0;
+    for (const x of nodes) {
+      x.n.nodeValue = [...x.t].map((ch, i) => {
+        if (ch === ' ') return ch;
+        const lockAt = Math.floor(((off + i) / len) * total * 0.75);
+        return frame > lockAt ? ch : chars[Math.floor(Math.random() * chars.length)];
+      }).join('');
+      off += x.t.length;
+    }
+    if (++frame >= total) { clearInterval(id); for (const x of nodes) x.n.nodeValue = x.t; }
+  }, 50);
+  setTimeout(() => { const ov = document.getElementById('glitch-overlay'); if (ov) ov.remove(); }, 2100);
+})();
 </script>
 </body>
 </html>
