@@ -38,15 +38,18 @@ class Command(BaseCommand):
         #    sillas; sin él la mesa encola pero nadie responde.
         if not o['no_worker']:
             def _worker():
-                try:
-                    call_command('enjambre_worker')
-                except SystemExit:
-                    # El botón "reiniciar worker" hace sys.exit; en un hilo solo corta el hilo (no
-                    # hay supervisor en modo portátil). Lo relanzamos para no quedar sin dispatch.
-                    self.stderr.write('· Worker pidió reinicio; relanzando…')
-                    call_command('enjambre_worker')
-                except Exception as e:  # noqa: BLE001
-                    self.stderr.write(f'· Worker cayó: {e}')
+                while True:
+                    try:
+                        call_command('enjambre_worker')
+                        return
+                    except SystemExit:
+                        # El botón "reiniciar worker" hace sys.exit; en un hilo solo corta el hilo
+                        # (no hay supervisor en modo portátil). Relanzamos SIEMPRE — antes se
+                        # relanzaba una sola vez y al segundo reinicio la mesa quedaba muda.
+                        self.stderr.write('· Worker pidió reinicio; relanzando…')
+                    except Exception as e:  # noqa: BLE001
+                        self.stderr.write(f'· Worker cayó: {e}')
+                        return
             threading.Thread(target=_worker, daemon=True, name='enjambre-worker').start()
             self.stdout.write('· Worker del Enjambre arrancado (hilo).')
 

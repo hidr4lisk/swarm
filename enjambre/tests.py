@@ -355,3 +355,53 @@ class WorkspaceTests(TestCase):
                 # segunda llamada: misma carpeta, no re-inicializa ni re-commitea
                 self.assertEqual(mesa_workspace(sesion), dest)
                 self.assertEqual(Path(dest, 'NOTAS.md').read_text()[:7], '# NOTAS')
+
+
+class ToolbeltTests(TestCase):
+    """Los frenos del toolbelt: la bóveda no se lee, y las banderas escritoras de find no pasan."""
+
+    def test_read_file_no_lee_la_boveda(self):
+        from .toolbelt import _read_file
+        with tempfile.TemporaryDirectory() as tmp:
+            secreto = Path(tmp) / '.secrets.runtime.json'
+            secreto.write_text('{"anthropic": "sk-no-deberia-verse"}')
+            out = _read_file(str(secreto))
+            self.assertIn('⛔', out)
+            self.assertNotIn('sk-no-deberia-verse', out)
+            out = _read_file(str(Path(tmp) / 'secrets.enc'))
+            self.assertIn('⛔', out)
+
+    def test_inspect_no_menciona_la_boveda(self):
+        from .toolbelt import _correr_readonly
+        out, err = _correr_readonly('cat /algun/lado/.secrets.runtime.json')
+        self.assertIsNone(out)
+        self.assertIn('bóveda', err)
+        out, err = _correr_readonly('grep -r clave secrets.enc')
+        self.assertIsNone(out)
+        self.assertIn('bóveda', err)
+
+    def test_find_okdir_bloqueado(self):
+        from .toolbelt import _correr_readonly
+        for flag in ('-okdir', '-exec', '-delete'):
+            out, err = _correr_readonly(f'find /tmp {flag} rm {{}} ;')
+            self.assertIsNone(out, flag)
+            self.assertIn(flag, err)
+
+    def test_lecturas_normales_siguen_pasando(self):
+        from .toolbelt import _correr_readonly
+        out, err = _correr_readonly('pwd')
+        self.assertIsNone(err)
+        self.assertTrue(out)
+
+
+class ParamTokensTests(TestCase):
+    """OpenAI real exige max_completion_tokens; los compatibles siguen con max_tokens."""
+
+    def test_openai_directo_usa_max_completion_tokens(self):
+        from .providers.openai_compat import _param_tokens
+        self.assertEqual(_param_tokens(''), 'max_completion_tokens')
+
+    def test_compatibles_siguen_con_max_tokens(self):
+        from .providers.openai_compat import _param_tokens
+        self.assertEqual(_param_tokens('https://openrouter.ai/api/v1'), 'max_tokens')
+        self.assertEqual(_param_tokens('https://api.groq.com/openai/v1'), 'max_tokens')

@@ -64,6 +64,14 @@ DATABASES = {
         conn_max_age=600,
     ),
 }
+# SQLite con escritores concurrentes (en `serve`, worker en un hilo + web en otros): sin WAL ni
+# busy_timeout, dos escrituras a la vez terminan en «database is locked». WAL además deja que las
+# lecturas (SSE cada 2s) no bloqueen al escritor.
+if DATABASES['default']['ENGINE'].endswith('sqlite3'):
+    DATABASES['default'].setdefault('OPTIONS', {}).update({
+        'timeout': 20,
+        'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=20000;',
+    })
 
 LANGUAGE_CODE = 'es'
 # UI bilingüe: se traduce el CHROME (botones, títulos, la guía Ayuda) vía i18n estándar.

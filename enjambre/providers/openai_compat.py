@@ -17,6 +17,14 @@ DEFAULT_MODEL = 'gpt-5.2'
 MAX_TOKENS = 4096
 
 
+def _param_tokens(base_url):
+    """Nombre del parámetro de tope de tokens. OpenAI real (sin base_url custom) rechaza
+    `max_tokens` en los modelos actuales (o-*, gpt-5.*) con HTTP 400 y exige
+    `max_completion_tokens`; los compatibles (Groq/DeepSeek/OpenRouter/LM Studio) siguen
+    hablando `max_tokens`."""
+    return 'max_completion_tokens' if not base_url else 'max_tokens'
+
+
 def chat(model, prompt, api_key, timeout, base_url='', extra_headers=None):
     base = (base_url or DEFAULT_BASE).rstrip('/')
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
@@ -24,7 +32,7 @@ def chat(model, prompt, api_key, timeout, base_url='', extra_headers=None):
         headers.update(extra_headers)
     payload = {
         'model': model or DEFAULT_MODEL,
-        'max_tokens': MAX_TOKENS,
+        _param_tokens(base_url): MAX_TOKENS,
         'messages': [{'role': 'user', 'content': prompt}],
     }
     ok, data = _http_json(base + '/chat/completions', payload, headers, timeout)
@@ -50,7 +58,7 @@ def chat_agentic(model, prompt, api_key, timeout, sesion, participante,
         messages.append({'role': 'system', 'content': system})
     messages.append({'role': 'user', 'content': prompt})
     for _ in range(toolbelt.MAX_ROUNDS):
-        payload = {'model': model or DEFAULT_MODEL, 'max_tokens': MAX_TOKENS,
+        payload = {'model': model or DEFAULT_MODEL, _param_tokens(base_url): MAX_TOKENS,
                    'messages': messages, 'tools': tools}
         ok, data = _http_json(base + '/chat/completions', payload, headers, timeout)
         if not ok:

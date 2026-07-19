@@ -51,10 +51,28 @@ _ALLOW_WIN = {
 _ALLOW = _ALLOW_WIN if IS_WIN else _ALLOW_POSIX
 
 # Banderas que convierten un binario read-only en escritor (misuse de la allowlist, ej. `find`).
-_DENY_FLAGS = ('-delete', '-exec', '-execdir', '-ok', '-fprint', '-fls', '-fprintf')
+_DENY_FLAGS = ('-delete', '-exec', '-execdir', '-ok', '-okdir', '-fprint', '-fls', '-fprintf')
 # Operadores de shell: en Windows `cmd /c` los interpreta → los bloqueamos (en POSIX corremos
 # shell=False, así que son inertes y NO se bloquean, para no romper regex con `|`).
 _DENY_OPS_WIN = ('&', '|', '>', '<', '^')
+
+# Archivos de la bóveda: las herramientas del toolbelt NUNCA los leen. `.secrets.runtime.json`
+# tiene las API keys EN CLARO mientras la bóveda está desbloqueada — sin este freno, una silla
+# (o un prompt injection en un archivo que lee) podría volcarlas al transcript de la mesa.
+# No es un sandbox (mismo usuario), pero cierra el escape accidental y el vector barato.
+_SECRETOS_VAULT = ('secrets.enc', '.secrets.runtime.json')
+
+
+def _es_ruta_vedada(path):
+    """True si `path` (resuelto) es un archivo de la bóveda."""
+    try:
+        return Path(path).resolve().name in _SECRETOS_VAULT
+    except OSError:
+        return False
+
+
+def _menciona_secreto(texto):
+    return any(s in (texto or '').lower() for s in _SECRETOS_VAULT)
 
 
 # ── Estado ──────────────────────────────────────────────────────────────────────
@@ -172,11 +190,16 @@ def _correr_readonly(comando, timeout=INSPECT_TIMEOUT):
     cmd = (comando or '').strip()
     if not cmd:
         return None, 'comando vacío'
+    if _menciona_secreto(cmd):
+        return None, 'los archivos de la bóveda de API keys no se leen con el toolbelt'
     if IS_WIN:
         if any(op in cmd for op in _DENY_OPS_WIN):
             return None, 'operadores de shell (& | > < ^) no permitidos en inspect'
         parts = cmd.split()
-        argv = ['cmd', '/c'] + parts
+        # String CRUDO a cmd.exe (no lista): con lista, subprocess re-quotea cada pedazo y rompe
+        # los argumentos con comillas (`type "C:\Program Files\x.log"` llegaba mangled). Pasar el
+        # string con shell=False en Windows lo entrega verbatim como command line.
+        argv = 'cmd /c ' + cmd
         first = parts[0]
     else:
         try:
@@ -244,6 +267,8 @@ def _system_report():
 
 def _read_file(ruta):
     p = os.path.abspath(os.path.expanduser((ruta or '').strip()))
+    if _es_ruta_vedada(p):
+        return '(⛔ los archivos de la bóveda de API keys no se leen con el toolbelt)'
     if not os.path.exists(p):
         return f'(❌ no existe: {p})'
     if os.path.isdir(p):
