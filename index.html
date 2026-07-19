@@ -33,7 +33,16 @@ img{max-width:100%;}
 @media (min-width:1024px){.top-bar{--nav-pad:3rem;}}
 @media (min-width:1280px){.top-bar{--nav-pad:4rem;}}
 .top-bar__inner{max-width:1320px;margin:0 auto;height:100%;padding-inline:var(--nav-pad);
-  display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  display:flex;align-items:center;justify-content:space-between;gap:16px;position:relative;}
+/* Banner lema pirata — centrado absoluto en la top-bar. Bandera SVG (no emoji: Windows) + ★ de texto. Solo PC. */
+.gov-banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);
+  white-space:nowrap;pointer-events:none;}
+.gov-banner>span{display:inline-flex;align-items:center;line-height:1;}
+.gov-banner .gov-flag svg{display:block;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.18);}
+.gov-banner .gov-stars{color:#f5c518;letter-spacing:3px;font-size:13px;}
+@media (max-width:1023px){.gov-banner{display:none;}}
 .top-bar__left,.top-bar__right{display:flex;align-items:center;gap:12px;
   font-size:.72rem;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;}
 .tool-select{ min-width: 150px;appearance:none;-webkit-appearance:none;background-color:transparent;
@@ -212,6 +221,11 @@ footer a{color:var(--text-dim);}
         <option value="https://hidr4lisk.github.io/warp">WARP</option>
       </select>
     </div>
+    <div class="gov-banner" aria-hidden="true">
+      <span class="gov-flag" title="Argentina"><svg width="20" height="13" viewBox="0 0 30 20" role="img" aria-label="Argentina"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.667" fill="#75AADB"/><rect width="30" height="6.667" y="13.333" fill="#75AADB"/><polygon fill="#F6B40E" points="19.2,10 17.495,8.966 17.969,7.031 16.034,7.505 15,5.8 13.966,7.505 12.031,7.031 12.505,8.966 10.8,10 12.505,11.034 12.031,12.969 13.966,12.495 15,14.2 16.034,12.495 17.969,12.969 17.495,11.034"/><circle cx="15" cy="10" r="2.7" fill="#F6B40E" stroke="#85340A" stroke-width=".25"/></svg></span>
+      <span data-i18n="nav_motto">2026 - El conocimiento es libre</span>
+      <span class="gov-stars">★★★</span>
+    </div>
     <div class="top-bar__right">
       <nav class="lang-toggle" aria-label="Language selector">
         <button class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
@@ -382,6 +396,7 @@ footer a{color:var(--text-dim);}
 /* ── i18n (ES = texto del HTML; EN = este diccionario) ── */
 const I18N = {
   en: {
+    nav_motto: '2026 - Knowledge is free',
     tagline: 'A <b>multi-agent worktable</b> in your browser: several AIs chat, debate and <b>act</b> — coordinated by a leader.',
     badges: 'multi-agent · API keys or CLIs · portable · open source (MIT)',
     cta_go: '▸ GET STARTED', cta_download: '⬇ DOWNLOAD · READY TO USE',
