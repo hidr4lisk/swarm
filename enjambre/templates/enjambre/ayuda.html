@@ -46,30 +46,42 @@
     <div class="ay-seccion enj-card">
         <h2><i class="fas fa-bug"></i> {% trans '¿Qué es esto?' %}</h2>
         <p style="margin:.2rem 0;">
-            {% blocktrans %}Una <strong>mesa de trabajo multi-agente</strong>: varios CLIs de IA (tus cuentas, ya
-            logueadas en tu terminal) se sientan como <strong>sillas</strong> de una misma mesa.
+            {% blocktrans %}Una <strong>mesa de trabajo multi-agente</strong>: varias IAs se sientan como
+            <strong>sillas</strong> de una misma mesa — CLIs que ya tenés logueados en tu terminal,
+            modelos por <strong>API key</strong> (guardada en la bóveda cifrada) o la
+            <strong>silla gratis</strong> que viene de fábrica y anda sin configurar nada.
             Vos preguntás; las sillas <strong>charlan, debaten</strong> y, si se lo pedís,
-            <strong>fabrican archivos de verdad</strong> en la carpeta git de la mesa. Cada silla
-            corre en un contenedor descartable: nada toca tu sistema.{% endblocktrans %}
+            <strong>fabrican archivos de verdad</strong> en la carpeta git de la mesa.{% endblocktrans %}
+        </p>
+        <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
+            {% blocktrans %}Si hay Docker configurado, los CLIs corren en contenedores descartables; en el modo
+            portátil (pendrive, sin Docker) corren como procesos de tu sesión y las sillas por API
+            hablan directo con el proveedor.{% endblocktrans %}
         </p>
     </div>
 
     <div class="ay-seccion enj-card">
-        <h2><i class="fas fa-play"></i> {% trans 'Primeros pasos' %}</h2>
+        <h2><i class="fas fa-play"></i> {% trans 'Primeros pasos — la escalera' %}</h2>
+        <div class="ay-paso"><span class="n">0</span><span>
+            {% blocktrans %}<strong>Nada que configurar</strong>: la silla gratis (<span class="ay-code">Chispa</span>)
+            ya está sentada. Creá una mesa y probá — es el escalón cero de la escalera que
+            ves en la portada.{% endblocktrans %}</span></div>
         <div class="ay-paso"><span class="n">1</span><span>
             {% blocktrans %}Entrá a <a href="/conexiones/">Conexiones</a>: te muestra qué CLIs
             tienen login detectado en tu máquina (<span class="ay-code">claude</span>,
-            <span class="ay-code">opencode</span>, <span class="ay-code">agy</span>).{% endblocktrans %}</span></div>
+            <span class="ay-code">opencode</span>, <span class="ay-code">agy</span>).
+            <span class="ay-code">opencode</span> tiene login gratis si no tenés ninguno.{% endblocktrans %}</span></div>
         <div class="ay-paso"><span class="n">2</span><span>
-            {% blocktrans %}En <a href="/sillas/">Sillas</a>, encendé las de los CLIs que
-            tengas (vienen apagadas). Ahí también editás su personalidad y su modelo.{% endblocktrans %}</span></div>
+            {% blocktrans %}¿Tenés API keys? Cargalas en <a href="/conexiones/">Conexiones → API keys</a>:
+            quedan en la <strong>bóveda</strong>, cifradas con una passphrase que elegís vos.{% endblocktrans %}</span></div>
         <div class="ay-paso"><span class="n">3</span><span>
-            {% blocktrans %}Creá una mesa, tildá qué sillas se sientan, y preguntá. Para dirigirte a una sola silla,
-            mencionala: <span class="ay-code">@claude revisá este enfoque</span>.{% endblocktrans %}</span></div>
+            {% blocktrans %}En <a href="/sillas/">Sillas</a>, encendé las que quieras usar (los CLIs vienen
+            apagados). Ahí también editás su personalidad y su modelo.{% endblocktrans %}</span></div>
         <div class="ay-paso"><span class="n">4</span><span>
-            {% blocktrans %}¿Construir de verdad? <span class="ay-code">/armar &lt;pedido&gt;</span> — las sillas editan
-            archivos en la carpeta git de la mesa y cada turno queda commiteado (📁 para explorar
-            y descargar).{% endblocktrans %}</span></div>
+            {% blocktrans %}Creá una mesa, tildá qué sillas se sientan, y preguntá. Para dirigirte a una sola silla,
+            mencionala: <span class="ay-code">@claude revisá este enfoque</span>. ¿Construir de verdad?
+            <span class="ay-code">/armar &lt;pedido&gt;</span> — las sillas editan archivos en la carpeta git
+            de la mesa y cada turno queda commiteado (📁 para explorar y descargar).{% endblocktrans %}</span></div>
     </div>
 
     <div class="ay-grid2 ay-seccion">
@@ -123,8 +135,10 @@
             <table class="ay-cmds">
                 <tr><td><strong>{% trans 'Cliente' %}</strong></td><td>{% blocktrans %}<span class="ay-code">claude</span> (Claude Code),
                     <span class="ay-code">opencode</span> (OpenCode, multi-modelo),
-                    <span class="ay-code">agy</span> (Antigravity) u
-                    <span class="ay-code">ollama</span> (un modelo local tuyo, por URL){% endblocktrans %}</td></tr>
+                    <span class="ay-code">agy</span> (Antigravity),
+                    <span class="ay-code">ollama</span> (un modelo local tuyo, por URL),
+                    un proveedor por <strong>API key</strong> (Anthropic, OpenRouter, compatibles OpenAI)
+                    o la <strong>silla gratis</strong> sin key (Pollinations){% endblocktrans %}</td></tr>
                 <tr><td><strong>Prompt</strong></td><td>{% trans 'la personalidad: quién es y cómo responde (↺ Reset vuelve al de fábrica)' %}</td></tr>
                 <tr><td><strong>{% trans 'Recordatorio' %}</strong></td><td>{% trans 'se repite al final de cada turno (lo que no debe olvidar)' %}</td></tr>
                 <tr><td><strong>{% trans 'Especialidad' %}</strong></td><td>{% trans 'pista corta para que el líder reparta mejor' %}</td></tr>
@@ -135,13 +149,53 @@
         </div>
     </div>
 
-    <div class="ay-seccion enj-card">
-        <h2><i class="fas fa-shield-halved"></i> {% trans 'Tus credenciales' %}</h2>
+    <div class="ay-grid2 ay-seccion">
+        <div class="enj-card">
+            <h2><i class="fas fa-toolbox"></i> {% trans 'El toolbelt' %}</h2>
+            <p style="margin:.2rem 0;">
+                {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas por API key pueden
+                <strong>operar esta máquina</strong> para diagnosticar y arreglar: las <strong>lecturas</strong>
+                (reporte del sistema, inspección con una lista blanca de comandos que no cambian nada)
+                corren solas; cualquier <strong>cambio</strong> te muestra el comando y espera
+                <strong>tu OK</strong> antes de tocar algo.{% endblocktrans %}
+            </p>
+            <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
+                {% blocktrans %}Viene <strong>apagado</strong>; se enciende en <a href="/conexiones/">Conexiones</a>.
+                Toda acción — lectura o cambio — queda registrada en la <a href="/bitacora/">Bitácora</a>.
+                La silla gratis solo conversa: no usa el toolbelt.{% endblocktrans %}
+            </p>
+        </div>
+        <div class="enj-card">
+            <h2><i class="fas fa-shield-halved"></i> {% trans 'Tus credenciales' %}</h2>
+            <p style="margin:.2rem 0;">
+                {% blocktrans %}<strong>CLIs</strong>: el login vive en <strong>tu terminal</strong>; cuando corren en
+                contenedor reciben una <strong>copia efímera</strong> de la credencial (solo-lectura →
+                tmpfs) que muere al terminar el turno.{% endblocktrans %}
+            </p>
+            <p style="margin:.6rem 0 .2rem;">
+                {% blocktrans %}<strong>API keys</strong>: se guardan en la <strong>bóveda</strong>, cifradas con una
+                passphrase que elegís vos y que nadie más conoce. Mientras la bóveda está desbloqueada
+                las keys viven descifradas en un archivo de runtime — <strong>bloqueala</strong>
+                (Conexiones → API keys) cuando termines.{% endblocktrans %}
+            </p>
+            <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
+                {% blocktrans %}El detalle completo y el modelo de amenaza están en el README del repo —
+                leelo antes de usar esto en serio.{% endblocktrans %}
+            </p>
+        </div>
+    </div>
+
+    <div class="ay-seccion enj-card" style="text-align:center;">
         <p style="margin:.2rem 0;">
-            {% blocktrans %}El login vive en <strong>tu terminal</strong>; la app jamás pide ni guarda credenciales.
-            Cada turno corre en un contenedor descartable que recibe una <strong>copia efímera</strong>
-            de la credencial (solo-lectura → tmpfs) y muere al terminar. El detalle completo y el
-            modelo de amenaza están en el README del repo — leelo antes de usar esto en serio.{% endblocktrans %}
+            {% blocktrans %}¿Algo no cerró, o se te ocurrió una mejora? Contánoslo en
+            <a href="https://github.com/hidr4lisk/swarm/issues" target="_blank" rel="noopener">GitHub</a>
+            o escribinos a <a href="mailto:hidralisk.online@gmail.com">hidralisk.online@gmail.com</a> —
+            tu feedback es lo que hace crecer a Swarm.{% endblocktrans %}
+        </p>
+        <p class="ay-muted" style="margin:.4rem 0 0;font-size:.85rem;">
+            {% blocktrans %}Y si te está resultando útil y querés dar una mano, en la
+            <a href="https://hidr4lisk.github.io/swarm/#apoya" target="_blank" rel="noopener">página del proyecto</a>
+            hay un rincón para apoyarlo ☕{% endblocktrans %}
         </p>
     </div>
 </div>

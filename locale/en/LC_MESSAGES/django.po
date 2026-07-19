@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-10 21:01-0300\n"
+"POT-Creation-Date: 2026-07-19 19:40-0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,16 +17,67 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: enjambre/templates/enjambre/_escalera.html:13
+msgid "Tu escalera"
+msgstr "Your ladder"
+
+#: enjambre/templates/enjambre/_escalera.html:14
+msgid "de cero a mesa completa"
+msgstr "from zero to a full table"
+
+#: enjambre/templates/enjambre/_escalera.html:21
+msgid "Silla gratis (sin cuentas): Chispa charla ya"
+msgstr "Free chair (no accounts): Chispa chats right away"
+
+#: enjambre/templates/enjambre/_escalera.html:23
+msgid "opencode CLI (login gratis): ~6 modelos free y fabricar con /armar"
+msgstr "opencode CLI (free login): ~6 free models plus building with /armar"
+
+#: enjambre/templates/enjambre/_escalera.html:25
+msgid "API keys en la bóveda: todos los modelos"
+msgstr "API keys in the vault: every model"
+
+#: enjambre/templates/enjambre/_escalera.html:30
+msgid "lista — 1 mensaje cada 15 s, modelo chico"
+msgstr "ready — 1 message every 15 s, small model"
+
+#: enjambre/templates/enjambre/_escalera.html:31
+msgid "encendé una silla Pollinations en Sillas"
+msgstr "turn on a Pollinations chair in Chairs"
+
+#: enjambre/templates/enjambre/_escalera.html:33
+msgid "detectado y logueado"
+msgstr "installed and logged in"
+
+#: enjambre/templates/enjambre/_escalera.html:37
+msgid "bóveda configurada"
+msgstr "vault configured"
+
+#: enjambre/templates/enjambre/_escalera.html:38
+msgid "pestaña «API keys» acá abajo"
+msgstr "\"API keys\" tab below"
+
+#: enjambre/templates/enjambre/_escalera.html:44
+msgid ""
+"La silla gratis manda lo que escribís (y el contexto de la mesa) a un "
+"servicio público sin cuenta (Pollinations). Para trabajo sensible, usá "
+"sillas con tus propias keys o un modelo local."
+msgstr ""
+"The free chair sends what you type (and the table context) to a public no-"
+"account service (Pollinations). For sensitive work, use chairs with your own"
+" keys or a local model."
+
 #: enjambre/templates/enjambre/ayuda.html:36
-#: enjambre/templates/enjambre/home.html:12
-#: enjambre/templates/enjambre/mesa.html:139
-#: enjambre/templates/enjambre/sillas.html:24
+#: enjambre/templates/enjambre/home.html:37
+#: enjambre/templates/enjambre/mesa.html:192
+#: enjambre/templates/enjambre/sillas.html:41
 msgid "Mesas"
 msgstr "Tables"
 
 #: enjambre/templates/enjambre/ayuda.html:42
-#: enjambre/templates/enjambre/home.html:21
-#: enjambre/templates/enjambre/mesa.html:154
+#: enjambre/templates/enjambre/home.html:46
+#: enjambre/templates/enjambre/mesa.html:207
 msgid "Ayuda"
 msgstr "Help"
 
@@ -36,238 +87,363 @@ msgstr "What is this?"
 
 #: enjambre/templates/enjambre/ayuda.html:49
 msgid ""
-"Una <strong>mesa de trabajo multi-agente</strong>: varios CLIs de IA (tus "
-"cuentas, ya\n"
-"            logueadas en tu terminal) se sientan como <strong>sillas</"
-"strong> de una misma mesa.\n"
-"            Vos preguntás; las sillas <strong>charlan, debaten</strong> y, "
-"si se lo pedís,\n"
-"            <strong>fabrican archivos de verdad</strong> en la carpeta git "
-"de la mesa. Cada silla\n"
-"            corre en un contenedor descartable: nada toca tu sistema."
-msgstr "A <strong>multi-agent worktable</strong>: several AI CLIs (your accounts, already logged in in your terminal) sit as <strong>seats</strong> at the same table. You ask; the seats <strong>chat, debate</strong> and, if you ask them to, <strong>build real files</strong> in the table’s git folder. Each seat runs in a throwaway container: nothing touches your system."
+"Una <strong>mesa de trabajo multi-agente</strong>: varias IAs se sientan como\n"
+"            <strong>sillas</strong> de una misma mesa — CLIs que ya tenés logueados en tu terminal,\n"
+"            modelos por <strong>API key</strong> (guardada en la bóveda cifrada) o la\n"
+"            <strong>silla gratis</strong> que viene de fábrica y anda sin configurar nada.\n"
+"            Vos preguntás; las sillas <strong>charlan, debaten</strong> y, si se lo pedís,\n"
+"            <strong>fabrican archivos de verdad</strong> en la carpeta git de la mesa."
+msgstr ""
+"A <strong>multi-agent worktable</strong>: several AIs sit as "
+"<strong>seats</strong> at the same table — CLIs you already have logged in "
+"in your terminal, models by <strong>API key</strong> (stored in the "
+"encrypted vault) or the <strong>free seat</strong> that ships out of the box"
+" and works with zero setup. You ask; the seats <strong>chat, debate</strong>"
+" and, if you ask them to, <strong>build real files</strong> in the table’s "
+"git folder."
 
-#: enjambre/templates/enjambre/ayuda.html:58
-msgid "Primeros pasos"
-msgstr "First steps"
-
-#: enjambre/templates/enjambre/ayuda.html:60
+#: enjambre/templates/enjambre/ayuda.html:57
 msgid ""
-"Entrá a <a href=\"/conexiones/\">Conexiones</a>: te muestra qué CLIs\n"
-"            tienen login detectado en tu máquina (<span class=\"ay-"
-"code\">claude</span>,\n"
-"            <span class=\"ay-code\">opencode</span>, <span class=\"ay-"
-"code\">agy</span>)."
-msgstr "Go to <a href=\"/conexiones/\">Connections</a>: it shows which CLIs have a detected login on your machine (<span class=\"ay-code\">claude</span>, <span class=\"ay-code\">opencode</span>, <span class=\"ay-code\">agy</span>)."
+"Si hay Docker configurado, los CLIs corren en contenedores descartables; en el modo\n"
+"            portátil (pendrive, sin Docker) corren como procesos de tu sesión y las sillas por API\n"
+"            hablan directo con el proveedor."
+msgstr ""
+"With Docker configured, CLIs run in throwaway containers; in portable mode "
+"(USB stick, no Docker) they run as processes of your session and API seats "
+"talk straight to the provider."
 
 #: enjambre/templates/enjambre/ayuda.html:64
-msgid ""
-"En <a href=\"/sillas/\">Sillas</a>, encendé las de los CLIs que\n"
-"            tengas (vienen apagadas). Ahí también editás su personalidad y "
-"su modelo."
-msgstr "In <a href=\"/sillas/\">Seats</a>, turn on the ones for the CLIs you have (they ship disabled). There you also edit their personality and model."
+msgid "Primeros pasos — la escalera"
+msgstr "First steps — the ladder"
 
-#: enjambre/templates/enjambre/ayuda.html:67
+#: enjambre/templates/enjambre/ayuda.html:66
 msgid ""
-"Creá una mesa, tildá qué sillas se sientan, y preguntá. Para dirigirte a una "
-"sola silla,\n"
-"            mencionala: <span class=\"ay-code\">@claude revisá este enfoque</"
-"span>."
-msgstr "Create a table, tick which seats sit down, and ask away. To address a single seat, mention it: <span class=\"ay-code\">@claude review this approach</span>."
+"<strong>Nada que configurar</strong>: la silla gratis (<span class=\"ay-code\">Chispa</span>)\n"
+"            ya está sentada. Creá una mesa y probá — es el escalón cero de la escalera que\n"
+"            ves en la portada."
+msgstr ""
+"<strong>Nothing to set up</strong>: the free seat (<span class=\"ay-"
+"code\">Chispa</span>) is already seated. Create a table and try it — it’s "
+"step zero of the ladder you see on the front page."
 
 #: enjambre/templates/enjambre/ayuda.html:70
 msgid ""
-"¿Construir de verdad? <span class=\"ay-code\">/armar &lt;pedido&gt;</span> — "
-"las sillas editan\n"
-"            archivos en la carpeta git de la mesa y cada turno queda "
-"commiteado (📁 para explorar\n"
-"            y descargar)."
-msgstr "Build for real? <span class=\"ay-code\">/armar &lt;request&gt;</span> — the seats edit files in the table’s git folder and every turn gets committed (📁 to browse and download)."
+"Entrá a <a href=\"/conexiones/\">Conexiones</a>: te muestra qué CLIs\n"
+"            tienen login detectado en tu máquina (<span class=\"ay-code\">claude</span>,\n"
+"            <span class=\"ay-code\">opencode</span>, <span class=\"ay-code\">agy</span>).\n"
+"            <span class=\"ay-code\">opencode</span> tiene login gratis si no tenés ninguno."
+msgstr ""
+"Go to <a href=\"/conexiones/\">Connections</a>: it shows which CLIs have a "
+"detected login on your machine (<span class=\"ay-code\">claude</span>, <span"
+" class=\"ay-code\">opencode</span>, <span class=\"ay-code\">agy</span>). "
+"<span class=\"ay-code\">opencode</span> has a free login if you have none."
 
-#: enjambre/templates/enjambre/ayuda.html:77
+#: enjambre/templates/enjambre/ayuda.html:75
+msgid ""
+"¿Tenés API keys? Cargalas en <a href=\"/conexiones/\">Conexiones → API keys</a>:\n"
+"            quedan en la <strong>bóveda</strong>, cifradas con una passphrase que elegís vos."
+msgstr ""
+"Got API keys? Load them in <a href=\"/conexiones/\">Connections → API "
+"keys</a>: they’re kept in the <strong>vault</strong>, encrypted with a "
+"passphrase you choose."
+
+#: enjambre/templates/enjambre/ayuda.html:78
+msgid ""
+"En <a href=\"/sillas/\">Sillas</a>, encendé las que quieras usar (los CLIs vienen\n"
+"            apagados). Ahí también editás su personalidad y su modelo."
+msgstr ""
+"In <a href=\"/sillas/\">Seats</a>, turn on the ones you want to use (CLIs "
+"ship disabled). There you also edit their personality and model."
+
+#: enjambre/templates/enjambre/ayuda.html:81
+msgid ""
+"Creá una mesa, tildá qué sillas se sientan, y preguntá. Para dirigirte a una sola silla,\n"
+"            mencionala: <span class=\"ay-code\">@claude revisá este enfoque</span>. ¿Construir de verdad?\n"
+"            <span class=\"ay-code\">/armar &lt;pedido&gt;</span> — las sillas editan archivos en la carpeta git\n"
+"            de la mesa y cada turno queda commiteado (📁 para explorar y descargar)."
+msgstr ""
+"Create a table, tick which seats sit down, and ask. To talk to a single "
+"seat, mention it: <span class=\"ay-code\">@claude review this "
+"approach</span>. Build for real? <span class=\"ay-code\">/armar "
+"&lt;request&gt;</span> — the seats edit files in the table’s git folder and "
+"every turn gets committed (📁 to browse and download)."
+
+#: enjambre/templates/enjambre/ayuda.html:89
 msgid "Una mesa, por dentro"
 msgstr "A table, from the inside"
 
-#: enjambre/templates/enjambre/ayuda.html:79
+#: enjambre/templates/enjambre/ayuda.html:91
 msgid "HUMANO"
 msgstr "HUMAN"
 
-#: enjambre/templates/enjambre/ayuda.html:80
+#: enjambre/templates/enjambre/ayuda.html:92
 msgid ""
 "/armar un script python que lea un CSV de gastos y arme un resumen por mes"
-msgstr "/armar a python script that reads an expenses CSV and builds a monthly summary"
+msgstr ""
+"/armar a python script that reads an expenses CSV and builds a monthly "
+"summary"
 
-#: enjambre/templates/enjambre/ayuda.html:81
-#: enjambre/templates/enjambre/ayuda.html:87
+#: enjambre/templates/enjambre/ayuda.html:93
+#: enjambre/templates/enjambre/ayuda.html:99
 msgid "líder"
 msgstr "leader"
 
-#: enjambre/templates/enjambre/ayuda.html:82
+#: enjambre/templates/enjambre/ayuda.html:94
 msgid ""
 "Plan: @opencode escribe <code>gastos.py</code> (lectura CSV + agrupado);\n"
 "                    yo reviso bordes (CSV vacío, fechas inválidas) e integro."
-msgstr "Plan: @opencode writes <code>gastos.py</code> (CSV reading + grouping); I review edge cases (empty CSV, invalid dates) and integrate."
+msgstr ""
+"Plan: @opencode writes <code>gastos.py</code> (CSV reading + grouping); I "
+"review edge cases (empty CSV, invalid dates) and integrate."
 
-#: enjambre/templates/enjambre/ayuda.html:85
+#: enjambre/templates/enjambre/ayuda.html:97
 msgid ""
 "Hecho. <code>gastos.py</code> creado: pandas, agrupa por mes, imprime tabla."
-msgstr "Done. <code>gastos.py</code> created: pandas, groups by month, prints a table."
+msgstr ""
+"Done. <code>gastos.py</code> created: pandas, groups by month, prints a "
+"table."
 
-#: enjambre/templates/enjambre/ayuda.html:86
+#: enjambre/templates/enjambre/ayuda.html:98
 msgid "Enjambre · mesa 7: OpenCode — 1 file changed (commit a1b2c3d)"
 msgstr "Enjambre · table 7: OpenCode — 1 file changed (commit a1b2c3d)"
 
-#: enjambre/templates/enjambre/ayuda.html:88
+#: enjambre/templates/enjambre/ayuda.html:100
 msgid ""
-"Integrado. Quedó <code>gastos.py</code> con manejo de CSV vacío; probalo "
-"con\n"
-"                    <code>python gastos.py gastos.csv</code>. Falta: soporte "
-"de monedas (si lo querés, /seguí)."
-msgstr "Integrated. <code>gastos.py</code> now handles empty CSVs; try it with <code>python gastos.py gastos.csv</code>. Missing: currency support (if you want it, /seguí)."
+"Integrado. Quedó <code>gastos.py</code> con manejo de CSV vacío; probalo con\n"
+"                    <code>python gastos.py gastos.csv</code>. Falta: soporte de monedas (si lo querés, /seguí)."
+msgstr ""
+"Integrated. <code>gastos.py</code> now handles empty CSVs; try it with "
+"<code>python gastos.py gastos.csv</code>. Missing: currency support (if you "
+"want it, /seguí)."
 
-#: enjambre/templates/enjambre/ayuda.html:93
+#: enjambre/templates/enjambre/ayuda.html:105
 msgid "Comandos de la mesa"
 msgstr "Table commands"
 
-#: enjambre/templates/enjambre/ayuda.html:95
+#: enjambre/templates/enjambre/ayuda.html:107
 msgid "le hablás a UNA silla (ej. <code>@claude</code>)"
 msgstr "you talk to ONE seat (e.g. <code>@claude</code>)"
 
-#: enjambre/templates/enjambre/ayuda.html:96
+#: enjambre/templates/enjambre/ayuda.html:108
 msgid ""
-"fabricar: las sillas editan archivos en la carpeta de la mesa (un commit por "
-"turno)"
-msgstr "build: the seats edit files in the table’s folder (one commit per turn)"
+"fabricar: las sillas editan archivos en la carpeta de la mesa (un commit por"
+" turno)"
+msgstr ""
+"build: the seats edit files in the table’s folder (one commit per turn)"
 
-#: enjambre/templates/enjambre/ayuda.html:97
+#: enjambre/templates/enjambre/ayuda.html:109
 msgid "revierte el último turno de /armar (git reset)"
 msgstr "reverts the last /armar turn (git reset)"
 
-#: enjambre/templates/enjambre/ayuda.html:98
+#: enjambre/templates/enjambre/ayuda.html:110
 msgid "rebobina la carpeta a un commit anterior"
 msgstr "rewinds the folder to a previous commit"
 
-#: enjambre/templates/enjambre/ayuda.html:99
+#: enjambre/templates/enjambre/ayuda.html:111
 msgid "rondas donde las sillas se refutan (solo texto)"
 msgstr "rounds where the seats rebut each other (text only)"
 
-#: enjambre/templates/enjambre/ayuda.html:100
+#: enjambre/templates/enjambre/ayuda.html:112
 msgid "fija un objetivo persistente y corre la 1ª iteración"
 msgstr "sets a persistent goal and runs the 1st iteration"
 
-#: enjambre/templates/enjambre/ayuda.html:101
+#: enjambre/templates/enjambre/ayuda.html:113
 msgid "una iteración más hacia el objetivo"
 msgstr "one more iteration toward the goal"
 
-#: enjambre/templates/enjambre/ayuda.html:102
+#: enjambre/templates/enjambre/ayuda.html:114
 msgid ""
-"itera sola hacia el objetivo (frena por tope de costo, máximo de iteraciones "
-"o /alto)"
-msgstr "iterates on its own toward the goal (stops at the spend cap, max iterations or /alto)"
+"itera sola hacia el objetivo (frena por tope de costo, máximo de iteraciones"
+" o /alto)"
+msgstr ""
+"iterates on its own toward the goal (stops at the spend cap, max iterations "
+"or /alto)"
 
-#: enjambre/templates/enjambre/ayuda.html:103
+#: enjambre/templates/enjambre/ayuda.html:115
 msgid "freno de mano: corta el turno y apaga el modo continuo"
 msgstr "handbrake: cuts the turn and turns off continuous mode"
 
-#: enjambre/templates/enjambre/ayuda.html:104
+#: enjambre/templates/enjambre/ayuda.html:116
 msgid "cierra la mesa con un resumen (qué se hizo + costo)"
 msgstr "closes the table with a summary (what was done + cost)"
 
-#: enjambre/templates/enjambre/ayuda.html:111
+#: enjambre/templates/enjambre/ayuda.html:123
 msgid "Topologías"
 msgstr "Topologies"
 
-#: enjambre/templates/enjambre/ayuda.html:112
+#: enjambre/templates/enjambre/ayuda.html:124
 msgid ""
 "<strong>Plana</strong> — broadcast: todas las sillas ven tu\n"
-"            mensaje y responden a la vez. Ideal para charlar, comparar "
-"enfoques, debatir."
-msgstr "<strong>Flat</strong> — broadcast: every seat sees your message and replies at once. Great for chatting, comparing approaches, debating."
+"            mensaje y responden a la vez. Ideal para charlar, comparar enfoques, debatir."
+msgstr ""
+"<strong>Flat</strong> — broadcast: every seat sees your message and replies "
+"at once. Great for chatting, comparing approaches, debating."
 
-#: enjambre/templates/enjambre/ayuda.html:114
+#: enjambre/templates/enjambre/ayuda.html:126
 msgid ""
 "<strong>Líder</strong> — una silla coordina: descompone\n"
-"            tu pedido en subtareas (<span class=\"ay-code\">@alias: "
-"subtarea</span>), cada trabajador\n"
-"            ejecuta la suya y el líder integra el resultado. Ideal para "
-"construir."
-msgstr "<strong>Leader</strong> — one seat coordinates: it breaks your request into subtasks (<span class=\"ay-code\">@alias: subtask</span>), each worker runs its own and the leader integrates the result. Great for building."
+"            tu pedido en subtareas (<span class=\"ay-code\">@alias: subtarea</span>), cada trabajador\n"
+"            ejecuta la suya y el líder integra el resultado. Ideal para construir."
+msgstr ""
+"<strong>Leader</strong> — one seat coordinates: it breaks your request into "
+"subtasks (<span class=\"ay-code\">@alias: subtask</span>), each worker runs "
+"its own and the leader integrates the result. Great for building."
 
-#: enjambre/templates/enjambre/ayuda.html:117
+#: enjambre/templates/enjambre/ayuda.html:129
 msgid ""
 "Se elige por mesa, en su\n"
-"            configuración (⚙). El líder reparte mirando la <em>especialidad</"
-"em> de cada silla."
-msgstr "Chosen per table, in its settings (⚙). The leader hands out work based on each seat’s <em>specialty</em>."
+"            configuración (⚙). El líder reparte mirando la <em>especialidad</em> de cada silla."
+msgstr ""
+"Chosen per table, in its settings (⚙). The leader hands out work based on "
+"each seat’s <em>specialty</em>."
 
-#: enjambre/templates/enjambre/ayuda.html:121
+#: enjambre/templates/enjambre/ayuda.html:133
 msgid "Las sillas"
 msgstr "The seats"
 
-#: enjambre/templates/enjambre/ayuda.html:122
+#: enjambre/templates/enjambre/ayuda.html:134
 msgid "Cada silla es un CLI o un modelo local con personalidad propia:"
 msgstr "Each seat is a CLI or a local model with its own personality:"
 
-#: enjambre/templates/enjambre/ayuda.html:124
-#: enjambre/templates/enjambre/sillas.html:66
+#: enjambre/templates/enjambre/ayuda.html:136
+#: enjambre/templates/enjambre/sillas.html:142
 msgid "Cliente"
 msgstr "Client"
 
-#: enjambre/templates/enjambre/ayuda.html:124
+#: enjambre/templates/enjambre/ayuda.html:136
 msgid ""
 "<span class=\"ay-code\">claude</span> (Claude Code),\n"
-"                    <span class=\"ay-code\">opencode</span> (OpenCode, multi-"
-"modelo),\n"
-"                    <span class=\"ay-code\">agy</span> (Antigravity) u\n"
-"                    <span class=\"ay-code\">ollama</span> (un modelo local "
-"tuyo, por URL)"
-msgstr "<span class=\"ay-code\">claude</span> (Claude Code), <span class=\"ay-code\">opencode</span> (OpenCode, multi-model), <span class=\"ay-code\">agy</span> (Antigravity) or <span class=\"ay-code\">ollama</span> (a local model of yours, by URL)"
+"                    <span class=\"ay-code\">opencode</span> (OpenCode, multi-modelo),\n"
+"                    <span class=\"ay-code\">agy</span> (Antigravity),\n"
+"                    <span class=\"ay-code\">ollama</span> (un modelo local tuyo, por URL),\n"
+"                    un proveedor por <strong>API key</strong> (Anthropic, OpenRouter, compatibles OpenAI)\n"
+"                    o la <strong>silla gratis</strong> sin key (Pollinations)"
+msgstr ""
+"<span class=\"ay-code\">claude</span> (Claude Code), <span class=\"ay-"
+"code\">opencode</span> (OpenCode, multi-model), <span class=\"ay-"
+"code\">agy</span> (Antigravity), <span class=\"ay-code\">ollama</span> (a "
+"local model of yours, by URL), a provider by <strong>API key</strong> "
+"(Anthropic, OpenRouter, OpenAI-compatible) or the <strong>free seat</strong>"
+" with no key (Pollinations)"
 
-#: enjambre/templates/enjambre/ayuda.html:128
+#: enjambre/templates/enjambre/ayuda.html:142
 msgid ""
 "la personalidad: quién es y cómo responde (↺ Reset vuelve al de fábrica)"
-msgstr "the personality: who it is and how it replies (↺ Reset restores the factory one)"
+msgstr ""
+"the personality: who it is and how it replies (↺ Reset restores the factory "
+"one)"
 
-#: enjambre/templates/enjambre/ayuda.html:129
+#: enjambre/templates/enjambre/ayuda.html:143
 msgid "Recordatorio"
 msgstr "Reminder"
 
-#: enjambre/templates/enjambre/ayuda.html:129
+#: enjambre/templates/enjambre/ayuda.html:143
 msgid "se repite al final de cada turno (lo que no debe olvidar)"
 msgstr "repeated at the end of every turn (what it must not forget)"
 
-#: enjambre/templates/enjambre/ayuda.html:130
-#: enjambre/templates/enjambre/sillas.html:97
+#: enjambre/templates/enjambre/ayuda.html:144
+#: enjambre/templates/enjambre/sillas.html:180
 msgid "Especialidad"
 msgstr "Specialty"
 
-#: enjambre/templates/enjambre/ayuda.html:130
+#: enjambre/templates/enjambre/ayuda.html:144
 msgid "pista corta para que el líder reparta mejor"
 msgstr "a short hint so the leader hands out work better"
 
-#: enjambre/templates/enjambre/ayuda.html:132
+#: enjambre/templates/enjambre/ayuda.html:146
 msgid ""
 "Cloná una silla para repetir\n"
-"            un cliente con otro modelo/prompt. El velocímetro de cada mesa "
-"estima tokens y costo\n"
+"            un cliente con otro modelo/prompt. El velocímetro de cada mesa estima tokens y costo\n"
 "            notional por turno."
-msgstr "Clone a seat to repeat a client with another model/prompt. Each table’s speedometer estimates tokens and notional cost per turn."
+msgstr ""
+"Clone a seat to repeat a client with another model/prompt. Each table’s "
+"speedometer estimates tokens and notional cost per turn."
 
-#: enjambre/templates/enjambre/ayuda.html:139
+#: enjambre/templates/enjambre/ayuda.html:154
+msgid "El toolbelt"
+msgstr "The toolbelt"
+
+#: enjambre/templates/enjambre/ayuda.html:156
+msgid ""
+"Con el toolbelt <strong>encendido</strong>, las sillas por API key pueden\n"
+"                <strong>operar esta máquina</strong> para diagnosticar y arreglar: las <strong>lecturas</strong>\n"
+"                (reporte del sistema, inspección con una lista blanca de comandos que no cambian nada)\n"
+"                corren solas; cualquier <strong>cambio</strong> te muestra el comando y espera\n"
+"                <strong>tu OK</strong> antes de tocar algo."
+msgstr ""
+"With the toolbelt <strong>on</strong>, API-key seats can <strong>operate "
+"this machine</strong> to diagnose and fix: <strong>reads</strong> (system "
+"report, inspection through an allowlist of commands that change nothing) run"
+" on their own; any <strong>change</strong> shows you the command and waits "
+"for <strong>your OK</strong> before touching anything."
+
+#: enjambre/templates/enjambre/ayuda.html:163
+msgid ""
+"Viene <strong>apagado</strong>; se enciende en <a href=\"/conexiones/\">Conexiones</a>.\n"
+"                Toda acción — lectura o cambio — queda registrada en la <a href=\"/bitacora/\">Bitácora</a>.\n"
+"                La silla gratis solo conversa: no usa el toolbelt."
+msgstr ""
+"It ships <strong>off</strong>; you turn it on in <a "
+"href=\"/conexiones/\">Connections</a>. Every action — read or change — is "
+"recorded in the <a href=\"/bitacora/\">Logbook</a>. The free seat only "
+"chats: it doesn’t use the toolbelt."
+
+#: enjambre/templates/enjambre/ayuda.html:169
 msgid "Tus credenciales"
 msgstr "Your credentials"
 
-#: enjambre/templates/enjambre/ayuda.html:141
+#: enjambre/templates/enjambre/ayuda.html:171
 msgid ""
-"El login vive en <strong>tu terminal</strong>; la app jamás pide ni guarda "
-"credenciales.\n"
-"            Cada turno corre en un contenedor descartable que recibe una "
-"<strong>copia efímera</strong>\n"
-"            de la credencial (solo-lectura → tmpfs) y muere al terminar. El "
-"detalle completo y el\n"
-"            modelo de amenaza están en el README del repo — leelo antes de "
-"usar esto en serio."
-msgstr "Your login lives in <strong>your terminal</strong>; the app never asks for nor stores credentials. Each turn runs in a throwaway container that gets an <strong>ephemeral copy</strong> of the credential (read-only → tmpfs) and dies when it finishes. The full detail and the threat model live in the repo’s README — read it before using this seriously."
+"<strong>CLIs</strong>: el login vive en <strong>tu terminal</strong>; cuando corren en\n"
+"                contenedor reciben una <strong>copia efímera</strong> de la credencial (solo-lectura →\n"
+"                tmpfs) que muere al terminar el turno."
+msgstr ""
+"<strong>CLIs</strong>: the login lives in <strong>your terminal</strong>; "
+"when they run in a container they get an <strong>ephemeral copy</strong> of "
+"the credential (read-only → tmpfs) that dies when the turn ends."
+
+#: enjambre/templates/enjambre/ayuda.html:176
+msgid ""
+"<strong>API keys</strong>: se guardan en la <strong>bóveda</strong>, cifradas con una\n"
+"                passphrase que elegís vos y que nadie más conoce. Mientras la bóveda está desbloqueada\n"
+"                las keys viven descifradas en un archivo de runtime — <strong>bloqueala</strong>\n"
+"                (Conexiones → API keys) cuando termines."
+msgstr ""
+"<strong>API keys</strong>: they’re stored in the <strong>vault</strong>, "
+"encrypted with a passphrase you choose and nobody else knows. While the "
+"vault is unlocked the keys live decrypted in a runtime file — <strong>lock "
+"it</strong> (Connections → API keys) when you’re done."
+
+#: enjambre/templates/enjambre/ayuda.html:182
+msgid ""
+"El detalle completo y el modelo de amenaza están en el README del repo —\n"
+"                leelo antes de usar esto en serio."
+msgstr ""
+"The full detail and the threat model live in the repo’s README — read it "
+"before using this seriously."
+
+#: enjambre/templates/enjambre/ayuda.html:190
+msgid ""
+"¿Algo no cerró, o se te ocurrió una mejora? Contánoslo en\n"
+"            <a href=\"https://github.com/hidr4lisk/swarm/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>\n"
+"            o escribinos a <a href=\"mailto:hidralisk.online@gmail.com\">hidralisk.online@gmail.com</a> —\n"
+"            tu feedback es lo que hace crecer a Swarm."
+msgstr ""
+"Something didn’t click, or you thought of an improvement? Tell us on <a "
+"href=\"https://github.com/hidr4lisk/swarm/issues\" target=\"_blank\" "
+"rel=\"noopener\">GitHub</a> or write to <a "
+"href=\"mailto:hidralisk.online@gmail.com\">hidralisk.online@gmail.com</a> — "
+"your feedback is what makes Swarm grow."
+
+#: enjambre/templates/enjambre/ayuda.html:196
+msgid ""
+"Y si te está resultando útil y querés dar una mano, en la\n"
+"            <a href=\"https://hidr4lisk.github.io/swarm/#apoya\" target=\"_blank\" rel=\"noopener\">página del proyecto</a>\n"
+"            hay un rincón para apoyarlo ☕"
+msgstr ""
+"And if it’s proving useful and you’d like to lend a hand, the <a "
+"href=\"https://hidr4lisk.github.io/swarm/#apoya\" target=\"_blank\" "
+"rel=\"noopener\">project page</a> has a little corner to support it ☕"
 
 #: enjambre/templates/enjambre/base_swarm.html:44
 msgid "2026 - El conocimiento es libre"
@@ -281,731 +457,1276 @@ msgstr "Switch theme"
 msgid "Desarrollado por"
 msgstr "Built by"
 
-#: enjambre/templates/enjambre/conexiones.html:19
-#: enjambre/templates/enjambre/conexiones.html:34
-#: enjambre/templates/enjambre/home.html:16
-#: enjambre/templates/enjambre/sillas.html:30
+#: enjambre/templates/enjambre/bitacora.html:35
+msgid "Mesa"
+msgstr "Table"
+
+#: enjambre/templates/enjambre/bitacora.html:41
+#: enjambre/templates/enjambre/mesa.html:209
+msgid "Bitácora"
+msgstr "Logbook"
+
+#: enjambre/templates/enjambre/bitacora.html:44
+msgid "Exportar informe"
+msgstr "Export report"
+
+#: enjambre/templates/enjambre/bitacora.html:51
+msgid ""
+"Todo lo que las sillas por API key hacen sobre <strong>esta máquina</strong> queda acá.\n"
+"        Las <strong>lecturas</strong> (inspect, read_file, system_report) se ejecutan solas; las\n"
+"        <strong>mutaciones</strong> (apply_fix) esperan tu aprobación y nunca corren sin tu OK."
+msgstr ""
+"Everything API-key seats do on <strong>this machine</strong> lands here. "
+"<strong>Reads</strong> (inspect, read_file, system_report) run on their own;"
+" <strong>mutations</strong> (apply_fix) wait for your approval and never run"
+" without your OK."
+
+#: enjambre/templates/enjambre/bitacora.html:54
+msgid "El toolbelt está apagado"
+msgstr "The toolbelt is off"
+
+#: enjambre/templates/enjambre/bitacora.html:55
+msgid "prendelo con"
+msgstr "turn it on with"
+
+#: enjambre/templates/enjambre/bitacora.html:61
+#, python-format
+msgid "%(n)s cambio pendiente de tu aprobación."
+msgid_plural "%(n)s cambios pendientes de tu aprobación."
+msgstr[0] ""
+msgstr[1] ""
+
+#: enjambre/templates/enjambre/bitacora.html:70
+msgid "mutación"
+msgstr "mutation"
+
+#: enjambre/templates/enjambre/bitacora.html:71
+msgid "lectura"
+msgstr "read"
+
+#: enjambre/templates/enjambre/bitacora.html:73
+#: enjambre/templates/enjambre/bitacora.html:108
+msgid "ejecutada"
+msgstr "executed"
+
+#: enjambre/templates/enjambre/bitacora.html:74
+msgid "pendiente"
+msgstr "pending"
+
+#: enjambre/templates/enjambre/bitacora.html:75
+#: enjambre/templates/enjambre/bitacora.html:109
+msgid "rechazada"
+msgstr "rejected"
+
+#: enjambre/templates/enjambre/bitacora.html:76
+#: enjambre/templates/enjambre/bitacora.html:110
+msgid "error"
+msgstr "error"
+
+#: enjambre/templates/enjambre/bitacora.html:79
+msgid "por"
+msgstr "by"
+
+#: enjambre/templates/enjambre/bitacora.html:81
+msgid "Motivo:"
+msgstr "Reason:"
+
+#: enjambre/templates/enjambre/bitacora.html:84
+#: enjambre/templates/enjambre/bitacora.html:136
+msgid "Salida"
+msgstr "Output"
+
+#: enjambre/templates/enjambre/bitacora.html:90
+msgid "Aprobar y ejecutar"
+msgstr "Approve and run"
+
+#: enjambre/templates/enjambre/bitacora.html:91
+#: enjambre/templates/enjambre/bitacora.html:143
+msgid "Rechazar"
+msgstr "Reject"
+
+#: enjambre/templates/enjambre/bitacora.html:98
+msgid ""
+"Todavía no hay acciones. Cuando una silla por API key inspeccione o proponga"
+" un cambio en esta máquina, aparecerá acá."
+msgstr ""
+"No actions yet. When an API-key seat inspects or proposes a change on this "
+"machine, it will show up here."
+
+#: enjambre/templates/enjambre/bitacora.html:117
+msgid "¿Aprobar y ejecutar este comando en esta máquina? Es un cambio real."
+msgstr "Approve and run this command on this machine? It’s a real change."
+
+#: enjambre/templates/enjambre/bitacora.html:119
+msgid "Trabajando…"
+msgstr "Working…"
+
+#: enjambre/templates/enjambre/bitacora.html:143
+msgid "Reintentar"
+msgstr "Retry"
+
+#: enjambre/templates/enjambre/conexiones.html:81
+#: enjambre/templates/enjambre/conexiones.html:112
+#: enjambre/templates/enjambre/home.html:41
+#: enjambre/templates/enjambre/sillas.html:47
 msgid "Sillas"
 msgstr "Seats"
 
-#: enjambre/templates/enjambre/conexiones.html:25
-#: enjambre/templates/enjambre/sillas.html:34
+#: enjambre/templates/enjambre/conexiones.html:87
+#: enjambre/templates/enjambre/sillas.html:51
 msgid "Conexiones"
 msgstr "Connections"
 
-#: enjambre/templates/enjambre/conexiones.html:30
-msgid ""
-"El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm "
-"solo detecta si el\n"
-"        archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo "
-"muestra) y el runner lo monta\n"
-"        solo-lectura en contenedores descartables."
-msgstr "Each CLI’s login lives in <strong>your terminal</strong>, not here: Swarm only detects whether the credentials file <strong>exists</strong> (it never reads nor shows it) and the runner mounts it read-only in throwaway containers."
+#: enjambre/templates/enjambre/conexiones.html:95
+msgid "CLIs logueados"
+msgstr "Logged-in CLIs"
 
-#: enjambre/templates/enjambre/conexiones.html:33
+#: enjambre/templates/enjambre/conexiones.html:98
+msgid "API keys"
+msgstr "API keys"
+
+#: enjambre/templates/enjambre/conexiones.html:101
+msgid "Toolbelt"
+msgstr "Toolbelt"
+
+#: enjambre/templates/enjambre/conexiones.html:108
+msgid ""
+"El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el\n"
+"            archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta\n"
+"            solo-lectura en contenedores descartables."
+msgstr ""
+"Each CLI’s login lives in <strong>your terminal</strong>, not here: Swarm "
+"only detects whether the credentials file <strong>exists</strong> (it never "
+"reads nor shows it) and the runner mounts it read-only in throwaway "
+"containers."
+
+#: enjambre/templates/enjambre/conexiones.html:111
 msgid "Logueá el CLI en el host y encendé su silla en"
 msgstr "Log the CLI in on the host and turn on its seat in"
 
-#: enjambre/templates/enjambre/conexiones.html:44
+#: enjambre/templates/enjambre/conexiones.html:122
 msgid "Detectado"
 msgstr "Detected"
 
-#: enjambre/templates/enjambre/conexiones.html:44
+#: enjambre/templates/enjambre/conexiones.html:122
 msgid "No detectado"
 msgstr "Not detected"
 
-#: enjambre/templates/enjambre/conexiones.html:50
+#: enjambre/templates/enjambre/conexiones.html:128
 msgid "Para conectarlo, en tu terminal:"
 msgstr "To connect it, in your terminal:"
 
-#: enjambre/templates/enjambre/conexiones.html:59
+#: enjambre/templates/enjambre/conexiones.html:137
 #, python-format
 msgid ""
-"Chequeado por el worker al arrancar (%(chequeado_at)s). Si te acabás de "
-"loguear,\n"
-"        reiniciá el worker (♻️ en Sillas) para rechequear."
-msgstr "Checked by the worker at startup (%(chequeado_at)s). If you just logged in, restart the worker (♻️ in Seats) to re-check."
+"Chequeado por el worker al arrancar (%(chequeado_at)s). Si te acabás de loguear,\n"
+"            reiniciá el worker (♻️ en Sillas) para rechequear."
+msgstr ""
+"Checked by the worker at startup (%(chequeado_at)s). If you just logged in, "
+"restart the worker (♻️ in Seats) to re-check."
 
-#: enjambre/templates/enjambre/conexiones.html:62
+#: enjambre/templates/enjambre/conexiones.html:140
 msgid "Chequeado en vivo (modo dev, sin worker dockerizado)."
 msgstr "Checked live (dev mode, no dockerized worker)."
 
-#: enjambre/templates/enjambre/home.html:15
+#: enjambre/templates/enjambre/conexiones.html:148
+msgid ""
+"Las sillas por <strong>API key</strong> (Anthropic / OpenAI-compatible / OpenRouter)\n"
+"            hablan directo con el proveedor, sin CLI. Las keys se guardan <strong>cifradas con tu\n"
+"            passphrase</strong> en <code>data/secrets.enc</code>: si se pierde el pendrive sin la passphrase,\n"
+"            no hay tokens en claro."
+msgstr ""
+"Seats by <strong>API key</strong> (Anthropic / OpenAI-compatible / "
+"OpenRouter) talk straight to the provider, no CLI. Keys are stored "
+"<strong>encrypted with your passphrase</strong> in "
+"<code>data/secrets.enc</code>: if the stick is lost without the passphrase, "
+"there are no plaintext tokens."
+
+#: enjambre/templates/enjambre/conexiones.html:165
+msgid "Desbloquear"
+msgstr "Unlock"
+
+#: enjambre/templates/enjambre/conexiones.html:166
+msgid "Bloquear"
+msgstr "Lock"
+
+#: enjambre/templates/enjambre/conexiones.html:171
+msgid ""
+"Pegá tu primera key abajo y tocá Guardar — queda creada y activa en un solo "
+"paso."
+msgstr ""
+"Paste your first key below and hit Save — it’s created and active in a "
+"single step."
+
+#: enjambre/templates/enjambre/conexiones.html:181
+#: enjambre/templates/enjambre/conexiones.html:319
+msgid "Configurada"
+msgstr "Configured"
+
+#: enjambre/templates/enjambre/conexiones.html:181
+msgid "Anda sin key"
+msgstr "Works without a key"
+
+#: enjambre/templates/enjambre/conexiones.html:181
+#: enjambre/templates/enjambre/conexiones.html:319
+msgid "Sin key"
+msgstr "No key"
+
+#: enjambre/templates/enjambre/conexiones.html:186
+msgid "Pegá la API key…"
+msgstr "Paste the API key…"
+
+#: enjambre/templates/enjambre/conexiones.html:187
+#: enjambre/templates/enjambre/mesa.html:386
+#: enjambre/templates/enjambre/sillas.html:470
+msgid "Guardar"
+msgstr "Save"
+
+#: enjambre/templates/enjambre/conexiones.html:189
+#: enjambre/templates/enjambre/sillas.html:83
+#: enjambre/templates/enjambre/sillas.html:133
+msgid "Quitar"
+msgstr "Remove"
+
+#: enjambre/templates/enjambre/conexiones.html:196
+msgid ""
+"La passphrase nunca se guarda ni se loguea; se usa solo para cifrar y "
+"descifrar tus keys."
+msgstr ""
+"The passphrase is never stored nor logged; it’s only used to encrypt and "
+"decrypt your keys."
+
+#: enjambre/templates/enjambre/conexiones.html:204
+msgid ""
+"Con el toolbelt <strong>encendido</strong>, las sillas por API key dejan de solo conversar\n"
+"            y pueden <strong>inspeccionar y operar la computadora donde corre Swarm</strong> (la del cliente). Es el\n"
+"            corazón del soporte: la silla mira el sistema <strong>real</strong> en vez de adivinar."
+msgstr ""
+"With the toolbelt <strong>on</strong>, API-key seats stop just chatting and "
+"can <strong>inspect and operate the computer where Swarm runs</strong> (the "
+"client’s). It’s the heart of support work: the seat looks at the "
+"<strong>real</strong> system instead of guessing."
+
+#: enjambre/templates/enjambre/conexiones.html:212
+#: enjambre/templates/enjambre/conexiones.html:385
+msgid "Toolbelt encendido"
+msgstr "Toolbelt on"
+
+#: enjambre/templates/enjambre/conexiones.html:212
+#: enjambre/templates/enjambre/conexiones.html:385
+msgid "Toolbelt apagado"
+msgstr "Toolbelt off"
+
+#: enjambre/templates/enjambre/conexiones.html:214
+msgid ""
+"Forzado por SWARM_TOOLBELT en el launcher — se controla desde ahí, no acá."
+msgstr ""
+"Forced by SWARM_TOOLBELT in the launcher — it’s controlled from there, not "
+"here."
+
+#: enjambre/templates/enjambre/conexiones.html:215
+#: enjambre/templates/enjambre/conexiones.html:386
+msgid "Las sillas API pueden operar esta máquina."
+msgstr "API seats can operate this machine."
+
+#: enjambre/templates/enjambre/conexiones.html:216
+#: enjambre/templates/enjambre/conexiones.html:387
+msgid "Las sillas API solo conversan; no ven la máquina."
+msgstr "API seats only chat; they can’t see the machine."
+
+#: enjambre/templates/enjambre/conexiones.html:219
+msgid "Encender / apagar el toolbelt"
+msgstr "Turn the toolbelt on / off"
+
+#: enjambre/templates/enjambre/conexiones.html:228
+msgid ""
+"<strong>Lectura automática:</strong> ver el SO, procesos, disco, archivos y comandos de\n"
+"                <strong>solo lectura</strong> (allowlist por sistema) — sin pedir permiso, para diagnosticar rápido."
+msgstr ""
+"<strong>Automatic reads:</strong> see the OS, processes, disk, files and "
+"<strong>read-only</strong> commands (per-system allowlist) — no permission "
+"asked, for quick diagnosis."
+
+#: enjambre/templates/enjambre/conexiones.html:231
+msgid ""
+"<strong>Cambios con tu OK:</strong> instalar, editar o reiniciar algo queda <strong>pendiente</strong>\n"
+"                en la Bitácora de la mesa hasta que vos lo apruebes. <strong>Nunca se ejecuta solo.</strong>"
+msgstr ""
+"<strong>Changes with your OK:</strong> installing, editing or restarting "
+"something stays <strong>pending</strong> in the table’s Logbook until you "
+"approve it. <strong>It never runs on its own.</strong>"
+
+#: enjambre/templates/enjambre/conexiones.html:234
+msgid ""
+"<strong>Todo queda registrado</strong> en la Bitácora de cada mesa (lecturas"
+" y cambios)."
+msgstr ""
+"<strong>Everything is recorded</strong> in each table’s Logbook (reads and "
+"changes)."
+
+#: enjambre/templates/enjambre/conexiones.html:238
+msgid ""
+"Apagado por defecto. Necesita una silla por API key con un modelo que soporte\n"
+"            <strong>herramientas</strong> (function-calling); si el modelo no las soporta, la silla las ignora.\n"
+"            Pedile <code>system_report</code> para probar."
+msgstr ""
+"Off by default. Needs an API-key seat with a model that supports "
+"<strong>tools</strong> (function-calling); if the model doesn’t, the seat "
+"ignores them. Ask it for <code>system_report</code> to try."
+
+#: enjambre/templates/enjambre/conexiones.html:274
+msgid "Creá tu bóveda"
+msgstr "Create your vault"
+
+#: enjambre/templates/enjambre/conexiones.html:275
+msgid ""
+"Elegí una passphrase y guardá tu primera key: queda cifrada y activa en un "
+"paso."
+msgstr ""
+"Choose a passphrase and save your first key: it’s encrypted and active in "
+"one step."
+
+#: enjambre/templates/enjambre/conexiones.html:276
+msgid "Elegí una passphrase (mín. 8)"
+msgstr "Choose a passphrase (min. 8)"
+
+#: enjambre/templates/enjambre/conexiones.html:277
+msgid "Bóveda cerrada"
+msgstr "Vault closed"
+
+#: enjambre/templates/enjambre/conexiones.html:278
+msgid "Ingresá tu passphrase para activar las keys en esta sesión."
+msgstr "Enter your passphrase to activate the keys for this session."
+
+#: enjambre/templates/enjambre/conexiones.html:279
+#: enjambre/templates/enjambre/conexiones.html:282
+msgid "Tu passphrase"
+msgstr "Your passphrase"
+
+#: enjambre/templates/enjambre/conexiones.html:280
+msgid "Bóveda abierta"
+msgstr "Vault open"
+
+#: enjambre/templates/enjambre/conexiones.html:281
+msgid "Las sillas API ya pueden usar sus keys."
+msgstr "API seats can now use their keys."
+
+#: enjambre/templates/enjambre/conexiones.html:305
+msgid "key(s) guardada(s)."
+msgstr "key(s) stored."
+
+#: enjambre/templates/enjambre/conexiones.html:330
+msgid "Escribí tu passphrase."
+msgstr "Type your passphrase."
+
+#: enjambre/templates/enjambre/conexiones.html:333
+msgid "Bóveda desbloqueada — las sillas API ya pueden usar sus keys."
+msgstr "Vault unlocked — API seats can now use their keys."
+
+#: enjambre/templates/enjambre/conexiones.html:335
+#: enjambre/templates/enjambre/conexiones.html:341
+#: enjambre/templates/enjambre/conexiones.html:358
+#: enjambre/templates/enjambre/conexiones.html:367
+#: enjambre/templates/enjambre/conexiones.html:404
+msgid "Error de red"
+msgstr "Network error"
+
+#: enjambre/templates/enjambre/conexiones.html:340
+msgid "Bóveda bloqueada."
+msgstr "Vault locked."
+
+#: enjambre/templates/enjambre/conexiones.html:349
+msgid "Pegá la API key primero."
+msgstr "Paste the API key first."
+
+#: enjambre/templates/enjambre/conexiones.html:350
+msgid "Elegí una passphrase arriba para cifrar la key."
+msgstr "Choose a passphrase above to encrypt the key."
+
+#: enjambre/templates/enjambre/conexiones.html:352
+msgid "La passphrase tiene que tener al menos 8 caracteres."
+msgstr "The passphrase must be at least 8 characters."
+
+#: enjambre/templates/enjambre/conexiones.html:356
+msgid "Key guardada, cifrada y activada."
+msgstr "Key saved, encrypted and activated."
+
+#: enjambre/templates/enjambre/conexiones.html:363
+msgid "Escribí tu passphrase para quitar la key."
+msgstr "Type your passphrase to remove the key."
+
+#: enjambre/templates/enjambre/conexiones.html:365
+msgid "Key quitada."
+msgstr "Key removed."
+
+#: enjambre/templates/enjambre/conexiones.html:399
+msgid "Toolbelt encendido — pedile a una silla API «corré system_report»."
+msgstr "Toolbelt on — ask an API seat to “run system_report”."
+
+#: enjambre/templates/enjambre/conexiones.html:400
+msgid "Toolbelt apagado."
+msgstr "Toolbelt off."
+
+#: enjambre/templates/enjambre/home.html:40
 msgid "Panel de sillas (clientes, modelos, prompts)"
 msgstr "Seats panel (clients, models, prompts)"
 
-#: enjambre/templates/enjambre/home.html:20
+#: enjambre/templates/enjambre/home.html:45
 msgid "Ayuda — cómo funciona la mesa, comandos y ejemplos"
 msgstr "Help — how the table works, commands and examples"
 
-#: enjambre/templates/enjambre/home.html:27
-msgid "Nombre de la mesa"
-msgstr "Table name"
+#: enjambre/templates/enjambre/home.html:49
+msgid "Donar — bancá el servidor que sostiene el enjambre"
+msgstr "Donate — support the server that keeps the swarm running"
 
-#: enjambre/templates/enjambre/home.html:28
+#: enjambre/templates/enjambre/home.html:50
+msgid "Donar"
+msgstr "Donate"
+
+#: enjambre/templates/enjambre/home.html:59
+#: enjambre/templates/enjambre/mesa.html:433
+#: enjambre/templates/enjambre/mesa.html:468
+#: enjambre/templates/enjambre/mesa.html:482
+#: enjambre/templates/enjambre/sillas.html:249
+msgid "Cerrar"
+msgstr "Close"
+
+#: enjambre/templates/enjambre/home.html:61
+msgid "Bancá el enjambre"
+msgstr "Support the swarm"
+
+#: enjambre/templates/enjambre/home.html:62
+msgid ""
+"Swarm es libre y gratis. Si te sirve y querés dar una mano, podés "
+"<strong>donar</strong>: lo que juntemos va derecho a mejorar el servidor que"
+" sostiene el enjambre."
+msgstr ""
+"Swarm is free and open source. If it helps you and you want to lend a hand, "
+"you can <strong>donate</strong>: whatever we gather goes straight into "
+"improving the server that keeps the swarm running."
+
+#: enjambre/templates/enjambre/home.html:64
+msgid "Alias para donaciones"
+msgstr "Alias for donations"
+
+#: enjambre/templates/enjambre/home.html:67
+msgid "Copiar"
+msgstr "Copy"
+
+#: enjambre/templates/enjambre/home.html:70
+#, python-format
+msgid "100%% voluntario. ¡Gracias por bancar la movida! 💚"
+msgstr "100%% volunteer-run. Thanks for backing the ride! 💚"
+
+#: enjambre/templates/enjambre/home.html:76
+msgid "Buscar mesa…"
+msgstr "Search tables…"
+
+#: enjambre/templates/enjambre/home.html:76
+msgid "Buscar mesa"
+msgstr "Search tables"
+
+#: enjambre/templates/enjambre/home.html:80
 msgid "Nueva mesa"
 msgstr "New table"
 
-#: enjambre/templates/enjambre/home.html:39
-#: enjambre/templates/enjambre/mesa.html:183
-#: enjambre/templates/enjambre/mesa.html:285
+#: enjambre/templates/enjambre/home.html:92
+#: enjambre/templates/enjambre/mesa.html:244
+#: enjambre/templates/enjambre/mesa.html:350
 msgid "Líder"
 msgstr "Leader"
 
-#: enjambre/templates/enjambre/home.html:39
+#: enjambre/templates/enjambre/home.html:92
 msgid "Plana (broadcast)"
 msgstr "Flat (broadcast)"
 
-#: enjambre/templates/enjambre/home.html:42
+#: enjambre/templates/enjambre/home.html:95
 msgid "Nuevo nombre de la mesa"
 msgstr "New table name"
 
-#: enjambre/templates/enjambre/home.html:45
-#: enjambre/templates/enjambre/home.html:123
+#: enjambre/templates/enjambre/home.html:98
+#: enjambre/templates/enjambre/home.html:191
 msgid "Desfijar"
 msgstr "Unpin"
 
-#: enjambre/templates/enjambre/home.html:45
-#: enjambre/templates/enjambre/home.html:123
+#: enjambre/templates/enjambre/home.html:98
+#: enjambre/templates/enjambre/home.html:191
 msgid "Fijar arriba"
 msgstr "Pin to top"
 
-#: enjambre/templates/enjambre/home.html:46
+#: enjambre/templates/enjambre/home.html:99
 msgid "Fijar mesa"
 msgstr "Pin table"
 
-#: enjambre/templates/enjambre/home.html:48
+#: enjambre/templates/enjambre/home.html:101
 msgid "Renombrar mesa"
 msgstr "Rename table"
 
-#: enjambre/templates/enjambre/home.html:51
+#: enjambre/templates/enjambre/home.html:104
 #, python-format
 msgid ""
-"¿Borrar la mesa «%(nombre)s» y todos sus mensajes? Las tareas de fabricación "
-"se conservan. No se puede deshacer."
-msgstr "Delete table “%(nombre)s” and all its messages? Build tasks are kept. This cannot be undone."
+"¿Borrar la mesa «%(nombre)s» y todos sus mensajes? Las tareas de fabricación"
+" se conservan. No se puede deshacer."
+msgstr ""
+"Delete table “%(nombre)s” and all its messages? Build tasks are kept. This "
+"cannot be undone."
 
-#: enjambre/templates/enjambre/home.html:53
+#: enjambre/templates/enjambre/home.html:106
 msgid "Borrar mesa"
 msgstr "Delete table"
 
-#: enjambre/templates/enjambre/home.html:62
+#: enjambre/templates/enjambre/home.html:115
 msgid "Silla local: no fabrica, no se sienta en una mesa Líder."
 msgstr "Local seat: it does not build and does not sit at a Leader table."
 
-#: enjambre/templates/enjambre/home.html:74
+#: enjambre/templates/enjambre/home.html:127
 msgid "No hay sillas activas."
 msgstr "No active seats."
 
-#: enjambre/templates/enjambre/home.html:79
+#: enjambre/templates/enjambre/home.html:132
 msgid "No hay mesas todavía."
 msgstr "No tables yet."
 
-#: enjambre/templates/enjambre/mesa.html:149
-#: enjambre/templates/enjambre/mesa.html:150
-#: enjambre/templates/enjambre/mesa.html:271
-#: enjambre/templates/enjambre/mesa.html:308
+#: enjambre/templates/enjambre/home.html:269
+msgid "¡Copiado!"
+msgstr "Copied!"
+
+#: enjambre/templates/enjambre/mesa.html:202
+#: enjambre/templates/enjambre/mesa.html:203
+#: enjambre/templates/enjambre/mesa.html:336
+#: enjambre/templates/enjambre/mesa.html:373
 msgid "Sillas de la mesa"
 msgstr "Table seats"
 
-#: enjambre/templates/enjambre/mesa.html:151
+#: enjambre/templates/enjambre/mesa.html:204
 msgid "Descargar la charla (.txt)"
 msgstr "Download the chat (.txt)"
 
-#: enjambre/templates/enjambre/mesa.html:152
+#: enjambre/templates/enjambre/mesa.html:205
 msgid "Descargar la charla"
 msgstr "Download the chat"
 
-#: enjambre/templates/enjambre/mesa.html:153
+#: enjambre/templates/enjambre/mesa.html:206
 msgid "Ayuda / comandos"
 msgstr "Help / commands"
 
-#: enjambre/templates/enjambre/mesa.html:156
+#: enjambre/templates/enjambre/mesa.html:208
+msgid "Bitácora del toolbelt (acciones sobre el sistema)"
+msgstr "Toolbelt logbook (actions on the system)"
+
+#: enjambre/templates/enjambre/mesa.html:211
 msgid "Carpeta de la mesa (archivos)"
 msgstr "Table folder (files)"
 
-#: enjambre/templates/enjambre/mesa.html:157
-#: enjambre/templates/enjambre/mesa.html:378
+#: enjambre/templates/enjambre/mesa.html:212
+#: enjambre/templates/enjambre/mesa.html:443
 msgid "Carpeta de la mesa"
 msgstr "Table folder"
 
-#: enjambre/templates/enjambre/mesa.html:158
+#: enjambre/templates/enjambre/mesa.html:213
 msgid "Flujo de trabajo (en vivo)"
 msgstr "Workflow (live)"
 
-#: enjambre/templates/enjambre/mesa.html:159
-#: enjambre/templates/enjambre/mesa.html:245
-#: enjambre/templates/enjambre/mesa.html:247
+#: enjambre/templates/enjambre/mesa.html:214
+#: enjambre/templates/enjambre/mesa.html:310
+#: enjambre/templates/enjambre/mesa.html:312
 msgid "Flujo de trabajo"
 msgstr "Workflow"
 
-#: enjambre/templates/enjambre/mesa.html:175
+#: enjambre/templates/enjambre/mesa.html:236
 msgid "La mesa está en silencio. Hacé la primera pregunta."
 msgstr "The table is silent. Ask the first question."
 
-#: enjambre/templates/enjambre/mesa.html:183
-msgid "El líder coordina al resto; @silla habla directo a una"
-msgstr "The leader coordinates the rest; @seat talks straight to one"
+#: enjambre/templates/enjambre/mesa.html:244
+msgid ""
+"Modo Líder: el líder descompone tu pedido en subtareas, las reparte y al "
+"final integra; @silla habla directo a una"
+msgstr ""
+"Leader mode: the leader breaks your request into subtasks, hands them out "
+"and integrates at the end; @seat talks straight to one"
 
-#: enjambre/templates/enjambre/mesa.html:189
+#: enjambre/templates/enjambre/mesa.html:246
+msgid ""
+"La mesa está en modo Líder pero el líder está inactivo o sin asignar → corre"
+" PLANA. Asigná un líder activo en ⚙ Sillas de la mesa."
+msgstr ""
+"The table is in Leader mode but the leader is inactive or unassigned → it "
+"runs FLAT. Assign an active leader in the table’s ⚙ Seats."
+
+#: enjambre/templates/enjambre/mesa.html:246
+msgid "Líder caído → Plana"
+msgstr "Leader down → Flat"
+
+#: enjambre/templates/enjambre/mesa.html:248
+msgid ""
+"Modo Plana: todas las sillas responden el pedido completo, sin reparto ni "
+"integración. Con /armar, cada silla CLI fabrica sobre la misma carpeta, en "
+"serie."
+msgstr ""
+"Flat mode: every seat answers the full request, no split nor integration. "
+"With /armar, each CLI seat builds on the same folder, in series."
+
+#: enjambre/templates/enjambre/mesa.html:248
+msgid "Plana"
+msgstr "Flat"
+
+#: enjambre/templates/enjambre/mesa.html:254
 msgid ""
 "Gasto estimado por silla (notional, a precio de lista — no es la factura "
 "real)"
-msgstr "Estimated spend per seat (notional, at list price — not the real bill)"
+msgstr ""
+"Estimated spend per seat (notional, at list price — not the real bill)"
 
-#: enjambre/templates/enjambre/mesa.html:192
+#: enjambre/templates/enjambre/mesa.html:257
 msgid "(gratis)"
 msgstr "(free)"
 
-#: enjambre/templates/enjambre/mesa.html:194
+#: enjambre/templates/enjambre/mesa.html:259
 msgid "Todavía no gastó ninguna silla."
 msgstr "No seat has spent anything yet."
 
-#: enjambre/templates/enjambre/mesa.html:197
+#: enjambre/templates/enjambre/mesa.html:262
 msgid "Total"
 msgstr "Total"
 
-#: enjambre/templates/enjambre/mesa.html:203
+#: enjambre/templates/enjambre/mesa.html:268
 msgid "Objetivo continuo:"
 msgstr "Continuous goal:"
 
-#: enjambre/templates/enjambre/mesa.html:203
+#: enjambre/templates/enjambre/mesa.html:268
 msgid "Auto"
 msgstr "Auto"
 
-#: enjambre/templates/enjambre/mesa.html:203
+#: enjambre/templates/enjambre/mesa.html:268
 msgid "Continuo"
 msgstr "Continuous"
 
-#: enjambre/templates/enjambre/mesa.html:209
+#: enjambre/templates/enjambre/mesa.html:274
 msgid "Comandos de la mesa (pasá el mouse / tocá)"
 msgstr "Table commands (hover / tap)"
 
-#: enjambre/templates/enjambre/mesa.html:209
-#: enjambre/templates/enjambre/mesa.html:350
+#: enjambre/templates/enjambre/mesa.html:274
+#: enjambre/templates/enjambre/mesa.html:415
 msgid "Comandos"
 msgstr "Commands"
 
-#: enjambre/templates/enjambre/mesa.html:211
+#: enjambre/templates/enjambre/mesa.html:276
 msgid "Construir/editar en la carpeta de la mesa"
 msgstr "Build/edit in the table’s folder"
 
-#: enjambre/templates/enjambre/mesa.html:212
+#: enjambre/templates/enjambre/mesa.html:277
 msgid "Revertir el último /armar"
 msgstr "Revert the last /armar"
 
-#: enjambre/templates/enjambre/mesa.html:213
+#: enjambre/templates/enjambre/mesa.html:278
 msgid "Rebobinar la carpeta a un commit (sin sha lista los commits)"
 msgstr "Rewind the folder to a commit (without a sha it lists the commits)"
 
-#: enjambre/templates/enjambre/mesa.html:214
+#: enjambre/templates/enjambre/mesa.html:279
 msgid "Las sillas discuten en rondas"
 msgstr "The seats argue in rounds"
 
-#: enjambre/templates/enjambre/mesa.html:215
+#: enjambre/templates/enjambre/mesa.html:280
 msgid ""
 "Fija un objetivo y la mesa lo construye iteración por iteración; vos "
 "confirmás cada paso con /seguí. Atajo: <code>/continuo --auto "
 "&lt;objetivo&gt;</code> define el objetivo y arranca en automático de una."
-msgstr "Sets a goal and the table builds it iteration by iteration; you confirm each step with /seguí. Shortcut: <code>/continuo --auto &lt;goal&gt;</code> sets the goal and starts automatic right away."
+msgstr ""
+"Sets a goal and the table builds it iteration by iteration; you confirm each"
+" step with /seguí. Shortcut: <code>/continuo --auto &lt;goal&gt;</code> sets"
+" the goal and starts automatic right away."
 
-#: enjambre/templates/enjambre/mesa.html:216
+#: enjambre/templates/enjambre/mesa.html:281
 msgid "Correr la próxima iteración hacia el objetivo continuo"
 msgstr "Run the next iteration toward the continuous goal"
 
-#: enjambre/templates/enjambre/mesa.html:217
+#: enjambre/templates/enjambre/mesa.html:282
 msgid ""
 "Pasa a automático un <em>continuo que ya está activo</em>: el worker itera "
-"solo (bajo tope y máx de iteraciones) hasta /alto. Sin objetivo activo, pedí "
-"<code>/continuo --auto &lt;objetivo&gt;</code>."
-msgstr "Switches an <em>already-active continuous</em> to automatic: the worker iterates on its own (under the cap and max iterations) until /alto. With no active goal, use <code>/continuo --auto &lt;goal&gt;</code>."
+"solo (bajo tope y máx de iteraciones) hasta /alto. Sin objetivo activo, pedí"
+" <code>/continuo --auto &lt;objetivo&gt;</code>."
+msgstr ""
+"Switches an <em>already-active continuous</em> to automatic: the worker "
+"iterates on its own (under the cap and max iterations) until /alto. With no "
+"active goal, use <code>/continuo --auto &lt;goal&gt;</code>."
 
-#: enjambre/templates/enjambre/mesa.html:218
+#: enjambre/templates/enjambre/mesa.html:283
 msgid ""
 "Cortar: termina el turno en curso (la silla que corre termina) y apaga el "
 "modo continuo"
-msgstr "Cut: the turn in progress finishes (the seat that is running completes) and continuous mode turns off"
+msgstr ""
+"Cut: the turn in progress finishes (the seat that is running completes) and "
+"continuous mode turns off"
 
-#: enjambre/templates/enjambre/mesa.html:219
+#: enjambre/templates/enjambre/mesa.html:284
 msgid ""
 "Cerrar la mesa con un resumen (qué se construyó, commits, costo total). No "
 "borra nada."
-msgstr "Close the table with a summary (what was built, commits, total cost). Deletes nothing."
+msgstr ""
+"Close the table with a summary (what was built, commits, total cost). "
+"Deletes nothing."
 
-#: enjambre/templates/enjambre/mesa.html:225
+#: enjambre/templates/enjambre/mesa.html:290
 msgid "Dirigir a una silla (@mención)"
 msgstr "Address one seat (@mention)"
 
-#: enjambre/templates/enjambre/mesa.html:225
+#: enjambre/templates/enjambre/mesa.html:290
 msgid "Participantes"
 msgstr "Participants"
 
-#: enjambre/templates/enjambre/mesa.html:228
+#: enjambre/templates/enjambre/mesa.html:293
 #, python-format
 msgid "Dirigir solo a %(nombre)s (@%(alias)s)"
 msgstr "Address only %(nombre)s (@%(alias)s)"
 
-#: enjambre/templates/enjambre/mesa.html:230
+#: enjambre/templates/enjambre/mesa.html:295
 msgid "No hay sillas en esta mesa."
 msgstr "No seats at this table."
 
-#: enjambre/templates/enjambre/mesa.html:239
+#: enjambre/templates/enjambre/mesa.html:304
 msgid "Hablá con la mesa… (@silla, /armar para construir)"
 msgstr "Talk to the table… (@seat, /armar to build)"
 
-#: enjambre/templates/enjambre/mesa.html:239
+#: enjambre/templates/enjambre/mesa.html:304
 msgid "Hablá con la mesa… (@silla para dirigir a una)"
 msgstr "Talk to the table… (@seat to address one)"
 
-#: enjambre/templates/enjambre/mesa.html:240
+#: enjambre/templates/enjambre/mesa.html:305
 msgid "Enviar"
 msgstr "Send"
 
-#: enjambre/templates/enjambre/mesa.html:248
+#: enjambre/templates/enjambre/mesa.html:313
 msgid "En vivo"
 msgstr "Live"
 
-#: enjambre/templates/enjambre/mesa.html:249
+#: enjambre/templates/enjambre/mesa.html:314
 msgid "Ocultar flujo"
 msgstr "Hide workflow"
 
-#: enjambre/templates/enjambre/mesa.html:259
+#: enjambre/templates/enjambre/mesa.html:324
 msgid "Sin actividad todavía. El flujo aparece cuando las sillas trabajan."
 msgstr "No activity yet. The workflow shows up when the seats work."
 
-#: enjambre/templates/enjambre/mesa.html:278
-#: enjambre/templates/enjambre/mesa.html:341
+#: enjambre/templates/enjambre/mesa.html:343
+#: enjambre/templates/enjambre/mesa.html:406
 msgid "Coordinación"
 msgstr "Coordination"
 
-#: enjambre/templates/enjambre/mesa.html:280
+#: enjambre/templates/enjambre/mesa.html:345
 msgid "Plana — todas responden"
 msgstr "Flat — all reply"
 
-#: enjambre/templates/enjambre/mesa.html:281
+#: enjambre/templates/enjambre/mesa.html:346
 msgid "Líder — una coordina al resto"
 msgstr "Leader — one coordinates the rest"
 
-#: enjambre/templates/enjambre/mesa.html:287
+#: enjambre/templates/enjambre/mesa.html:352
 msgid "— elegí una silla —"
 msgstr "— pick a seat —"
 
-#: enjambre/templates/enjambre/mesa.html:294
+#: enjambre/templates/enjambre/mesa.html:359
 msgid ""
-"En modo Líder, el líder descompone tu pedido en subtareas, se las reparte a "
-"las\n"
-"                            otras sillas y al final integra todo. Con "
-"<code>@silla</code> hablás directo a una."
-msgstr "In Leader mode, the leader breaks your request into subtasks, hands them out to the other seats and integrates everything at the end. With <code>@seat</code> you talk straight to one."
+"En modo Líder, el líder descompone tu pedido en subtareas, se las reparte a las\n"
+"                            otras sillas y al final integra todo. Con <code>@silla</code> hablás directo a una."
+msgstr ""
+"In Leader mode, the leader breaks your request into subtasks, hands them out"
+" to the other seats and integrates everything at the end. With "
+"<code>@seat</code> you talk straight to one."
 
-#: enjambre/templates/enjambre/mesa.html:298
+#: enjambre/templates/enjambre/mesa.html:363
 msgid "Tope de gasto (USD)"
 msgstr "Spend cap (USD)"
 
-#: enjambre/templates/enjambre/mesa.html:301
+#: enjambre/templates/enjambre/mesa.html:366
 msgid "0 = sin tope"
 msgstr "0 = no cap"
 
-#: enjambre/templates/enjambre/mesa.html:304
+#: enjambre/templates/enjambre/mesa.html:369
 msgid ""
 "En modo continuo, si el gasto estimado acumulado supera el tope, la mesa no\n"
-"                            corre la próxima iteración. <strong>0 = sin tope."
-"</strong>"
-msgstr "In continuous mode, if the accumulated estimated spend exceeds the cap, the table will not run the next iteration. <strong>0 = no cap.</strong>"
+"                            corre la próxima iteración. <strong>0 = sin tope.</strong>"
+msgstr ""
+"In continuous mode, if the accumulated estimated spend exceeds the cap, the "
+"table will not run the next iteration. <strong>0 = no cap.</strong>"
 
-#: enjambre/templates/enjambre/mesa.html:313
+#: enjambre/templates/enjambre/mesa.html:378
 msgid "local, no fabrica"
 msgstr "local, does not build"
 
-#: enjambre/templates/enjambre/mesa.html:316
+#: enjambre/templates/enjambre/mesa.html:381
 msgid "No hay sillas disponibles."
 msgstr "No seats available."
 
-#: enjambre/templates/enjambre/mesa.html:320
+#: enjambre/templates/enjambre/mesa.html:385
 msgid "Cancelar"
 msgstr "Cancel"
 
-#: enjambre/templates/enjambre/mesa.html:321
-#: enjambre/templates/enjambre/sillas.html:167
-msgid "Guardar"
-msgstr "Save"
-
-#: enjambre/templates/enjambre/mesa.html:331
+#: enjambre/templates/enjambre/mesa.html:396
 msgid "Ayuda de la mesa"
 msgstr "Table help"
 
-#: enjambre/templates/enjambre/mesa.html:333
+#: enjambre/templates/enjambre/mesa.html:398
 msgid "Botones"
 msgstr "Buttons"
 
-#: enjambre/templates/enjambre/mesa.html:335
+#: enjambre/templates/enjambre/mesa.html:400
 msgid "Sillas de la mesa (quién participa)."
 msgstr "Table seats (who participates)."
 
-#: enjambre/templates/enjambre/mesa.html:336
+#: enjambre/templates/enjambre/mesa.html:401
 msgid "Descargar la charla en un .txt."
 msgstr "Download the chat as a .txt."
 
-#: enjambre/templates/enjambre/mesa.html:337
-msgid "Carpeta de la mesa: ver/descargar archivos y copiar la ruta en el host."
+#: enjambre/templates/enjambre/mesa.html:402
+msgid ""
+"Carpeta de la mesa: ver/descargar archivos y copiar la ruta en el host."
 msgstr "Table folder: view/download files and copy the host path."
 
-#: enjambre/templates/enjambre/mesa.html:338
+#: enjambre/templates/enjambre/mesa.html:403
 msgid "Flujo de trabajo en vivo (qué hace cada silla, diffs)."
 msgstr "Live workflow (what each seat is doing, diffs)."
 
-#: enjambre/templates/enjambre/mesa.html:339
+#: enjambre/templates/enjambre/mesa.html:404
 msgid "Esta ayuda."
 msgstr "This help."
 
-#: enjambre/templates/enjambre/mesa.html:343
+#: enjambre/templates/enjambre/mesa.html:408
 msgid "<strong>Plana</strong> — todas las sillas responden al pedido."
 msgstr "<strong>Flat</strong> — every seat replies to the request."
 
-#: enjambre/templates/enjambre/mesa.html:344
+#: enjambre/templates/enjambre/mesa.html:409
 msgid ""
-"<strong>Líder</strong> (👑) — una silla coordina: descompone tu pedido en "
-"subtareas, se\n"
+"<strong>Líder</strong> (👑) — una silla coordina: descompone tu pedido en subtareas, se\n"
 "                    las reparte a las demás, y al final integra y reporta."
-msgstr "<strong>Leader</strong> (👑) — one seat coordinates: it breaks your request into subtasks, hands them out to the rest, and finally integrates and reports."
+msgstr ""
+"<strong>Leader</strong> (👑) — one seat coordinates: it breaks your request "
+"into subtasks, hands them out to the rest, and finally integrates and "
+"reports."
 
-#: enjambre/templates/enjambre/mesa.html:345
+#: enjambre/templates/enjambre/mesa.html:410
 msgid "Se elige en <i class=\"fas fa-gear\"></i> Sillas de la mesa."
 msgstr "Chosen in <i class=\"fas fa-gear\"></i> Table seats."
 
-#: enjambre/templates/enjambre/mesa.html:347
+#: enjambre/templates/enjambre/mesa.html:412
 msgid "Mensajes"
 msgstr "Messages"
 
-#: enjambre/templates/enjambre/mesa.html:348
+#: enjambre/templates/enjambre/mesa.html:413
 msgid ""
 "<code>@silla</code> — dirigir el turno a una sola silla (también saltea al "
 "líder)."
-msgstr "<code>@seat</code> — address the turn to a single seat (it also bypasses the leader)."
+msgstr ""
+"<code>@seat</code> — address the turn to a single seat (it also bypasses the"
+" leader)."
 
-#: enjambre/templates/enjambre/mesa.html:350
+#: enjambre/templates/enjambre/mesa.html:415
 msgid "(solo control)"
 msgstr "(control only)"
 
-#: enjambre/templates/enjambre/mesa.html:352
+#: enjambre/templates/enjambre/mesa.html:417
 msgid ""
-"<code>/armar &lt;qué&gt;</code> — las sillas construyen/editan en la carpeta "
-"de la mesa y te muestran el diff."
-msgstr "<code>/armar &lt;what&gt;</code> — the seats build/edit in the table’s folder and show you the diff."
+"<code>/armar &lt;qué&gt;</code> — las sillas construyen/editan en la carpeta"
+" de la mesa y te muestran el diff."
+msgstr ""
+"<code>/armar &lt;what&gt;</code> — the seats build/edit in the table’s "
+"folder and show you the diff."
 
-#: enjambre/templates/enjambre/mesa.html:353
+#: enjambre/templates/enjambre/mesa.html:418
 msgid "<code>/deshacer</code> — revierte el último <code>/armar</code>."
 msgstr "<code>/deshacer</code> — reverts the last <code>/armar</code>."
 
-#: enjambre/templates/enjambre/mesa.html:354
+#: enjambre/templates/enjambre/mesa.html:419
 msgid ""
 "<code>/volver &lt;sha&gt;</code> — rebobina la carpeta a ese commit "
 "(granular); sin sha lista los commits."
-msgstr "<code>/volver &lt;sha&gt;</code> — rewinds the folder to that commit (granular); without a sha it lists the commits."
+msgstr ""
+"<code>/volver &lt;sha&gt;</code> — rewinds the folder to that commit "
+"(granular); without a sha it lists the commits."
 
-#: enjambre/templates/enjambre/mesa.html:355
+#: enjambre/templates/enjambre/mesa.html:420
 msgid ""
 "<code>/debate &lt;tema&gt;</code> — las sillas discuten en rondas antes de "
 "responder."
-msgstr "<code>/debate &lt;topic&gt;</code> — the seats argue in rounds before answering."
+msgstr ""
+"<code>/debate &lt;topic&gt;</code> — the seats argue in rounds before "
+"answering."
 
-#: enjambre/templates/enjambre/mesa.html:356
+#: enjambre/templates/enjambre/mesa.html:421
 msgid ""
 "<code>/alto</code> — corta el turno en curso (la silla que está corriendo "
 "termina; el resto se saltea) y apaga el modo continuo."
-msgstr "<code>/alto</code> — cuts the turn in progress (the seat that is running finishes; the rest are skipped) and turns off continuous mode."
+msgstr ""
+"<code>/alto</code> — cuts the turn in progress (the seat that is running "
+"finishes; the rest are skipped) and turns off continuous mode."
 
-#: enjambre/templates/enjambre/mesa.html:357
+#: enjambre/templates/enjambre/mesa.html:422
 msgid ""
 "<code>/continuo &lt;objetivo&gt;</code> — fija un objetivo y la mesa lo "
 "construye iteración por iteración; corre una y frena."
-msgstr "<code>/continuo &lt;goal&gt;</code> — sets a goal and the table builds it iteration by iteration; it runs one and stops."
+msgstr ""
+"<code>/continuo &lt;goal&gt;</code> — sets a goal and the table builds it "
+"iteration by iteration; it runs one and stops."
 
-#: enjambre/templates/enjambre/mesa.html:358
+#: enjambre/templates/enjambre/mesa.html:423
 msgid ""
 "<code>/seguí</code> — corre la próxima iteración hacia el objetivo continuo "
 "(construye sobre lo ya hecho)."
-msgstr "<code>/seguí</code> — runs the next iteration toward the continuous goal (it builds on top of what is done)."
+msgstr ""
+"<code>/seguí</code> — runs the next iteration toward the continuous goal (it"
+" builds on top of what is done)."
 
-#: enjambre/templates/enjambre/mesa.html:359
+#: enjambre/templates/enjambre/mesa.html:424
 msgid ""
 "<code>/continuo --auto &lt;obj&gt;</code> / <code>/auto</code> — modo "
 "automático: el worker itera solo hasta el tope de costo, el máximo de "
 "iteraciones, o <code>/alto</code>."
-msgstr "<code>/continuo --auto &lt;goal&gt;</code> / <code>/auto</code> — automatic mode: the worker iterates on its own until the spend cap, the max iterations, or <code>/alto</code>."
+msgstr ""
+"<code>/continuo --auto &lt;goal&gt;</code> / <code>/auto</code> — automatic "
+"mode: the worker iterates on its own until the spend cap, the max "
+"iterations, or <code>/alto</code>."
 
-#: enjambre/templates/enjambre/mesa.html:360
+#: enjambre/templates/enjambre/mesa.html:425
 msgid ""
 "<code>/cerrar</code> — cierra la mesa con un resumen (qué se construyó, "
 "commits, costo total). No borra nada; bajás el resultado con 📁."
-msgstr "<code>/cerrar</code> — closes the table with a summary (what was built, commits, total cost). Deletes nothing; grab the result with 📁."
+msgstr ""
+"<code>/cerrar</code> — closes the table with a summary (what was built, "
+"commits, total cost). Deletes nothing; grab the result with 📁."
 
-#: enjambre/templates/enjambre/mesa.html:362
+#: enjambre/templates/enjambre/mesa.html:427
 msgid "Se combinan: <code>@claude /armar …</code>"
 msgstr "They combine: <code>@claude /armar …</code>"
 
-#: enjambre/templates/enjambre/mesa.html:364
+#: enjambre/templates/enjambre/mesa.html:429
 msgid ""
 "Tu rango es <strong>consulta</strong>: charlás con las sillas. Los comandos "
 "de construcción son del dueño."
-msgstr "Your rank is <strong>consulta</strong> (view-only): you chat with the seats. Build commands belong to the owner."
+msgstr ""
+"Your rank is <strong>consulta</strong> (view-only): you chat with the seats."
+" Build commands belong to the owner."
 
-#: enjambre/templates/enjambre/mesa.html:368
-#: enjambre/templates/enjambre/mesa.html:393
-msgid "Cerrar"
-msgstr "Close"
-
-#: enjambre/templates/enjambre/mesa.html:381
+#: enjambre/templates/enjambre/mesa.html:446
 msgid "Ruta en el host"
 msgstr "Host path"
 
-#: enjambre/templates/enjambre/mesa.html:383
+#: enjambre/templates/enjambre/mesa.html:448
 msgid "Copiar la ruta de la carpeta (host)"
 msgstr "Copy the folder’s path (host)"
 
-#: enjambre/templates/enjambre/mesa.html:383
+#: enjambre/templates/enjambre/mesa.html:448
 msgid "Ruta"
 msgstr "Path"
 
-#: enjambre/templates/enjambre/mesa.html:384
+#: enjambre/templates/enjambre/mesa.html:449
 msgid "Refrescar"
 msgstr "Refresh"
 
-#: enjambre/templates/enjambre/mesa.html:387
-#: enjambre/templates/enjambre/mesa.html:647
-msgid "Cargando…"
-msgstr "Loading…"
+#: enjambre/templates/enjambre/mesa.html:451
+msgid "Arrastrá archivos o hacé clic para subir"
+msgstr "Drag files or click to upload"
 
-#: enjambre/templates/enjambre/mesa.html:392
-msgid "Descargar todo (.zip)"
-msgstr "Download everything (.zip)"
+#: enjambre/templates/enjambre/mesa.html:454
+msgid "Arrastrá archivos acá o hacé clic para subirlos a la mesa"
+msgstr "Drag files here or click to upload them to the table"
 
-#: enjambre/templates/enjambre/mesa.html:486
-msgid "Exportado:"
-msgstr "Exported:"
+#: enjambre/templates/enjambre/mesa.html:457
+msgid "Ordenar:"
+msgstr "Sort:"
 
-#: enjambre/templates/enjambre/mesa.html:515
-msgid ""
-"Las sillas locales no fabrican: no se sientan en una mesa Líder (de trabajo)."
-msgstr "Local seats do not build: they do not sit at a Leader (work) table."
-
-#: enjambre/templates/enjambre/mesa.html:625
-msgid "(carpeta no creada todavía)"
-msgstr "(folder not created yet)"
-
-#: enjambre/templates/enjambre/mesa.html:628
-msgid "La carpeta está vacía."
-msgstr "The folder is empty."
-
-#: enjambre/templates/enjambre/mesa.html:628
-msgid "Esta mesa todavía no fabricó nada (probá /armar)."
-msgstr "This table has not built anything yet (try /armar)."
-
-#: enjambre/templates/enjambre/mesa.html:640
-msgid "Descargar"
-msgstr "Download"
-
-#: enjambre/templates/enjambre/mesa.html:641
-msgid "Copiar ruta (host)"
-msgstr "Copy path (host)"
-
-#: enjambre/templates/enjambre/mesa.html:650
-msgid "No se pudo leer la carpeta."
-msgstr "Could not read the folder."
-
-#: enjambre/templates/enjambre/sillas.html:33
-msgid "Conexiones — qué CLIs tienen login detectado en el host"
-msgstr "Connections — which CLIs have a detected login on the host"
-
-#: enjambre/templates/enjambre/sillas.html:37
-msgid "Reiniciar el worker (recargar código nuevo)"
-msgstr "Restart the worker (reload new code)"
-
-#: enjambre/templates/enjambre/sillas.html:37
-msgid "Reiniciar el worker"
-msgstr "Restart the worker"
-
-#: enjambre/templates/enjambre/sillas.html:42
-msgid ""
-"Cada cambio se guarda solo (✓). El nombre define el <strong>@alias</strong> "
-"de mención.\n"
-"        Elegí <strong>cliente</strong> + <strong>modelo</strong>; cloná para "
-"repetir un cliente con otro modelo/prompt."
-msgstr "Every change saves itself (✓). The name defines the mention <strong>@alias</strong>. Pick a <strong>client</strong> + <strong>model</strong>; clone to repeat a client with another model/prompt."
-
-#: enjambre/templates/enjambre/sillas.html:48
-msgid "Nombre de la silla nueva"
-msgstr "New seat name"
-
-#: enjambre/templates/enjambre/sillas.html:49
-msgid "Agregar silla"
-msgstr "Add seat"
-
-#: enjambre/templates/enjambre/sillas.html:62
+#: enjambre/templates/enjambre/mesa.html:458
+#: enjambre/templates/enjambre/sillas.html:112
 msgid "Nombre"
 msgstr "Name"
 
-#: enjambre/templates/enjambre/sillas.html:74
+#: enjambre/templates/enjambre/mesa.html:459
+msgid "Fecha"
+msgstr "Date"
+
+#: enjambre/templates/enjambre/mesa.html:462
+#: enjambre/templates/enjambre/mesa.html:800
+#: enjambre/templates/enjambre/mesa.html:889
+#: enjambre/templates/enjambre/sillas.html:408
+msgid "Cargando…"
+msgstr "Loading…"
+
+#: enjambre/templates/enjambre/mesa.html:467
+msgid "Descargar todo (.zip)"
+msgstr "Download everything (.zip)"
+
+#: enjambre/templates/enjambre/mesa.html:478
+msgid "Preview"
+msgstr "Preview"
+
+#: enjambre/templates/enjambre/mesa.html:480
+#: enjambre/templates/enjambre/mesa.html:792
+msgid "Descargar"
+msgstr "Download"
+
+#: enjambre/templates/enjambre/mesa.html:605
+msgid "Exportado:"
+msgstr "Exported:"
+
+#: enjambre/templates/enjambre/mesa.html:634
+msgid ""
+"Las sillas locales no fabrican: no se sientan en una mesa Líder (de "
+"trabajo)."
+msgstr "Local seats do not build: they do not sit at a Leader (work) table."
+
+#: enjambre/templates/enjambre/mesa.html:761
+msgid "(carpeta no creada todavía)"
+msgstr "(folder not created yet)"
+
+#: enjambre/templates/enjambre/mesa.html:769
+#: enjambre/templates/enjambre/mesa.html:774
+msgid "Esta mesa todavía no fabricó nada (probá /armar)."
+msgstr "This table has not built anything yet (try /armar)."
+
+#: enjambre/templates/enjambre/mesa.html:774
+msgid "La carpeta está vacía."
+msgstr "The folder is empty."
+
+#: enjambre/templates/enjambre/mesa.html:789
+msgid "Última modificación"
+msgstr "Last modified"
+
+#: enjambre/templates/enjambre/mesa.html:791
+msgid "Preview (renderizado)"
+msgstr "Preview (rendered)"
+
+#: enjambre/templates/enjambre/mesa.html:793
+msgid "Copiar ruta (host)"
+msgstr "Copy path (host)"
+
+#: enjambre/templates/enjambre/mesa.html:803
+msgid "No se pudo leer la carpeta."
+msgstr "Could not read the folder."
+
+#: enjambre/templates/enjambre/mesa.html:835
+msgid "Subiendo…"
+msgstr "Uploading…"
+
+#: enjambre/templates/enjambre/mesa.html:837
+msgid "respuesta inválida"
+msgstr "invalid response"
+
+#: enjambre/templates/enjambre/mesa.html:842
+msgid "no se pudo subir"
+msgstr "couldn't upload"
+
+#: enjambre/templates/enjambre/mesa.html:848
+msgid "error de red"
+msgstr "network error"
+
+#: enjambre/templates/enjambre/mesa.html:904
+msgid "No se pudo leer el archivo."
+msgstr "Could not read the file."
+
+#: enjambre/templates/enjambre/sillas.html:50
+msgid "Conexiones — qué CLIs tienen login detectado en el host"
+msgstr "Connections — which CLIs have a detected login on the host"
+
+#: enjambre/templates/enjambre/sillas.html:54
+msgid "Reiniciar el worker (recargar código nuevo)"
+msgstr "Restart the worker (reload new code)"
+
+#: enjambre/templates/enjambre/sillas.html:54
+msgid "Reiniciar el worker"
+msgstr "Restart the worker"
+
+#: enjambre/templates/enjambre/sillas.html:59
+msgid ""
+"Cada cambio se guarda solo (✓). El nombre define el <strong>@alias</strong> de mención.\n"
+"        Elegí <strong>cliente</strong> + <strong>modelo</strong>; cloná para repetir un cliente con otro modelo/prompt."
+msgstr ""
+"Every change saves itself (✓). The name defines the mention "
+"<strong>@alias</strong>. Pick a <strong>client</strong> + "
+"<strong>model</strong>; clone to repeat a client with another model/prompt."
+
+#: enjambre/templates/enjambre/sillas.html:64
+msgid "🎭 Avatares del humano y del sistema"
+msgstr "🎭 Human and system avatars"
+
+#: enjambre/templates/enjambre/sillas.html:78
+msgid "Color"
+msgstr "Color"
+
+#: enjambre/templates/enjambre/sillas.html:82
+#: enjambre/templates/enjambre/sillas.html:132
+msgid "Retrato"
+msgstr "Portrait"
+
+#: enjambre/templates/enjambre/sillas.html:89
+msgid "Se guardan solos al cambiar. Vacío = cuadrado de color."
+msgstr "They save on change. Empty = colored square."
+
+#: enjambre/templates/enjambre/sillas.html:94
+msgid "Buscar silla…"
+msgstr "Search seats…"
+
+#: enjambre/templates/enjambre/sillas.html:94
+msgid "Buscar silla"
+msgstr "Search seats"
+
+#: enjambre/templates/enjambre/sillas.html:98
+msgid "Nueva silla"
+msgstr "New seat"
+
+#: enjambre/templates/enjambre/sillas.html:122
+msgid "Rol (tarjeta — solo display)"
+msgstr "Role (card — display only)"
+
+#: enjambre/templates/enjambre/sillas.html:124
+msgid "ej: Arquitecto · Red Team"
+msgstr "e.g.: Architect · Red Team"
+
+#: enjambre/templates/enjambre/sillas.html:128
+msgid "Color en la mesa"
+msgstr "Color at the table"
+
+#: enjambre/templates/enjambre/sillas.html:129
+msgid "Color del borde/cuadrado en la mesa"
+msgstr "Border/square color at the table"
+
+#: enjambre/templates/enjambre/sillas.html:135
+msgid "Color automático por orden"
+msgstr "Automatic color by order"
+
+#: enjambre/templates/enjambre/sillas.html:135
+msgid "Color auto"
+msgstr "Auto color"
+
+#: enjambre/templates/enjambre/sillas.html:150
 msgid "Modelo"
 msgstr "Model"
 
-#: enjambre/templates/enjambre/sillas.html:79
+#: enjambre/templates/enjambre/sillas.html:154
+msgid "Elegí del catálogo (botón) o tipeá cualquier ID"
+msgstr "Pick from the catalog (button) or type any ID"
+
+#: enjambre/templates/enjambre/sillas.html:156
+msgid "Elegir del catálogo"
+msgstr "Pick from catalog"
+
+#: enjambre/templates/enjambre/sillas.html:162
 msgid "Endpoint URL (Ollama)"
 msgstr "Endpoint URL (Ollama)"
 
-#: enjambre/templates/enjambre/sillas.html:85
+#: enjambre/templates/enjambre/sillas.html:168
 msgid "Prompt A — control"
 msgstr "Prompt A — control"
 
-#: enjambre/templates/enjambre/sillas.html:89
+#: enjambre/templates/enjambre/sillas.html:172
 msgid "Prompt B — consulta"
 msgstr "Prompt B — view rank"
 
-#: enjambre/templates/enjambre/sillas.html:89
+#: enjambre/templates/enjambre/sillas.html:172
 msgid "(vacío = usa A)"
 msgstr "(empty = uses A)"
 
-#: enjambre/templates/enjambre/sillas.html:93
+#: enjambre/templates/enjambre/sillas.html:176
 msgid "Recordatorio (recencia)"
 msgstr "Reminder (recency)"
 
-#: enjambre/templates/enjambre/sillas.html:94
+#: enjambre/templates/enjambre/sillas.html:177
 msgid "(opcional)"
 msgstr "(optional)"
 
-#: enjambre/templates/enjambre/sillas.html:97
+#: enjambre/templates/enjambre/sillas.html:180
 msgid "(el líder reparte por esto)"
 msgstr "(the leader assigns by this)"
 
-#: enjambre/templates/enjambre/sillas.html:99
+#: enjambre/templates/enjambre/sillas.html:182
 msgid "ej: frontend/CSS · scripts · redacción (opcional)"
 msgstr "e.g.: frontend/CSS · scripts · writing (optional)"
 
-#: enjambre/templates/enjambre/sillas.html:103
+#: enjambre/templates/enjambre/sillas.html:186
 msgid "Activa"
 msgstr "Active"
 
-#: enjambre/templates/enjambre/sillas.html:104
+#: enjambre/templates/enjambre/sillas.html:187
 msgid "Rango"
 msgstr "Rank"
 
-#: enjambre/templates/enjambre/sillas.html:108
+#: enjambre/templates/enjambre/sillas.html:191
 msgid "Orden"
 msgstr "Order"
 
-#: enjambre/templates/enjambre/sillas.html:113
-#: enjambre/templates/enjambre/sillas.html:167
+#: enjambre/templates/enjambre/sillas.html:196
+#: enjambre/templates/enjambre/sillas.html:470
 msgid "Guardado"
 msgstr "Saved"
 
-#: enjambre/templates/enjambre/sillas.html:115
+#: enjambre/templates/enjambre/sillas.html:198
 msgid "Restaurar el prompt A de fábrica"
 msgstr "Restore the factory prompt A"
 
-#: enjambre/templates/enjambre/sillas.html:121
+#: enjambre/templates/enjambre/sillas.html:204
 msgid "Clonar"
 msgstr "Clone"
 
-#: enjambre/templates/enjambre/sillas.html:123
+#: enjambre/templates/enjambre/sillas.html:206
 #, python-format
 msgid "¿Borrar la silla «%(nombre)s»? Sus tareas viejas quedan huérfanas."
 msgstr "Delete seat “%(nombre)s”? Its old tasks become orphans."
 
-#: enjambre/templates/enjambre/sillas.html:124
+#: enjambre/templates/enjambre/sillas.html:207
 msgid "Borrar"
 msgstr "Delete"
 
-#: enjambre/templates/enjambre/sillas.html:128
+#: enjambre/templates/enjambre/sillas.html:211
 msgid "No hay sillas. Agregá una arriba."
 msgstr "No seats. Add one above."
 
-#: enjambre/templates/enjambre/sillas.html:173
+#: enjambre/templates/enjambre/sillas.html:247
+#: enjambre/templates/enjambre/sillas.html:406
+msgid "Modelos"
+msgstr "Models"
+
+#: enjambre/templates/enjambre/sillas.html:252
+msgid "Buscar modelo…"
+msgstr "Search models…"
+
+#: enjambre/templates/enjambre/sillas.html:253
+msgid "Solo free"
+msgstr "Free only"
+
+#: enjambre/templates/enjambre/sillas.html:254
+msgid "Solo con tools"
+msgstr "Tools only"
+
+#: enjambre/templates/enjambre/sillas.html:387
+msgid "Nada que coincida."
+msgstr "Nothing matches."
+
+#: enjambre/templates/enjambre/sillas.html:416
+msgid "con tools 🔧"
+msgstr "with tools 🔧"
+
+#: enjambre/templates/enjambre/sillas.html:417
+msgid "toolbelt ON: los 🔧 van primero"
+msgstr "toolbelt ON: 🔧 come first"
+
+#: enjambre/templates/enjambre/sillas.html:418
+msgid "lista en vivo del proveedor"
+msgstr "live list from the provider"
+
+#: enjambre/templates/enjambre/sillas.html:423
+msgid "No se pudo cargar."
+msgstr "Could not load."
+
+#: enjambre/templates/enjambre/sillas.html:476
 msgid "Guardando…"
 msgstr "Saving…"
 
-#: enjambre/templates/enjambre/sillas.html:214
+#: enjambre/templates/enjambre/sillas.html:542
 msgid "¿Reiniciar el worker? Tarda ~5s en volver; un turno en curso se corta."
-msgstr "Restart the worker? It takes ~5s to come back; a turn in progress gets cut."
+msgstr ""
+"Restart the worker? It takes ~5s to come back; a turn in progress gets cut."
 
-#: enjambre/templates/enjambre/sillas.html:216
+#: enjambre/templates/enjambre/sillas.html:544
 msgid "Reiniciando…"
 msgstr "Restarting…"
 
-#: enjambre/templates/enjambre/sillas.html:220
+#: enjambre/templates/enjambre/sillas.html:548
 msgid "Reiniciando (~5s)…"
 msgstr "Restarting (~5s)…"
-#: enjambre/templates/enjambre/sillas.html
-msgid "Elegí uno sugerido o tipeá cualquier ID de modelo de tus proveedores"
-msgstr "Pick a suggested one or type any model ID from your providers"
-
-#: enjambre/templates/enjambre/mesa.html
-msgid "Arrastrá archivos o hacé clic para subir"
-msgstr "Drag files or click to upload"
-
-#: enjambre/templates/enjambre/mesa.html
-msgid "Arrastrá archivos acá o hacé clic para subirlos a la mesa"
-msgstr "Drag files here or click to upload them to the table"
-
-#: enjambre/templates/enjambre/mesa.html
-msgid "Subiendo…"
-msgstr "Uploading…"
-
-#: enjambre/templates/enjambre/mesa.html
-msgid "respuesta inválida"
-msgstr "invalid response"
-
-#: enjambre/templates/enjambre/mesa.html
-msgid "no se pudo subir"
-msgstr "couldn't upload"
-
-#: enjambre/templates/enjambre/mesa.html
-msgid "error de red"
-msgstr "network error"
-
-#: enjambre/templates/enjambre/conexiones.html
-msgid "Anda sin key"
-msgstr "Works without a key"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "Tu escalera"
-msgstr "Your ladder"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "de cero a mesa completa"
-msgstr "from zero to a full table"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "Silla gratis (sin cuentas): Chispa charla ya"
-msgstr "Free chair (no accounts): Chispa chats right away"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "opencode CLI (login gratis): ~6 modelos free y fabricar con /armar"
-msgstr "opencode CLI (free login): ~6 free models plus building with /armar"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "API keys en la bóveda: todos los modelos"
-msgstr "API keys in the vault: every model"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "lista — 1 mensaje cada 15 s, modelo chico"
-msgstr "ready — 1 message every 15 s, small model"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "encendé una silla Pollinations en Sillas"
-msgstr "turn on a Pollinations chair in Chairs"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "detectado y logueado"
-msgstr "installed and logged in"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "bóveda configurada"
-msgstr "vault configured"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "pestaña «API keys» acá abajo"
-msgstr "\"API keys\" tab below"
-
-#: enjambre/templates/enjambre/_escalera.html
-msgid "La silla gratis manda lo que escribís (y el contexto de la mesa) a un servicio público sin cuenta (Pollinations). Para trabajo sensible, usá sillas con tus propias keys o un modelo local."
-msgstr "The free chair sends what you type (and the table context) to a public no-account service (Pollinations). For sensitive work, use chairs with your own keys or a local model."

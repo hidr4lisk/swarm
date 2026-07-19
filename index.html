@@ -170,10 +170,10 @@ h2{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.15;letter-spacing:-.5px;ma
 .step p{color:var(--text-dim);font-size:.93rem;margin-top:8px;}
 .step p code, .body-txt code{background:var(--surface2);border:1px solid var(--border-strong);
   border-radius:5px;padding:1px 6px;font-size:.86em;color:var(--text-soft);}
-.step .cmd{display:block;background:var(--surface);border:1px solid var(--border-strong);
+.step .cmd,#contacto .cmd{display:block;background:var(--surface);border:1px solid var(--border-strong);
   border-radius:8px;padding:12px 16px;margin-top:4px;font-size:.88rem;color:var(--text-soft);
   overflow-x:auto;white-space:pre;line-height:1.8;}
-.step .cmd .pr{user-select:none;}
+.step .cmd .pr,#contacto .cmd .pr{user-select:none;}
 
 /* ── Footer ── */
 footer{border-top:1px solid var(--border);padding:34px 24px 44px;text-align:center;
@@ -195,7 +195,7 @@ footer a{color:var(--text-dim);}
   .term .scr .row{white-space:normal;overflow-wrap:anywhere;}
   .term .scr .row+.row{margin-top:6px;}
   /* comandos: respetan saltos de línea pero wrappean lo largo */
-  .step .cmd{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.82rem;}
+  .step .cmd,#contacto .cmd{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.82rem;}
   .step{gap:14px;}
   h2{overflow-wrap:break-word;}
 }
@@ -416,9 +416,21 @@ footer a{color:var(--text-dim);}
   </div>
 </section>
 
+<!-- ── Contacto ── -->
+<section id="contacto">
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="ct_eyebrow">// CONTACTO</p>
+    <h2 data-i18n="ct_h">Hablemos.</h2>
+    <p class="body-txt" data-i18n-html="ct_body">¿Encontraste un bug, tenés una idea o querés usar Swarm en tu equipo? Abrí un <a href="https://github.com/hidr4lisk/swarm/issues" target="_blank" rel="noopener">issue en GitHub</a> o escribinos directo:</p>
+    <code class="cmd"><span class="pr">✉</span> <a href="mailto:hidralisk.online@gmail.com" style="color:inherit">hidralisk.online@gmail.com</a></code>
+    <p class="body-txt" style="margin-top:14px;" data-i18n="ct_note">Leemos todo. Tu feedback es lo que hace crecer a Swarm.</p>
+  </div>
+</section>
+
 <footer>
   <span class="brand">Hidr4lisk_Swarm</span> · MIT ·
   <a href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener">github.com/hidr4lisk/swarm</a> ·
+  <a href="mailto:hidralisk.online@gmail.com">hidralisk.online@gmail.com</a> ·
   <span data-i18n="foot">varias mentes, una mesa</span> 🪲
 </footer>
 
@@ -465,6 +477,9 @@ const I18N = {
     dn_body: 'Swarm is <b>free and open source</b>. If it helps you and you want it to keep growing, you can chip in via <b>Mercado Pago</b> — scan the QR or transfer to the alias.',
     dn_label: 'Mercado Pago alias', dn_copy: 'copy',
     dn_note: 'Scan the QR with the Mercado Pago app or transfer manually to the alias. Thanks 🪲',
+    ct_eyebrow: '// CONTACT', ct_h: 'Let’s talk.',
+    ct_body: 'Found a bug, got an idea, or want to use Swarm with your team? Open an <a href="https://github.com/hidr4lisk/swarm/issues" target="_blank" rel="noopener">issue on GitHub</a> or write to us directly:',
+    ct_note: 'We read everything. Your feedback is what makes Swarm grow.',
     go_eyebrow: '// GET STARTED', go_h: 'Up in one command.',
     go_body: 'Don\'t want to clone anything? Grab the ready-made pendrive. Prefer the code? Clone and run — no Docker, no account, just Python 3.12.',
     go0_t: 'Download the pendrive · ready to use',
