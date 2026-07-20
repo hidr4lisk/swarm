@@ -177,6 +177,18 @@ class BuildComandoTests(TestCase):
         self.assertEqual(build_comando('ollama', 'qwen2.5:3b'), ([], []))
         self.assertEqual(build_comando('no-existe', ''), ([], []))
 
+    def test_los_cli_que_trabajan_llevan_su_flag_de_permisos(self):
+        """Sin el flag de auto-aprobación, un CLI corriendo sin TTY no puede pedir permiso y
+        AUTO-RECHAZA: la silla no llega ni a leer /etc aunque el toolbelt esté encendido. El
+        permiso lo da el switch; esto es lo que hace que el CLI lo respete. Bug real, Parrot."""
+        _, cmdt = build_comando('opencode', '')
+        self.assertIn('--auto', cmdt)
+        _, cmdt = build_comando('claude', '')
+        self.assertIn('--allowedTools', cmdt)
+        # En charla no va: ahí la silla no toca nada.
+        cmd, _ = build_comando('opencode', '')
+        self.assertNotIn('--auto', cmd)
+
 
 class ParseAsignacionesTests(TestCase):
     """El contrato del modo líder: extraer «@alias: subtarea» del plan, en orden, agrupando."""

@@ -27,7 +27,13 @@ CLIENTES = {
     'opencode': {
         'label': 'OpenCode (Zen)',
         'comando': ['opencode', 'run'],
-        'comando_trabajo': ['opencode', 'run'],
+        # Fabricar/operar la máquina: `--auto` auto-aprueba los permisos que opencode pide (es su
+        # equivalente del acceptEdits+allowedTools de claude). SIN esto, corriendo sin TTY no puede
+        # preguntar y **auto-rechaza**: cualquier acceso fuera del cwd muere con
+        # "permission requested: external_directory (/etc/*); auto-rejecting" y la silla no puede
+        # ni mirar el host. El permiso ya lo dio el switch del toolbelt; este flag es lo que hace
+        # que el CLI lo respete. En `comando` (charla) NO va: ahí no toca nada.
+        'comando_trabajo': ['opencode', 'run', '--auto'],
         'model_flag': '--model',
         'modelos': [
             '',
