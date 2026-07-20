@@ -207,9 +207,13 @@ tema elegido en la web, igual que el resto de los módulos.
 .enj-modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(2px); }
 .enj-modal-card { position: relative; z-index: 1; width: min(420px, 100%);
                   max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+/* El <form> envuelve body+foot y rompía la cadena flex del card: sin esto el body no tenía
+   altura acotada para scrollear y el foot (Guardar) quedaba cortado con muchas sillas. */
+.enj-modal-card > form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto;
+                         overflow: hidden; }
 .enj-modal-body { padding: .9rem; display: flex; flex-direction: column; gap: .55rem;
-                  overflow-y: auto; }
-.enj-modal-foot { display: flex; justify-content: flex-end; gap: .6rem;
+                  overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.enj-modal-foot { display: flex; justify-content: flex-end; gap: .6rem; flex: none;
                   padding: .8rem .9rem; border-top: 1px solid var(--enj-border); }
 .enj-check { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
 .enj-check input { flex: none; width: auto; min-width: 0; }

@@ -10,9 +10,10 @@ carry it on a pendrive and plug it into any bare machine — Windows or Linux, n
 no Docker, nothing to install.
 
 **They don't just talk — they can operate the machine.** Flip on the **toolbelt** (opt-in,
-off by default, one switch in *Conexiones → Toolbelt*) and API-key seats get tools to inspect
-and fix the real computer you plugged into: read-only runs itself, every change waits for your
-OK, everything logged. → [Toolbelt](#threat-model--read-this-before-using-it)
+off by default, one switch in *Conexiones → Toolbelt*) and every seat — API key or CLI — gets to
+inspect, edit and fix the real computer you plugged into. The switch is the permission: with it on
+changes apply immediately, and everything lands in the log.
+→ [Toolbelt](#threat-model--read-this-before-using-it)
 
 🌐 **Project page:** <https://hidr4lisk.github.io/swarm>
 
@@ -140,36 +141,43 @@ the vault's passphrase; the rest use the same one. Caveats, said plainly:
 - `data/secrets.enc` and the runtime file are git-ignored — they never reach the repo.
 
 **Toolbelt — sillas operate the real system (opt-in, off by default).** This
-is the sharp edge of Swarm. When enabled, API-key sillas get tools that act on **the actual
+is the sharp edge of Swarm. When enabled, sillas get tools that act on **the actual
 machine you plugged into** — no container, no capsule. You turn it on from the UI
 (**Conexiones → Toolbelt → switch**), which flips live with no restart — no need to edit the
-launcher; the `SWARM_TOOLBELT` env var is an optional override that forces it always-on. It needs
-an API-key silla whose model supports tool-use (function-calling). The safety net is **not** a
-sandbox; it is:
+launcher; the `SWARM_TOOLBELT` env var is an optional override that forces it always-on. API-key
+sillas need a model that supports tool-use (function-calling); CLI sillas use their own tools.
 
-- **Read-only by default, auto-run.** `inspect` only runs binaries on a read-only allowlist,
-  with **no shell** (pipes/redirects are inert) and a denylist for write-flags (`find -delete`).
-  `read_file` / `list_dir` / `system_report` only read. These run without asking.
-- **Every mutation needs a human OK.** `apply_fix` never executes on its own — it queues a
-  pending action and posts a note in the mesa; you approve or reject it in the **Bitácora**.
-  Approved commands run with a full shell **because you reviewed them**.
-- **Everything is logged.** Every read and every mutation lands in the per-mesa Bitácora
-  (the `Accion` model), exportable as a support report.
+**One toolbelt, one permission: the switch is the lock.** With it off, sillas only answer text —
+they cannot touch a file or run a command. With it on, **both** backends (API key and CLI) read,
+edit files, change configuration and build, and **everything applies immediately**. There is no
+second mode and no per-command approval: flipping the switch *is* the consent. The safety net is
+**not** a sandbox; it is:
+
+- **Reads are separated from writes.** `inspect` only runs binaries on a read-only allowlist, with
+  **no shell** (pipes/redirects are inert) and a denylist for write-flags (`find -delete`). That
+  allowlist stays so a *read* never mutates by accident — anything that mutates must be asked for
+  explicitly, through `write_file` or `apply_fix`.
+- **Everything is logged, and you see it live.** Every read and every mutation lands in the
+  per-mesa Bitácora (the `Accion` model), exportable as a support report, and each change also
+  posts a note in the mesa over SSE. With no gate in front, that live visibility is the net you
+  have: you watch the change go by as it happens.
+- **The key vault is off-limits.** `secrets.enc` and the runtime file can be neither read nor
+  written by the toolbelt — that would be the cheap escape (dumping keys into the transcript, or
+  wiping them with one overwrite).
 - **This is a powerful, dangerous tool in the wrong hands.** Only enable it on machines you're
-  authorized to service, and read every `apply_fix` before approving.
+  authorized to service. Once it's on, a silla can change the system without asking you first.
 
-**CLI seats with the toolbelt on — no per-command gate.** Everything above (auto reads, mutations
-behind your OK) applies to **API-key** seats, where Swarm intercepts each tool call. A **CLI** seat
-(claude · opencode · agy) carries its own tools: we hand it a prompt on stdin and read text back —
-there is nothing to intercept. So with the toolbelt on, a CLI seat **reads, edits and executes right
-away on the real machine**, starting in your home folder but reaching the whole box. The switch is
-the permission, not each command. Two honest notes:
+Why the two backends still differ *in shape*: Swarm executes an API silla's tools one by one, so it
+logs each one; a CLI silla (claude · opencode · agy) carries its own tools and we only hand it a
+prompt on stdin, so what gets logged is the whole turn. Same permission, different granularity of
+the record. Two honest notes:
 
 - This grants **no reach it didn't already have**: a CLI seat under `/armar` already ran with `cwd`
   set to the mesa folder, and a `cwd` is not a jail (claude's build command ships
   `--allowedTools Bash`). What changes is that it is now **explicit and recorded**.
-- `/armar` is **unchanged**: it still builds inside the mesa's git folder. Machine mode applies to
-  ordinary support turns.
+- `/armar` still builds inside the mesa's git folder. A CLI silla builds there via its `cwd`; an
+  API silla has no `cwd`, so it is **told the folder's absolute path** and writes into it with
+  `write_file` — either way the result is committed and the mesa sees the diff.
 
 Known limitation: containers run as root, so the files tables build under `~/.enjambre`
 end up root-owned on your host (git even complains about *dubious ownership* if you
@@ -194,9 +202,10 @@ dejala en la PC o llevátela en un pendrive y enchufalo en cualquier máquina pe
 Windows o Linux, sin Python, sin Docker, sin instalar nada.
 
 **No solo hablan — pueden operar la máquina.** Prendé el **toolbelt** (opt-in, apagado por
-default, un switch en *Conexiones → Toolbelt*) y las sillas por API key reciben herramientas para
-inspeccionar y arreglar la computadora real en la que estás: lo de solo-lectura corre solo, cada
-cambio espera tu OK, todo queda logueado. → [Toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo)
+default, un switch en *Conexiones → Toolbelt*) y todas las sillas — por API key o por CLI — pasan a
+inspeccionar, editar y arreglar la computadora real en la que estás. El switch es el permiso: con
+él prendido los cambios se aplican en el momento, y todo queda registrado.
+→ [Toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo)
 
 🌐 **Página del proyecto:** <https://hidr4lisk.github.io/swarm>
 
@@ -305,36 +314,45 @@ fija la passphrase de la bóveda; las siguientes usan la misma. Los peros, sin v
 - `data/secrets.enc` y el archivo runtime están en `.gitignore` — nunca llegan al repo.
 
 **Toolbelt — las sillas operan el sistema real (opt-in, apagado por default).**
-Es el filo de Swarm. Habilitado, las sillas por API key reciben herramientas que actúan sobre **la
-máquina a la que enchufaste el pendrive** — sin contenedor, sin cápsula. Se prende desde la interfaz
+Es el filo de Swarm. Habilitado, las sillas reciben herramientas que actúan sobre **la máquina a la
+que enchufaste el pendrive** — sin contenedor, sin cápsula. Se prende desde la interfaz
 (**Conexiones → Toolbelt → switch**), que cambia en vivo sin reiniciar — no hace falta editar el
-launcher; la variable `SWARM_TOOLBELT` es un override opcional que lo fuerza siempre encendido.
-Necesita una silla por API key cuyo modelo soporte herramientas (function-calling). La red de
+launcher; la variable `SWARM_TOOLBELT` es un override opcional que lo fuerza siempre encendido. Las
+sillas por API key necesitan un modelo que soporte herramientas (function-calling); las CLI usan las
+suyas.
+
+**Un solo toolbelt, un solo permiso: el switch es el candado.** Apagado, las sillas solo responden
+texto — no tocan un archivo ni corren un comando. Encendido, **los dos** backends (API key y CLI)
+leen, editan archivos, tocan configuración y construyen, y **todo se aplica en el momento**. No hay
+un segundo modo ni aprobación por comando: prender el switch **es** el consentimiento. La red de
 seguridad **no** es un sandbox; es esto:
 
-- **Read-only por default, auto.** `inspect` solo corre binarios de una allowlist de solo-lectura,
-  **sin shell** (pipes/redirecciones son inertes) y con denylist de banderas que escriben
-  (`find -delete`). `read_file` / `list_dir` / `system_report` solo leen. Corren sin preguntar.
-- **Toda mutación necesita tu OK.** `apply_fix` nunca se ejecuta solo — encola una acción pendiente
-  y lo avisa en la mesa; vos la aprobás o rechazás en la **Bitácora**. Los comandos aprobados corren
-  con shell completo **porque ya los revisaste**.
-**Sillas por CLI con el toolbelt encendido — sin gate por comando.** Lo de arriba (lecturas auto,
-mutaciones con tu OK) vale para las sillas por **API key**, donde Swarm intercepta cada herramienta.
-Una silla por **CLI** (claude · opencode · agy) trae sus herramientas adentro: le pasamos un prompt
-por stdin y leemos texto, no hay dónde interceptar. Así que con el toolbelt encendido una silla CLI
-**lee, edita y ejecuta en el momento sobre la máquina real**, arrancando en tu carpeta personal pero
-con alcance a todo el equipo. El permiso es el switch, no cada comando. Dos aclaraciones honestas:
+- **Las lecturas están separadas de las escrituras.** `inspect` solo corre binarios de una allowlist
+  de solo-lectura, **sin shell** (pipes/redirecciones son inertes) y con denylist de banderas que
+  escriben (`find -delete`). Esa allowlist sigue ahí para que una *lectura* no mute por accidente:
+  lo que muta se pide explícito, por `write_file` o `apply_fix`.
+- **Todo queda logueado, y lo ves en vivo.** Cada lectura y cada mutación va a la Bitácora de la
+  mesa (modelo `Accion`), exportable como informe de soporte, y además cada cambio avisa en la mesa
+  por SSE. Sin gate adelante, esa visibilidad en vivo es la red que te queda: ves pasar el cambio
+  mientras pasa.
+- **La bóveda de keys no se toca.** `secrets.enc` y el archivo runtime no se leen NI se escriben con
+  el toolbelt — sería el escape barato (volcar las keys al transcript, o borrarlas de un
+  sobrescritazo).
+- **Es un tool de mucho poder, peligroso en manos equivocadas.** Habilitalo solo en máquinas que
+  estés autorizado a atender. Con el switch prendido, una silla puede cambiar el sistema sin
+  preguntarte antes.
+
+Por qué los dos backends igual se diferencian *en forma*: Swarm ejecuta las herramientas de una
+silla API una por una, así que anota cada una; una silla CLI (claude · opencode · agy) trae sus
+herramientas adentro y solo le pasamos un prompt por stdin, así que lo que se anota es el turno
+entero. Mismo permiso, distinta granularidad del registro. Dos aclaraciones honestas:
 
 - Esto **no** le da alcance que antes no tuviera: una silla CLI en `/armar` ya corría con el `cwd`
   en la carpeta de la mesa, y un `cwd` no es una jaula (el comando de fabricar de claude trae
   `--allowedTools Bash`). Lo que cambia es que ahora es **explícito y queda registrado**.
-- `/armar` **no** cambió: sigue fabricando dentro de la carpeta git de la mesa. El modo máquina
-  es para los turnos normales de soporte.
-
-- **Todo queda logueado.** Cada lectura y cada mutación va a la Bitácora de la mesa (modelo
-  `Accion`), exportable como informe de soporte.
-- **Es un tool de mucho poder, peligroso en manos equivocadas.** Habilitalo solo en máquinas que
-  estés autorizado a atender, y leé cada `apply_fix` antes de aprobar.
+- `/armar` sigue fabricando dentro de la carpeta git de la mesa. Una silla CLI trabaja ahí por su
+  `cwd`; una silla API no tiene `cwd`, así que **se le pasa la ruta absoluta** de la carpeta y
+  escribe con `write_file` — en los dos casos el resultado se commitea y la mesa ve el diff.
 
 Limitación conocida: los contenedores corren como root, así que los archivos que las
 mesas fabrican en `~/.enjambre` quedan de root en tu host (git incluso se queja de

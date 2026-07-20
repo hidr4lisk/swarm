@@ -225,30 +225,26 @@
         </div>
         <div class="cx-msg" data-beltmsg role="status"></div>
 
-        <p class="cx-note" style="margin:.2rem 0 .5rem;"><strong>{% trans 'Sillas por API key' %}</strong></p>
+        <p class="cx-note" style="margin:.2rem 0 .5rem;">
+            <strong>{% trans 'Este switch es el permiso — vale para todas las sillas' %}</strong></p>
         <ul class="cx-safety">
             <li><i class="fas fa-magnifying-glass"></i>
                 <span>{% blocktrans %}<strong>Lectura automática:</strong> ver el SO, procesos, disco, archivos y comandos de
-                <strong>solo lectura</strong> (allowlist por sistema) — sin pedir permiso, para diagnosticar rápido.{% endblocktrans %}</span></li>
-            <li><i class="fas fa-shield-halved"></i>
-                <span>{% blocktrans %}<strong>Cambios con tu OK:</strong> instalar, editar o reiniciar algo queda <strong>pendiente</strong>
-                en la Bitácora de la mesa hasta que vos lo apruebes. <strong>Nunca se ejecuta solo.</strong>{% endblocktrans %}</span></li>
-            <li><i class="fas fa-book"></i>
-                <span>{% blocktrans %}<strong>Todo queda registrado</strong> en la Bitácora de cada mesa (lecturas y cambios).{% endblocktrans %}</span></li>
-        </ul>
-
-        <p class="cx-note" style="margin:.9rem 0 .5rem;"><strong>{% trans 'Sillas por CLI (claude · opencode · agy)' %}</strong></p>
-        <ul class="cx-safety">
-            <li><i class="fas fa-bolt"></i>
-                <span>{% blocktrans %}<strong>Trabajan directo sobre la máquina</strong> con sus propias herramientas: leen,
-                editan y ejecutan. Arrancan en tu carpeta personal, pero llegan a todo el equipo.{% endblocktrans %}</span></li>
+                <strong>solo lectura</strong> (allowlist por sistema) — para diagnosticar rápido.{% endblocktrans %}</span></li>
             <li><i class="fas fa-triangle-exclamation"></i>
-                <span>{% blocktrans %}<strong>Sin aprobación por comando.</strong> Un CLI trae sus herramientas adentro y Swarm no
-                puede interceptarlas una por una: acá <strong>el permiso es este switch</strong>. Si está encendido, la silla
-                aplica los cambios en el momento.{% endblocktrans %}</span></li>
+                <span>{% blocktrans %}<strong>Los cambios se aplican en el momento.</strong> Con el switch encendido, las sillas
+                (por API key <em>y</em> por CLI) editan archivos, tocan configuración, instalan y construyen
+                <strong>sin pedirte permiso comando por comando</strong>. No hay deshacer: prender esto <strong>es</strong>
+                el permiso.{% endblocktrans %}</span></li>
             <li><i class="fas fa-book"></i>
-                <span>{% blocktrans %}<strong>Cada turno queda en la Bitácora</strong> — qué CLI corrió, en qué carpeta y qué hizo.
-                Es donde se ve trabajar a la silla.{% endblocktrans %}</span></li>
+                <span>{% blocktrans %}<strong>Todo queda registrado y lo ves en vivo:</strong> cada lectura y cada cambio va a la
+                Bitácora de la mesa, y además se avisa en la conversación mientras pasa. Es la red que te queda.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-key"></i>
+                <span>{% blocktrans %}<strong>La bóveda de keys queda afuera:</strong> las sillas no pueden leer ni sobrescribir
+                tus API keys guardadas.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-power-off"></i>
+                <span>{% blocktrans %}<strong>Apagado, las sillas solo responden texto:</strong> no tocan un archivo ni corren
+                un comando. Prendelo solo en máquinas que estés autorizado a atender.{% endblocktrans %}</span></li>
         </ul>
 
         <p class="cx-note">

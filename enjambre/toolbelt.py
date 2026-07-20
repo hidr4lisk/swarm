@@ -1,16 +1,24 @@
 """
-enjambre/toolbelt.py — herramientas de las sillas api:* sobre el SISTEMA REAL (F3).
+enjambre/toolbelt.py — herramientas de las sillas sobre el SISTEMA REAL (F3).
 
-El cambio de paradigma de Swarm 2.0: las sillas por API key NO trabajan encapsuladas en la
-carpeta git de la mesa — operan la máquina a la que enchufás el pendrive (soporte en la PC del
-cliente). No hay sandbox. La red de seguridad es este módulo:
+El cambio de paradigma de Swarm 2.0: las sillas NO trabajan encapsuladas en la carpeta git de la
+mesa — operan la máquina a la que enchufás el pendrive (soporte en la PC del cliente). No hay
+sandbox.
 
-  · LECTURA (system_report / inspect / read_file / list_dir): read-only → se ejecuta SOLA. `inspect`
-    corre SIN shell, con **allowlist** de binarios read-only (el gate principal) + denylist de
-    banderas que escriben (find -delete/-exec).
-  · MUTACIÓN (apply_fix): cambia el sistema → **NUNCA** se ejecuta sola. Crea una Acción
-    `pendiente` y avisa en la mesa; el técnico la aprueba (se ejecuta con shell, ya revisada por un
-    humano) o la rechaza. Toda acción — lectura o mutación — queda en la **bitácora** (modelo Acción).
+UN SOLO TOOLBELT, UN SOLO PERMISO: **el switch es el candado**. Con el toolbelt encendido, tanto
+las sillas por API key como las CLI leen, editan archivos, tocan configuración y construyen, y
+todo se aplica EN EL MOMENTO. Apagado, las sillas solo responden texto. No hay un segundo modo ni
+un gate por comando: prenderlo ES el permiso.
+
+  · LECTURA (system_report / inspect / read_file / list_dir): `inspect` corre SIN shell, con
+    **allowlist** de binarios read-only + denylist de banderas que escriben (find -delete/-exec).
+    La allowlist sigue existiendo para que una lectura no mute por accidente: lo que muta se pide
+    explícito, por la herramienta que corresponde.
+  · MUTACIÓN (write_file / apply_fix): se ejecutan solas y quedan en la **bitácora** (modelo
+    Acción) como EJECUTADA, más un aviso en la mesa por SSE. Sin gate previo, esa visibilidad en
+    vivo es la red que queda: el humano ve el cambio pasar mientras pasa.
+  · La bóveda de API keys (`secrets.enc`, `.secrets.runtime.json`) no se lee NI se escribe con el
+    toolbelt — sería el escape barato (volcar keys al transcript, o borrarlas de un sobrescritazo).
 
 Opt-in: apagado salvo `SWARM_TOOLBELT` (setting/env). Un tool de mucho poder → arranca off.
 OS-aware por `platform.system()`. Ver el "Threat model" ampliado del README.
@@ -138,13 +146,23 @@ def tools_anthropic():
              'ruta': {'type': 'string', 'description': 'Ruta del directorio.'}},
              'required': ['ruta']}},
         {'name': 'apply_fix', 'description':
-         'Propone un comando que MODIFICA el sistema (instalar, editar, reiniciar un servicio, etc.). '
-         'NO se ejecuta solo: queda PENDIENTE hasta que el técnico lo apruebe en la Bitácora. NO '
-         'asumas que corrió; explicá SIEMPRE el motivo. Corré primero inspect/read_file para justificar.',
+         'Ejecuta un comando que MODIFICA el sistema (instalar, editar, reiniciar un servicio, etc.). '
+         'CORRE EN EL MOMENTO sobre la máquina real — no hay aprobación previa ni deshacer. Queda '
+         'registrado en la Bitácora con su motivo. Corré primero inspect/read_file para justificarlo, '
+         'un cambio por vez, y NO toques nada que no te hayan pedido.',
          'input_schema': {'type': 'object', 'properties': {
-             'comando': {'type': 'string', 'description': 'El comando exacto a ejecutar si se aprueba.'},
+             'comando': {'type': 'string', 'description': 'El comando exacto a ejecutar.'},
              'motivo': {'type': 'string', 'description': 'Por qué hace falta y qué esperás que logre.'}},
              'required': ['comando', 'motivo']}},
+        {'name': 'write_file', 'description':
+         'Escribe (crea o sobrescribe) un archivo con el contenido dado. Se aplica EN EL MOMENTO. '
+         'Para editar un archivo existente, leelo antes con read_file y devolvé el contenido completo '
+         'ya modificado — esta herramienta reemplaza el archivo entero, no parchea.',
+         'input_schema': {'type': 'object', 'properties': {
+             'ruta': {'type': 'string', 'description': 'Ruta absoluta o ~ del archivo a escribir.'},
+             'contenido': {'type': 'string', 'description': 'Contenido completo final del archivo.'},
+             'motivo': {'type': 'string', 'description': 'Qué estás haciendo y por qué.'}},
+             'required': ['ruta', 'contenido']}},
     ]
 
 
@@ -163,10 +181,16 @@ def system_prompt():
         "Tenés herramientas para operarla:\n"
         "• system_report / inspect / read_file / list_dir → SOLO LECTURA, se ejecutan solas. Usalas "
         "libremente para diagnosticar antes de opinar. NO inventes salidas: si algo falla, decilo.\n"
-        "• apply_fix → para CUALQUIER cambio (instalar, editar, reiniciar, borrar). NO corre solo: "
-        "queda pendiente de que un HUMANO lo apruebe. Nunca afirmes que un cambio ya se hizo; decí "
-        "que lo dejaste propuesto. Justificá cada apply_fix con lo que viste en las lecturas.\n"
-        "Trabajá como un sysadmin prudente: mirá antes de tocar, un cambio por vez, explicá el porqué."
+        "• write_file → crear o reescribir un archivo. Reemplaza el archivo ENTERO: si vas a editar "
+        "uno que existe, leelo primero con read_file y devolvé el contenido completo ya modificado.\n"
+        "• apply_fix → cualquier otro cambio (instalar, mover, reiniciar un servicio, borrar).\n"
+        "Las dos últimas se aplican EN EL MOMENTO sobre la máquina real: no hay aprobación previa "
+        "ni deshacer. Por eso trabajá como un sysadmin prudente: mirá ANTES de tocar, un cambio por "
+        "vez, justificá cada uno con lo que viste en las lecturas, y NO toques nada que no te hayan "
+        "pedido. Nunca borres ni sobrescribas de forma masiva. Si un pedido te parece peligroso o "
+        "ambiguo, NO lo ejecutes: pedí que te lo confirmen.\n"
+        "Todo tu turno queda en la BITÁCORA de la mesa: contá de forma concreta qué corriste, qué "
+        "archivos tocaste (con rutas) y qué cambiaste."
     )
 
 
@@ -304,6 +328,44 @@ def _list_dir(ruta):
     return f"{p}:\n" + '\n'.join(filas) + extra if filas else f"{p}: (vacío)"
 
 
+def _correr_mutacion(comando, timeout=APPLY_TIMEOUT):
+    """Corre un comando que MUTA el sistema, con shell (el agente escribe pipes/redirecciones).
+    Devuelve (salida, rc). Sin allowlist: con el toolbelt encendido el permiso ya está dado —
+    el freno es el switch, y el registro es la Bitácora. Ver el bloque de arriba."""
+    try:
+        r = subprocess.run(comando, capture_output=True, text=True, timeout=timeout, shell=True)
+        out = (r.stdout or '')
+        if (r.stderr or '').strip():
+            out += ('\n[stderr]\n' + r.stderr)
+        out = out.strip() or '(sin salida)'
+        if len(out) > MAX_OUT:
+            out = out[:MAX_OUT] + '\n…[salida truncada]'
+        return out, r.returncode
+    except subprocess.TimeoutExpired:
+        return f'timeout tras {timeout}s', -1
+    except Exception as e:  # noqa: BLE001
+        return f'error: {e}', -1
+
+
+def _write_file(ruta, contenido):
+    """Escribe el archivo completo. Devuelve (mensaje, ok). Crea los directorios que falten."""
+    p = os.path.abspath(os.path.expanduser((ruta or '').strip()))
+    if not p or os.path.isdir(p):
+        return f'(❌ ruta inválida para escribir: {p})', False
+    # La bóveda no se escribe (igual que no se lee): sobrescribir secrets.enc borra las API keys.
+    if _es_ruta_vedada(p) or _menciona_secreto(p):
+        return '(⛔ los archivos de la bóveda de API keys no se tocan con el toolbelt)', False
+    existia = os.path.exists(p)
+    try:
+        os.makedirs(os.path.dirname(p) or '.', exist_ok=True)
+        with open(p, 'w', encoding='utf-8', newline='') as f:
+            f.write(contenido or '')
+    except Exception as e:  # noqa: BLE001
+        return f'(❌ no se pudo escribir: {e})', False
+    n = len((contenido or '').encode('utf-8'))
+    return f"{'Sobrescrito' if existia else 'Creado'}: {p} ({n} bytes)", True
+
+
 # ── Dispatcher que llaman los providers ───────────────────────────────────────────
 def ejecutar_tool(name, args, sesion, participante):
     """Ejecuta una herramienta y devuelve el texto (tool_result). Registra la Acción en la bitácora.
@@ -332,27 +394,48 @@ def ejecutar_tool(name, args, sesion, participante):
         out = _list_dir(ruta)
         _log(sesion, participante, 'list_dir', ruta, out, Accion.Estado.EJECUTADA)
         return out
+    # Mutaciones: con el toolbelt encendido corren EN EL MOMENTO, igual que las de una silla CLI.
+    # El permiso es el switch (apagado por default); el registro es la Bitácora, con estado
+    # EJECUTADA — ya pasó, no hay nada que aprobar. Se avisa en la mesa para que el humano lo VEA
+    # pasar por SSE: sin gate previo, la visibilidad en vivo es la única red que queda.
     if name == 'apply_fix':
         comando = (args.get('comando') or '').strip()
         motivo = (args.get('motivo') or '').strip()
         if not comando:
             return '(❌ apply_fix necesita un comando)'
-        acc = _log(sesion, participante, 'apply_fix', comando,
-                   'Pendiente de aprobación del técnico.', Accion.Estado.PENDIENTE,
-                   es_mutacion=True, motivo=motivo)
-        # Avisar en la mesa para que el humano lo vea (aparece por SSE).
+        out, rc = _correr_mutacion(comando)
+        estado = Accion.Estado.EJECUTADA if rc == 0 else Accion.Estado.ERROR
+        _log(sesion, participante, 'apply_fix', comando, out, estado,
+             es_mutacion=True, motivo=motivo)
         from .models import Mensaje
+        icono = '🔧' if rc == 0 else '⚠️'
         Mensaje.objects.create(
             sesion=sesion, emisor='Enjambre', es_sistema=True,
-            texto=(f"🔒 {participante.nombre if participante else 'Una silla'} propone un CAMBIO en el "
-                   f"sistema (queda pendiente de tu aprobación en la Bitácora):\n\n$ {comando}\n"
-                   f"Motivo: {motivo or '(no especificado)'}"))
-        return (f'apply_fix #{acc.pk} ENCOLADO — pendiente de aprobación humana. NO corrió todavía. '
-                f'No asumas su resultado; seguí con lo que puedas sin depender de este cambio.')
+            texto=(f"{icono} {participante.nombre if participante else 'Una silla'} ejecutó un CAMBIO "
+                   f"en el sistema (rc {rc}):\n\n$ {comando}\n"
+                   f"Motivo: {motivo or '(no especificado)'}\n\n{out[:1500]}"))
+        return f'(rc {rc})\n{out}'
+    if name == 'write_file':
+        ruta = (args.get('ruta') or '').strip()
+        motivo = (args.get('motivo') or '').strip()
+        out, ok = _write_file(ruta, args.get('contenido'))
+        _log(sesion, participante, 'write_file', ruta, out,
+             Accion.Estado.EJECUTADA if ok else Accion.Estado.ERROR,
+             es_mutacion=True, motivo=motivo)
+        if ok:
+            from .models import Mensaje
+            Mensaje.objects.create(
+                sesion=sesion, emisor='Enjambre', es_sistema=True,
+                texto=(f"📝 {participante.nombre if participante else 'Una silla'} escribió un archivo:\n"
+                       f"{out}" + (f"\nMotivo: {motivo}" if motivo else '')))
+        return out
     return f'(❌ herramienta desconocida: {name})'
 
 
 # ── Resolución de pendientes (la llama el endpoint de la web al aprobar/rechazar) ──
+# Con el toolbelt unificado ya NADA crea acciones PENDIENTES: las mutaciones corren en el acto.
+# Esto queda para resolver las pendientes que hayan quedado en la base de una versión anterior
+# (si se borrara, esas acciones viejas quedarían colgadas sin forma de aprobarlas ni rechazarlas).
 def ejecutar_pendiente(accion, aprobada_por):
     """Aprueba y ejecuta una Acción pendiente EN EL HOST (shell=True: ya la revisó un humano).
     Actualiza la Acción y postea el resultado en la mesa. Idempotente sobre no-pendientes."""
@@ -401,14 +484,16 @@ def rechazar_pendiente(accion, por, motivo=''):
 
 
 # ── Sillas CLI operando la máquina ────────────────────────────────────────────────
-# Las sillas por API key operan la máquina con las herramientas de arriba, que Swarm INTERCEPTA
-# una por una (de ahí el gate de `apply_fix`). Con una silla CLI no hay dónde interceptar:
-# claude/opencode/agy traen SUS PROPIAS herramientas y nosotros solo les pasamos un prompt por
-# stdin y leemos el texto que devuelven. Así que el control cambia de forma:
+# Los dos backends llegan al mismo lugar por caminos distintos. Las sillas por API key operan la
+# máquina con las herramientas de arriba, que Swarm ejecuta una por una (y por eso puede anotar
+# cada una en la Bitácora). Con una silla CLI no hay dónde interceptar: claude/opencode/agy traen
+# SUS PROPIAS herramientas y nosotros solo les pasamos un prompt por stdin y leemos el texto que
+# devuelven — así que lo que se anota es el turno entero, no cada acción.
 #
+# El control es el MISMO para ambos:
 #   · el CANDADO es el switch del toolbelt (apagado por default): prenderlo ES el permiso;
-#   · el REGISTRO es la Bitácora — cada turno queda anotado con qué CLI corrió, en qué carpeta
-#     y qué hizo, como acción EJECUTADA (no pendiente: ya pasó, no hay nada que aprobar).
+#   · el REGISTRO es la Bitácora — todo queda como acción EJECUTADA (ya pasó, no hay nada que
+#     aprobar), con qué corrió, en qué carpeta y qué hizo.
 #
 # Antes de esto una silla CLI en `/armar` ya alcanzaba toda la PC (el `cwd` de un subprocess no
 # es una jaula y el comando de fabricar trae Bash habilitado) pero NADA lo anotaba. El modo
@@ -434,14 +519,44 @@ def encuadre_cli():
         f"de la persona que te pregunta — no un sandbox, no la carpeta de la mesa. "
         f"Sistema: {platform.platform()} · shell: {SHELL_NAME} · host: {platform.node()}. "
         f"Tu directorio inicial es {cwd_maquina()}, pero tenés acceso a todo el equipo.\n"
-        "Usá tus propias herramientas (leer, editar, ejecutar) sobre este sistema. A diferencia "
-        "de las sillas por API key, lo que hacés NO espera aprobación: se aplica en el momento. "
-        "Por eso: mirá ANTES de tocar, un cambio por vez, y NO toques nada que no te hayan "
-        "pedido. Nunca borres ni sobrescribas de forma masiva.\n"
+        "Usá tus propias herramientas (leer, editar, ejecutar) sobre este sistema. Lo que hacés "
+        "NO espera aprobación: se aplica en el momento. Por eso: mirá ANTES de tocar, un cambio "
+        "por vez, y NO toques nada que no te hayan pedido. Nunca borres ni sobrescribas de forma "
+        "masiva.\n"
         "Todo tu turno queda en la BITÁCORA de la mesa, que es donde el equipo TE VE TRABAJAR: "
         "contá SIEMPRE, de forma concreta, qué comandos corriste, qué archivos miraste y qué "
         "cambiaste (con rutas). Es tu registro público, no un resumen para quedar bien. "
         "Si un pedido te parece peligroso o ambiguo, NO lo ejecutes: pedí que te lo confirmen."
+    )
+
+
+def encuadre_api():
+    """Encuadre de una silla por API key en modo máquina. Corto A PROPÓSITO: las reglas del juego
+    ya le llegan como `system` (system_prompt(), que arma chat_agentic). Acá solo se le recuerda,
+    dentro de la conversación de la mesa, que tiene herramientas de verdad — sin esto una silla
+    tiende a razonar en abstracto y contestar «habría que revisar X» en vez de ir a mirarlo."""
+    return (
+        "IMPORTANTE: el TOOLBELT está ENCENDIDO y tenés herramientas REALES sobre esta máquina "
+        "(inspect, read_file, list_dir, write_file, apply_fix). No teorices ni supongas: si hace "
+        "falta un dato del sistema, andá a buscarlo; si hay que cambiar algo, hacelo. Contá "
+        "concretamente qué miraste y qué tocaste, con rutas."
+    )
+
+
+def encuadre_api_mesa(carpeta):
+    """Encuadre de una silla API a la que se le pidió `/armar`. La diferencia con una silla CLI es
+    que la API no tiene cwd: sus herramientas escriben por RUTA ABSOLUTA, así que la carpeta de la
+    mesa no la deduce sola — hay que dársela. Sin esto la silla escribe en cualquier lado (o en
+    ningún lado) y el commit de la mesa sale vacío."""
+    return (
+        f"IMPORTANTE: el TOOLBELT está ENCENDIDO y este turno es de CONSTRUIR. La CARPETA DE "
+        f"TRABAJO de esta mesa es:\n\n    {carpeta}\n\n"
+        "Dejá ahí lo que fabriques, SIEMPRE con rutas absolutas bajo esa carpeta (tus herramientas "
+        "no tienen directorio actual: una ruta relativa no cae ahí). Usá list_dir/read_file para "
+        "ver qué hay antes de escribir, y write_file para crear o reescribir. Ahí vive `NOTAS.md`, "
+        "la MEMORIA COMPARTIDA de la mesa: leélo antes de trabajar y dejá ahí decisiones/TODOs para "
+        "los próximos turnos. Al terminar contá CONCRETAMENTE qué archivos tocaste. No afirmes "
+        "cambios que no hiciste: lo que quede en la carpeta se commitea y el equipo ve el diff."
     )
 
 

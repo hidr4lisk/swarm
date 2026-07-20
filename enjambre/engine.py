@@ -345,7 +345,8 @@ class Enjambre:
         rol = resolver(self.sesion.creador) if callable(resolver) else 'control'
         return rol == 'consulta'
 
-    def construir_prompt(self, participante, texto, editar=False, leer=False, maquina=False):
+    def construir_prompt(self, participante, texto, editar=False, leer=False, maquina=False,
+                         cli=True, carpeta=None):
         ctx = self.contexto()
         sillas = self.sillas()
         roster = ", ".join(s.nombre for s in sillas)
@@ -371,7 +372,16 @@ class Enjambre:
             )
         elif maquina:
             from . import toolbelt
-            encuadre = toolbelt.encuadre_cli()
+            # CLI: el encuadre completo va en el prompt (es lo único que recibe el subprocess).
+            # API: las reglas ya viajan como `system` (toolbelt.system_prompt() en chat_agentic),
+            # así que acá solo se agrega lo que el system NO puede saber — si este turno es un
+            # `/armar`, en qué carpeta de la mesa tiene que dejar el trabajo.
+            if cli:
+                encuadre = toolbelt.encuadre_cli()
+            elif carpeta:
+                encuadre = toolbelt.encuadre_api_mesa(carpeta)
+            else:
+                encuadre = toolbelt.encuadre_api()
         else:
             encuadre = (
                 "IMPORTANTE: esto es CHARLA (respondés con texto). La mesa TIENE una carpeta de "
@@ -402,23 +412,34 @@ class Enjambre:
         mesa como cwd: lee/crea/edita archivos ahí; después se commitea y se postea el diff.
         Si `leer` (y la silla es CLI, no fabrica en este turno), monta la carpeta de la mesa
         SOLO-LECTURA: el líder lee/grepea el código real para planificar/integrar sin editar."""
-        from .clientes import edita_archivos, opera_maquina
+        from .clientes import es_cli, puede_actuar
         from . import toolbelt
-        puede = editar and not self._es_consulta() and edita_archivos(participante)
-        # MODO MÁQUINA: con el toolbelt ENCENDIDO, una silla CLI opera el equipo real en un turno
-        # normal — igual que las sillas por API key, que ya lo hacían. No pisa a `/armar`: ese
-        # sigue fabricando en la carpeta de la mesa (es el taller de entregables, otra cosa).
-        # Sin gate por comando (no hay dónde interceptar un CLI); el candado es el switch y el
-        # registro es la Bitácora. Ver el bloque «Sillas CLI operando la máquina» en toolbelt.py.
-        maquina = (not puede and not leer and not self._es_consulta()
-                   and opera_maquina(participante) and toolbelt.habilitado())
+        # UN SOLO PERMISO para tocar cosas: el switch del toolbelt (ver clientes.puede_actuar).
+        # Apagado, todas las sillas quedan en charla. Encendido, el backend decide POR DÓNDE actúa:
+        #   · CLI en `/armar` → fabrica en la carpeta git de la mesa (el taller de entregables),
+        #     con su cmd_trabajo y commit al final;
+        #   · CLI fuera de `/armar` → MODO MÁQUINA: opera el equipo real con sus propias herramientas;
+        #   · API (siempre) → modo máquina vía el toolbelt interceptado de `chat_agentic`. No monta
+        #     workdir porque sus herramientas escriben por RUTA ABSOLUTA, no por cwd: para que
+        #     fabrique en la mesa hay que DECIRLE la carpeta (`carpeta`, más abajo).
+        actua = puede_actuar(participante)
+        cli = es_cli(participante)
+        puede = editar and not self._es_consulta() and actua and cli
+        maquina = not puede and not leer and not self._es_consulta() and actua
+        # API a la que se le pidió `/armar`: opera la máquina, pero apuntada a la carpeta de la mesa.
+        fabrica_api = maquina and not cli and editar and not self._es_consulta()
         workdir = comando = base = workdir_ro = None
-        cwd_maq = None
+        cwd_maq = carpeta = None
         timeout = self.sesion.timeout
         if maquina:
             cwd_maq = toolbelt.cwd_maquina()
-            comando = participante.cmd_trabajo()   # el agéntico: puede leer, editar y ejecutar
+            comando = participante.cmd_trabajo() if cli else None  # agéntico: lee, edita y ejecuta
             timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
+            if fabrica_api:
+                from .workspace import mesa_workspace, _git
+                workdir = str(mesa_workspace(self.sesion))
+                carpeta = workdir           # va al prompt: la silla escribe ahí con write_file
+                base = _git(workdir, 'rev-parse', 'HEAD', check=False)
         elif puede:
             from .workspace import mesa_workspace, _git
             workdir = str(mesa_workspace(self.sesion))
@@ -432,8 +453,10 @@ class Enjambre:
             from .workspace import mesa_workspace
             workdir_ro = str(mesa_workspace(self.sesion))
         prompt = self.construir_prompt(participante, texto, editar=puede,
-                                       leer=bool(workdir_ro), maquina=maquina)
-        modo = ('opera la máquina' if maquina else
+                                       leer=bool(workdir_ro), maquina=maquina,
+                                       cli=cli, carpeta=carpeta)
+        modo = ('fabrica en la mesa (API)' if fabrica_api else
+                'opera la máquina' if maquina else
                 'fabrica' if puede else ('lee (ro)' if workdir_ro else 'charla'))
         self.log(f"▶ {participante.nombre} · {modo} (timeout {timeout}s)", nivel='paso')
         t0 = time.monotonic()
@@ -460,11 +483,14 @@ class Enjambre:
         # Rescate: en modo fabricar commiteamos SIEMPRE lo que haya quedado en disco, aunque el
         # turno haya dado timeout/error — el agente pudo escribir archivos antes de que lo mataran.
         # comitear() no hace nada si no hubo cambios, así que es seguro llamarlo igual.
-        if puede:
+        # `fabrica_api` también commitea: la silla API escribió en la carpeta con write_file (por
+        # ruta absoluta), así que el resultado hay que versionarlo igual que el de una silla CLI.
+        if puede or fabrica_api:
             self._comitear_y_postear(participante, workdir, base, parcial=ruido)
-        # Modo máquina: el turno queda en la Bitácora — es donde el equipo ve trabajar a la silla
-        # (qué CLI corrió, en qué carpeta y qué contó que hizo). Nunca rompe el turno.
-        if maquina:
+        # Modo máquina CLI: el turno entero queda en la Bitácora — es donde el equipo ve trabajar a
+        # la silla (qué CLI corrió, en qué carpeta y qué contó que hizo). Nunca rompe el turno.
+        # Las sillas API NO pasan por acá: el toolbelt ya anotó cada herramienta una por una.
+        if maquina and cli:
             try:
                 toolbelt.log_cli(self.sesion, participante,
                                  comando or participante.comando, cwd_maq, salida)
@@ -952,10 +978,10 @@ class Enjambre:
 
         workers = [s for s in self.sillas() if s.key != lider.key]
         if editar:
-            # fabricar de verdad: solo sillas que editan archivos (CLI). Las de modelo local (HTTP)
-            # y las api:* (charla en F2) quedan fuera del reparto.
-            from .clientes import edita_archivos
-            workers = [w for w in workers if edita_archivos(w)]
+            # fabricar de verdad: solo sillas que pueden tocar archivos — con el toolbelt encendido,
+            # tanto CLI como api:*. Las de modelo local (HTTP) quedan fuera (no tienen filesystem).
+            from .clientes import puede_actuar
+            workers = [w for w in workers if puede_actuar(w)]
 
         modo_txt = 'fabricar' if editar else 'charla'
         self.log(f"👑 Modo líder ({lider.nombre}) · {modo_txt} · {len(workers)} trabajador(es)",
@@ -1078,21 +1104,30 @@ class Enjambre:
                 return self.debatir(limpio or texto, on_respuesta=on_respuesta)
             elif comando == 'build':
                 texto, editar = limpio, True
-                # /armar = trabajo real: solo las sillas que PUEDEN editar (CLI). Las de modelo
-                # local (HTTP) y las api:* (charla en F2) no tienen acceso a archivos → se saltean
-                # para que no "actúen" que fabricaron (un modelo tiende a alucinar que escribió).
-                from .clientes import edita_archivos
-                capaces = [s for s in destinatarias if edita_archivos(s)]
-                saltadas = [s for s in destinatarias if not edita_archivos(s)]
+                # /armar = trabajo real: solo las sillas que PUEDEN tocar archivos. Con el toolbelt
+                # encendido son las CLI y las api:*; las de modelo local (HTTP) nunca (no tienen
+                # filesystem) → se saltean para que no "actúen" que fabricaron (un modelo tiende a
+                # alucinar que escribió). Con el toolbelt apagado no fabrica nadie: ese es el candado.
+                from . import toolbelt
+                from .clientes import puede_actuar
+                capaces = [s for s in destinatarias if puede_actuar(s)]
+                saltadas = [s for s in destinatarias if not puede_actuar(s)]
                 if not capaces:
-                    self.guardar("Enjambre", "⚠️ Ninguna silla de la mesa puede fabricar: las de "
-                                 "modelo local (HTTP) y las de API key no editan archivos. Sentá una "
-                                 "silla CLI (claude/opencode) para usar /armar.", sistema=True)
+                    if not toolbelt.habilitado():
+                        # Causa más probable, y la que el usuario puede resolver en un clic.
+                        self.guardar("Enjambre", "⚠️ El TOOLBELT está apagado: sin él las sillas solo "
+                                     "responden texto, no editan archivos ni tocan la máquina. "
+                                     "Prendelo para usar /armar.", sistema=True)
+                    else:
+                        self.guardar("Enjambre", "⚠️ Ninguna silla de la mesa puede fabricar: las de "
+                                     "modelo local (HTTP) no tienen acceso a archivos. Sentá una silla "
+                                     "CLI (claude/opencode) o por API key para usar /armar.",
+                                     sistema=True)
                     return {}
                 if saltadas:
                     nombres = ", ".join(s.nombre for s in saltadas)
-                    self.guardar("Enjambre", f"ℹ️ {nombres} no edita archivos (modelo local o API key); "
-                                 "queda fuera de este /armar (fabrican las sillas CLI).", sistema=True)
+                    self.guardar("Enjambre", f"ℹ️ {nombres} no edita archivos (modelo local); queda "
+                                 "fuera de este /armar.", sistema=True)
                 destinatarias = capaces
         resultados = {}
         for i, silla in enumerate(destinatarias):

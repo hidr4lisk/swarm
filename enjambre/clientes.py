@@ -139,21 +139,26 @@ def api_de(participante):
     return (CLIENTES.get(cliente_de(participante)) or {}).get('api', '')
 
 
-def edita_archivos(participante):
-    """True si la silla puede FABRICAR/editar archivos por CLI (subprocess con acceso al FS).
-    Las sillas HTTP (Ollama) y las api:* NO editan: las primeras no tienen filesystem; las api:*
-    en F2 son solo charla (el tool-use sobre el sistema real llega con el toolbelt en F3). El
-    engine usa esto para no repartirles subtareas de /armar."""
-    return not participante.endpoint_url and not api_de(participante)
+def es_cli(participante):
+    """True si la silla corre como subprocess con acceso al filesystem (claude/opencode/agy).
+    Distingue POR DÓNDE actúa una silla, no SI puede: las CLI traen sus propias herramientas y un
+    cwd (por eso fabrican en la carpeta de la mesa); las api:* actúan por el toolbelt, con rutas
+    absolutas y sin cwd; las HTTP (Ollama) no actúan. El permiso lo decide `puede_actuar`."""
+    return bool(not participante.endpoint_url and not api_de(participante))
 
 
-def opera_maquina(participante):
-    """True si la silla puede operar la MÁQUINA REAL por CLI cuando el toolbelt está encendido.
+def puede_actuar(participante):
+    """True si la silla puede TOCAR COSAS: editar archivos, fabricar y operar la máquina real.
 
-    Son las mismas que fabrican: las CLI (tienen binario, filesystem y herramientas propias).
-    Las HTTP (Ollama) no tienen filesystem; las api:* ya operan la máquina por el toolbelt
-    interceptado (`chat_agentic`), que es un camino distinto y con gate por comando."""
-    return not participante.endpoint_url and not api_de(participante)
+    Un solo permiso para los dos backends que llegan al sistema — el switch del TOOLBELT. Las CLI
+    lo hacen con sus propias herramientas; las api:* con las del toolbelt (`chat_agentic`). Con el
+    toolbelt apagado ninguna actúa: las sillas solo responden texto.
+
+    Las HTTP (Ollama) quedan afuera siempre: no es una decisión de permiso sino un límite físico
+    — no tienen filesystem ni tool-use, no hay con qué escribir. El engine usa esto para no
+    repartirles subtareas de /armar (un modelo tiende a alucinar que fabricó)."""
+    from . import toolbelt
+    return bool(not participante.endpoint_url and toolbelt.habilitado())
 
 
 def build_comando(cliente, modelo):

@@ -253,16 +253,16 @@
                 Vale para las sillas por <strong>API key</strong> y para las de <strong>CLI</strong>.{% endblocktrans %}
             </p>
             <p style="margin:.5rem 0 0;">
-                {% blocktrans %}Las de <strong>API key</strong> van con red: las <strong>lecturas</strong>
-                (reporte del sistema, inspección con una lista blanca de comandos que no cambian nada)
-                corren solas, y cualquier <strong>cambio</strong> te muestra el comando y espera
-                <strong>tu OK</strong> antes de tocar algo.{% endblocktrans %}
+                {% blocktrans %}<strong>El permiso es el switch</strong>, no cada comando: con el toolbelt
+                encendido las sillas leen, <strong>editan archivos, tocan configuración y construyen</strong>,
+                y todo <strong>se aplica en el momento</strong>. Apagado, solo responden texto.
+                Prendelo solo en máquinas que estés autorizado a atender.{% endblocktrans %}
             </p>
             <p style="margin:.5rem 0 0;">
-                {% blocktrans %}Las de <strong>CLI</strong> (claude · opencode · agy) trabajan con sus propias
-                herramientas: leen, editan y ejecutan <strong>en el momento</strong>, sin aprobación comando por
-                comando — Swarm no puede interceptarlas por dentro, así que ahí <strong>el permiso es el switch</strong>.
-                Prendelo solo en máquinas que estés autorizado a atender.{% endblocktrans %}
+                {% blocktrans %}Con <strong>/armar</strong> fabrican en la carpeta de la mesa: las de
+                <strong>CLI</strong> (claude · opencode · agy) porque trabajan paradas ahí, y las de
+                <strong>API key</strong> porque se les pasa la ruta de esa carpeta. En los dos casos, lo que
+                queda se commitea y la mesa ve el diff.{% endblocktrans %}
             </p>
             <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
                 {% blocktrans %}Viene <strong>apagado</strong>; se enciende en <a href="/conexiones/">Conexiones</a>.
@@ -274,9 +274,10 @@
         <div class="enj-card">
             <h2><i class="fas fa-shield-halved"></i> {% trans 'Tus credenciales' %}</h2>
             <p style="margin:.2rem 0;">
-                {% blocktrans %}<strong>CLIs</strong>: el login vive en <strong>tu terminal</strong>; cuando corren en
-                contenedor reciben una <strong>copia efímera</strong> de la credencial (solo-lectura →
-                tmpfs) que muere al terminar el turno.{% endblocktrans %}
+                {% blocktrans %}<strong>CLIs</strong>: Swarm no guarda nada — usan el login que ya tenés
+                en <strong>tu terminal</strong> (el de <span class="ay-code">claude</span>,
+                <span class="ay-code">opencode</span> o <span class="ay-code">agy</span>). Si en esta
+                máquina no iniciaste sesión, la silla no funciona.{% endblocktrans %}
             </p>
             <p style="margin:.6rem 0 .2rem;">
                 {% blocktrans %}<strong>API keys</strong>: se guardan en la <strong>bóveda</strong>, cifradas con una

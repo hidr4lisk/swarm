@@ -429,6 +429,49 @@ class ToolbeltTests(TestCase):
         self.assertIsNone(err)
         self.assertTrue(out)
 
+    def test_write_file_crea_y_sobrescribe(self):
+        from .toolbelt import _write_file
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = Path(tmp) / 'sub' / 'nuevo.txt'   # el subdir no existe: se crea
+            out, ok = _write_file(str(destino), 'hola')
+            self.assertTrue(ok, out)
+            self.assertEqual(destino.read_text(), 'hola')
+            self.assertIn('Creado', out)
+            out, ok = _write_file(str(destino), 'chau')
+            self.assertTrue(ok, out)
+            self.assertEqual(destino.read_text(), 'chau')
+            self.assertIn('Sobrescrito', out)
+
+    def test_write_file_no_toca_la_boveda(self):
+        """Simétrico a la lectura: sobrescribir secrets.enc borraría todas las API keys."""
+        from .toolbelt import _write_file
+        with tempfile.TemporaryDirectory() as tmp:
+            for nombre in ('secrets.enc', '.secrets.runtime.json'):
+                objetivo = Path(tmp) / nombre
+                objetivo.write_text('ORIGINAL')
+                out, ok = _write_file(str(objetivo), 'pisado')
+                self.assertFalse(ok, nombre)
+                self.assertIn('⛔', out)
+                self.assertEqual(objetivo.read_text(), 'ORIGINAL')
+
+    def test_mutaciones_corren_en_el_momento_y_quedan_en_bitacora(self):
+        """El cambio de contrato de esta versión: con el toolbelt encendido apply_fix NO encola
+        un pendiente, ejecuta. Si esto vuelve a dar PENDIENTE, el switch dejó de ser el permiso."""
+        from .models import Accion, Mensaje, Sesion
+        from .toolbelt import ejecutar_tool
+        sesion = Sesion.objects.create(nombre='t')
+        with tempfile.TemporaryDirectory() as tmp:
+            marca = Path(tmp) / 'corrio.txt'
+            out = ejecutar_tool('apply_fix', {'comando': f'echo ok > {marca}', 'motivo': 'test'},
+                                sesion, None)
+            self.assertTrue(marca.exists(), f'apply_fix no ejecutó: {out}')
+        acc = Accion.objects.get(herramienta='apply_fix')
+        self.assertEqual(acc.estado, Accion.Estado.EJECUTADA)
+        self.assertTrue(acc.es_mutacion)
+        self.assertNotEqual(acc.estado, Accion.Estado.PENDIENTE)
+        # Sin gate previo, el aviso en la mesa es la red que queda: el humano lo ve pasar.
+        self.assertTrue(Mensaje.objects.filter(sesion=sesion, es_sistema=True).exists())
+
 
 class ParamTokensTests(TestCase):
     """OpenAI real exige max_completion_tokens; los compatibles siguen con max_tokens."""
@@ -549,13 +592,13 @@ class ClientePollinationsTests(TestCase):
         return Participante.objects.create(**base)
 
     def test_derivaciones(self):
-        from .clientes import api_de, cliente_de, edita_archivos, es_api, modelo_de
+        from .clientes import api_de, cliente_de, es_api, es_cli, modelo_de
         p = self._silla()
         self.assertTrue(es_api('api-pollinations'))
         self.assertEqual(api_de(p), 'pollinations')
         self.assertEqual(cliente_de(p), 'api-pollinations')
         self.assertEqual(modelo_de(p), 'openai-fast')
-        self.assertFalse(edita_archivos(p))  # api:* no fabrica por CLI
+        self.assertFalse(es_cli(p))  # api:* actúa por el toolbelt, no por subprocess
 
     def test_endpoint_url_gana_sobre_api(self):
         from .clientes import api_de
@@ -1082,9 +1125,20 @@ class ModoMaquinaCliTests(TestCase):
             cuerpo = self.client.get('/').content.decode()
         self.assertIn('Hidr4lisk_Swarm v9.9.9', cuerpo)
 
-    def test_opera_maquina_distingue_los_tres_backends(self):
-        from .clientes import opera_maquina
-        self.assertTrue(opera_maquina(self.cli))
-        self.assertFalse(opera_maquina(Participante(key='o', endpoint_url='http://x:11434')))
-        self.assertFalse(opera_maquina(
-            Participante(key='a', comando=['api-openrouter', '--model', 'x'])))
+    def test_puede_actuar_lo_decide_el_switch_del_toolbelt(self):
+        """El permiso para tocar la máquina es UNO SOLO: el switch. Con el toolbelt encendido
+        actúan tanto las CLI como las api:*; apagado, ninguna (las sillas solo responden texto).
+        Las HTTP (Ollama) quedan afuera siempre — no es permiso, es que no tienen filesystem."""
+        from .clientes import es_cli, puede_actuar
+        api = Participante(key='a', comando=['api-openrouter', '--model', 'x'])
+        http = Participante(key='o', endpoint_url='http://x:11434')
+        with mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            self.assertTrue(puede_actuar(self.cli))
+            self.assertTrue(puede_actuar(api))
+            self.assertFalse(puede_actuar(http))
+        with mock.patch('enjambre.toolbelt.habilitado', return_value=False):
+            self.assertFalse(puede_actuar(self.cli))
+            self.assertFalse(puede_actuar(api))
+        # es_cli sigue distinguiendo POR DÓNDE actúa cada backend (cwd vs rutas absolutas).
+        self.assertTrue(es_cli(self.cli))
+        self.assertFalse(es_cli(api))
