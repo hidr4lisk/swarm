@@ -9,7 +9,7 @@ Dos capas:
 - MEMORIA (Lock + dict): alcanza para el caso portable — el worker es un hilo único y las mesas
   se procesan secuencialmente.
 - ARCHIVO (`<SWARM_DATA_DIR>/.ratelimit.json`, escrito con os.replace, atómico): cubre lo que la
-  memoria no ve — otro proceso (docker-compose separa web y worker; un manage.py suelto en otra
+  memoria no ve — otro proceso (un manage.py suelto en otra
   terminal) y el reinicio del proceso.
 
 Lock multiproceso por DIRECTORIO (os.mkdir, atómico en Linux y Windows) — NO fcntl/flock, que no

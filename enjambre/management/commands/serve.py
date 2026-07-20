@@ -5,9 +5,9 @@ enjambre/management/commands/serve.py — arranque ÚNICO de Swarm (modo nativo 
 el worker del Enjambre en un hilo, abre el navegador y sirve la web (runserver threaded — cada SSE
 vive en su hilo, sin gevent). Es lo que corre el launcher del pendrive (enjambre.sh / Enjambre.bat).
 
-En el modo Docker, web y worker son contenedores separados con el docker.sock (aislamiento de los
-CLIs). Acá NO hay caja: es la ruta de API keys + toolbelt, donde las sillas operan la máquina real.
-Para eso NO hace falta ningún CLI ni Docker: solo Python + tus API keys.
+No hay caja ni cápsula: las sillas por API key hablan directo con el proveedor y, con el toolbelt
+encendido, tanto ellas como las de CLI operan la máquina real. Sin API keys tampoco te quedás
+afuera: la silla gratis (Chispa) charla sin configurar nada.
 """
 import threading
 import webbrowser
@@ -17,7 +17,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = "Arranca Swarm entero en un proceso (migra + worker + web + navegador). Sin Docker."
+    help = "Arranca Swarm entero en un proceso (migra + worker + web + navegador)."
 
     def add_arguments(self, parser):
         parser.add_argument('--host', default='127.0.0.1', help='Interfaz (default: 127.0.0.1).')

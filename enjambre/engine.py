@@ -5,9 +5,8 @@ Heredado del prototipo enjambre.py: dispatch de CLIs por subprocess, contexto
 compartido y filtro de "ruido". Ahora persistido en el ORM (Sesion/Mensaje/Participante)
 en vez de historia.jsonl. La topología (plana ↔ líder) se resuelve en topologia.py.
 
-Nota Docker: con ENJAMBRE_RUNNER seteado los CLIs corren headless en contenedores
-descartables (ver runner/); sin él se invocan directo del PATH. El dispatch acá es
-el punto único que usa el worker.
+Los CLIs se invocan directo del PATH (`resolver_bin` los encuentra aunque la shell no
+haya cargado su rc). El dispatch acá es el punto único que usa el worker.
 """
 import json
 import os
@@ -60,10 +59,6 @@ PREAMBULOS_CLI = (
     'database migration complete',
     '> build ·', '> plan ·',
 )
-# El runner puede fallar ANTES de llegar al CLI (p.ej. silla activada sin tener el CLI
-# instalado: el --mount corta con este error del daemon). Crudo asusta; se traduce a un
-# marcador de ruido amigable que apunta a Conexiones.
-DOCKER_MOUNT_ERROR = 'bind source path does not exist'
 
 
 def limpiar_salida(texto):
@@ -167,19 +162,6 @@ def _prompt_integracion(pedido, resumen):
     )
 
 
-def _runner_prefix():
-    """Wrapper de dispatch (runner headless), si está configurado.
-
-    El runner (`enjambre-run.sh <agente> ...`) es config del WORKER, no dato de la
-    silla: con ENJAMBRE_RUNNER seteado el motor antepone el wrapper y los CLIs corren
-    en contenedores descartables (volumen de creds). Vacío = llamada directa al CLI
-    en PATH (dev). comando[0] de cada silla ya es el nombre del agente que espera el
-    runner (claude|opencode|agy), así que basta anteponer la ruta del script.
-    """
-    runner = getattr(settings, 'ENJAMBRE_RUNNER', '') or os.environ.get('ENJAMBRE_RUNNER', '')
-    return [runner] if runner else []
-
-
 def ejecutar_http(participante, prompt, timeout):
     """Silla de MODELO LOCAL: POST a la API Ollama del endpoint. Devuelve (salida, ruido).
 
@@ -265,27 +247,20 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, work
         env['ENJAMBRE_WORKDIR_RO'] = str(workdir_ro)
         cwd = str(workdir_ro)
     argv = list(comando or participante.comando)
-    # Modo máquina: SIN runner. El wrapper mete al CLI en un contenedor descartable que solo ve
-    # /work — justo lo contrario de operar el equipo real. Acá se invoca directo en el host.
-    pref = [] if cwd_maquina else _runner_prefix()
-    if not pref and argv:
-        # Sin runner el CLI se invoca directo: si el binario no está en el PATH del
-        # proceso (doble-clic del pendrive), resolver_bin lo busca en los dirs típicos.
+    if argv:
+        # El CLI se invoca directo: si el binario no está en el PATH del proceso (arranque por
+        # doble-clic, sin el rc de la shell), resolver_bin lo busca en los dirs típicos.
         from .conexiones import resolver_bin
         ruta = resolver_bin(argv[0])
         if ruta:
             argv[0] = ruta
     try:
         result = subprocess.run(
-            pref + argv + [prompt],
+            argv + [prompt],
             capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd,
         )
         salida = (limpiar_salida(result.stdout) or limpiar_salida(result.stderr)
                   or "(sin respuesta)")
-        if DOCKER_MOUNT_ERROR in (result.stderr or '').lower():
-            # el runner no llegó ni a arrancar el CLI: falta su credencial/binario en el host
-            salida = (f"(❌ {participante.nombre}: el host no tiene su credencial o binario "
-                      f"— ¿el CLI está instalado y logueado? Revisá Conexiones)")
     except subprocess.TimeoutExpired:
         salida = f"(⏰ timeout tras {timeout}s)"
     except FileNotFoundError:

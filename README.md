@@ -5,8 +5,9 @@
 A **multi-agent worktable** in your browser: several AIs sit at the same table —
 **chat, debate and act** — coordinated by a leader. Run them on your already-logged-in
 **CLIs** (`claude`, `opencode`, `agy`) or on your own **API keys** (Anthropic,
-OpenAI-compatible, OpenRouter). **Install it, or carry the whole thing on a pendrive**
-and plug it into any bare PC — Windows or Linux, no Python, no Docker.
+OpenAI-compatible, OpenRouter). **It's one self-contained folder**: leave it on the PC or
+carry it on a pendrive and plug it into any bare machine — Windows or Linux, no Python,
+no Docker, nothing to install.
 
 **They don't just talk — they can operate the machine.** Flip on the **toolbelt** (opt-in,
 off by default, one switch in *Conexiones → Toolbelt*) and API-key seats get tools to inspect
@@ -22,9 +23,11 @@ OK, everything logged. → [Toolbelt](#threat-model--read-this-before-using-it)
 
 ## Quickstart
 
-Two ways to run it — pick the one that fits the machine in front of you.
+One way to run it: a self-contained folder. Drop it on a **pendrive** to carry it
+between machines, or leave it in a folder on the PC — same thing either way.
+No Python, no Docker, no install.
 
-### Route A — Native / portable (no Docker) · Linux & Windows
+### Portable · Linux & Windows
 
 **Just want the pendrive? Don't clone anything —
 [download `swarm-portable.zip`](https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip)**
@@ -72,46 +75,7 @@ to use); run the build on a machine with internet, or just grab the release zip 
 
 </details>
 
-### Route B — Docker (isolated CLI seats) · Linux
-
-If you want the **CLI seats** (`claude`, `opencode`, `agy`) sandboxed in throwaway
-containers per turn. Requirements: **Linux**, Docker with compose, and at least one AI CLI
-logged in **in your terminal**.
-
-<details>
-<summary><b>No Docker yet? Install it (Ubuntu/Debian)</b></summary>
-
-```bash
-# Docker Engine + compose plugin, from Docker's official repo
-sudo apt-get update && sudo apt-get install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Run docker without sudo (compose mounts your ~/.enjambre and the docker.sock as you)
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-Other distros / macOS: see the [official guide](https://docs.docker.com/engine/install/).
-Note: compose v2 is the `docker compose` subcommand (not the old `docker-compose`).
-
-</details>
-
-```bash
-claude            # once, in your terminal: /login  (and/or `opencode auth login`, agy)
-git clone git@github.com:hidr4lisk/swarm.git && cd swarm
-docker compose up
-```
-
-Open **http://localhost:8080** → **Sillas → Conexiones** shows which CLIs were detected;
-turn on the seats you have (they ship disabled, no keys). Heads-up: compose uses
-**postgres** (its own volume) while the native route uses **SQLite** — two separate
-databases, tables don't carry over between routes.
-
-### Either route
+### Ya corriendo
 
 Create a table (*mesa*) and ask away. With `/armar <request>` the table builds real files
 in its git folder (`~/.enjambre/mesas/mesa-<id>`). The UI is bilingual — the **EN/ES**
@@ -129,28 +93,17 @@ see [.env.example](.env.example). Tests: `python manage.py test enjambre`.
 
 ## How it works
 
-**Native / portable route** (`manage.py serve`): a single process does everything — migrate,
-run the Enjambre **worker** in a thread, and serve the **web** (threaded, so each SSE turn gets
-its own thread; no gevent). SQLite, no Docker, no `docker.sock`. API-key seats talk to the
-providers over plain HTTP; there's no capsule — the [toolbelt](#threat-model--read-this-before-using-it)
-acts on the real machine (that's the point). This is what the pendrive launchers run.
+`manage.py serve` is a single process that does everything — migrate, run the Enjambre
+**worker** in a thread, and serve the **web** (threaded, so each SSE turn gets its own thread;
+no gevent). SQLite, no Docker, no `docker.sock`, no daemon. CLI seats are invoked straight from
+the machine's PATH; API-key seats talk to the providers over plain HTTP. There's no capsule —
+the [toolbelt](#threat-model--read-this-before-using-it) acts on the real machine, and that's
+the point. This is exactly what the launchers run, from a pendrive or from a folder on disk.
 
-**Docker route** (`docker compose up`): the CLI seats are isolated in throwaway containers.
-
-| Service | What it does | What it sees |
-|---------|--------------|--------------|
-| `web` | the table (queues messages, streams via SSE) | the DB and `~/.enjambre`; **no credentials, no docker.sock** |
-| `db` | postgres | its own volume |
-| `worker` | the real dispatch: launches a **runner** per turn | the DB, `~/.enjambre` and the **docker.sock**; passes credential paths around **without being able to read them** |
-| runner | a **throwaway** container per CLI invocation | the CLI binary (RO), **its own** credential (RO → tmpfs copy) and the table's `/work` folder |
-
-**Credentials** use an *ephemeral seed-copy*: your login on the host is the single
-source of truth; each runner mounts the file read-only and a short, eyeball-auditable
-[`entrypoint.sh`](runner/entrypoint.sh) copies it to a tmpfs that dies with the
-container. Token refreshes never flow back to the host and never land in images or
-volumes. Full detail in [runner/README.md](runner/README.md).
-
-![Ephemeral seed-copy: login in your terminal → read-only ephemeral copy per turn → dies with the container](docs/img/seed-copy-flow.png)
+**Credentials are never copied.** Swarm doesn't ask for, store or log a CLI login: your
+`claude login` on that machine is the single source of truth, and the Conexiones screen only
+reports whether the credential **file exists**. API keys are the one exception — they live
+encrypted in the vault (see below).
 
 ![The Conexiones screen only reports whether each credential exists — never its contents](docs/img/conexiones.png)
 
@@ -158,22 +111,20 @@ volumes. Full detail in [runner/README.md](runner/README.md).
 
 Swarm is **single-user, on your machine**. No sugarcoating:
 
-- The `worker` container mounts **`/var/run/docker.sock`**, which is equivalent to
-  **root access to your host**. It's what makes the throwaway runners possible with
-  `docker compose up` and nothing else. Do not expose this compose to third parties.
-- Agents run arbitrary commands inside the runner and **can read the mounted token**:
-  read-only protects your credential's integrity, not its confidentiality. A confused
-  or prompt-injected agent could exfiltrate it. Accepted because these are **your**
-  accounts running **your** requests on **your** machine.
-- Runner mitigations: one throwaway container per invocation, `--cap-drop ALL`
-  (+`DAC_OVERRIDE`), `no-new-privileges`, pids/memory/cpu limits, tmpfs HOME.
+- **There is no sandbox.** Swarm runs on the machine, as you. CLI seats are plain
+  subprocesses and agents can read anything your user can — including your CLI tokens and,
+  while the vault is unlocked, your API keys. A confused or prompt-injected agent could
+  exfiltrate them. Accepted because these are **your** accounts running **your** requests on
+  a machine you're authorized to operate.
 - **CLI credentials** are never asked for, stored or logged; the Conexiones screen only
-  reports whether the file **exists**. **API keys are the exception** — the portable
-  route stores them, encrypted (see the vault below).
-- **Linux-only** (Docker route): on macOS `claude` keeps the token in the Keychain (no file to mount).
-- The web listens on `localhost:8080` with no human login: don't publish it as-is.
+  reports whether the file **exists**. **API keys are the exception** — they're stored
+  encrypted (see the vault below).
+- The web listens on `127.0.0.1:8799` with no human login: don't publish it as-is.
+- Anything the seats build with `/armar` lands in the mesa's own git folder; anything they do
+  with the **toolbelt** lands on the real machine. Read the two sections below before flipping
+  that switch.
 
-**API-key vault (portable route).** When you run sillas by **API key** instead of a CLI,
+**API-key vault.** When you run sillas by **API key** instead of a CLI,
 Swarm has to keep the keys — so it stores them **encrypted with a passphrase you choose**.
 Your passphrase is stretched with **scrypt** into a key that encrypts `data/secrets.enc`
 with **Fernet (AES)**; the passphrase itself is never stored on disk. Lose the pendrive
@@ -205,8 +156,7 @@ sandbox; it is:
 - **Everything is logged.** Every read and every mutation lands in the per-mesa Bitácora
   (the `Accion` model), exportable as a support report.
 - **This is a powerful, dangerous tool in the wrong hands.** Only enable it on machines you're
-  authorized to service, and read every `apply_fix` before approving. In Docker mode the tools
-  see the worker container, not the host — the toolbelt is meant for the **native/portable** route.
+  authorized to service, and read every `apply_fix` before approving.
 
 **CLI seats with the toolbelt on — no per-command gate.** Everything above (auto reads, mutations
 behind your OK) applies to **API-key** seats, where Swarm intercepts each tool call. A **CLI** seat
@@ -239,8 +189,9 @@ Built by [Federico Furgiuele](https://github.com/hidr4lisk).
 Una **mesa de trabajo multi-agente** en tu navegador: varias IAs se sientan a la misma
 mesa — **charlan, debaten y actúan** — coordinadas por un líder. Corrélas sobre tus
 **CLIs** ya logueados (`claude`, `opencode`, `agy`) o sobre tus propias **API keys**
-(Anthropic, compatible-OpenAI, OpenRouter). **Instalalo, o llevate todo en un pendrive**
-y enchufalo en cualquier PC pelada — Windows o Linux, sin Python, sin Docker.
+(Anthropic, compatible-OpenAI, OpenRouter). **Es una sola carpeta que se basta sola**:
+dejala en la PC o llevátela en un pendrive y enchufalo en cualquier máquina pelada —
+Windows o Linux, sin Python, sin Docker, sin instalar nada.
 
 **No solo hablan — pueden operar la máquina.** Prendé el **toolbelt** (opt-in, apagado por
 default, un switch en *Conexiones → Toolbelt*) y las sillas por API key reciben herramientas para
@@ -251,9 +202,11 @@ cambio espera tu OK, todo queda logueado. → [Toolbelt](#modelo-de-amenaza--lee
 
 ## Quickstart
 
-Dos formas de correrlo — elegí la que le sirve a la máquina que tenés enfrente.
+Una sola forma de correrlo: una carpeta que se basta sola. La ponés en un **pendrive**
+para llevarla de máquina en máquina, o la dejás en una carpeta de la PC — es lo mismo.
+Sin Python, sin Docker, sin instalar nada.
 
-### Ruta A — Nativa / portátil (sin Docker) · Linux y Windows
+### Portátil · Linux y Windows
 
 La más liviana, y la que corre desde un pendrive. Solo necesita Python 3.12 (o el runtime
 bundleado); las sillas corren sobre **API keys** — sin binarios de CLI.
@@ -287,46 +240,7 @@ usarlo) hace falta `bash`, `curl` y `tar`; corré el build en una máquina con i
 
 </details>
 
-### Ruta B — Docker (sillas de CLI aisladas) · Linux
-
-Si querés las **sillas de CLI** (`claude`, `opencode`, `agy`) aisladas en contenedores
-descartables por turno. Requisitos: **Linux**, Docker con compose, y al menos un CLI de IA
-logueado **en tu terminal**.
-
-<details>
-<summary><b>¿No tenés Docker? Instalalo (Ubuntu/Debian)</b></summary>
-
-```bash
-# Docker Engine + plugin compose, desde el repo oficial de Docker
-sudo apt-get update && sudo apt-get install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Usar docker sin sudo (compose monta tu ~/.enjambre y el docker.sock como tu usuario)
-sudo usermod -aG docker $USER && newgrp docker
-```
-
-Otras distros / macOS: ver la [guía oficial](https://docs.docker.com/engine/install/).
-Ojo: compose v2 es el subcomando `docker compose` (no el viejo `docker-compose`).
-
-</details>
-
-```bash
-claude            # una vez, en tu terminal: /login  (y/o `opencode auth login`, agy)
-git clone git@github.com:hidr4lisk/swarm.git && cd swarm
-docker compose up
-```
-
-Abrí **http://localhost:8080** → **Sillas → Conexiones** te muestra qué CLIs quedaron
-detectados; encendé las sillas que tengas (vienen apagadas, sin ninguna key). Ojo: el
-compose usa **postgres** (con su volumen) mientras la ruta nativa usa **SQLite** — son dos
-bases separadas, las mesas no se comparten entre rutas.
-
-### En cualquier ruta
+### Ya corriendo
 
 Creá una mesa y preguntá. Con `/armar <pedido>` la mesa fabrica archivos de verdad en su
 carpeta git (`~/.enjambre/mesas/mesa-<id>`). La UI es bilingüe — el botón **ES/EN** de la
@@ -345,48 +259,35 @@ ver [.env.example](.env.example). Tests: `python manage.py test enjambre`.
 
 ## Cómo funciona
 
-**Ruta nativa / portátil** (`manage.py serve`): un solo proceso hace todo — migra, corre el
-**worker** del Enjambre en un hilo y sirve la **web** (threaded, así cada turno SSE vive en su
-hilo; sin gevent). SQLite, sin Docker, sin `docker.sock`. Las sillas por API key hablan con los
-proveedores por HTTP plano; no hay cápsula — el [toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo)
-actúa sobre la máquina real (esa es la idea). Es lo que corren los launchers del pendrive.
+`manage.py serve` es un solo proceso que hace todo — migra, corre el **worker** del Enjambre
+en un hilo y sirve la **web** (threaded, así cada turno SSE vive en su hilo; sin gevent).
+SQLite, sin Docker, sin `docker.sock`, sin daemon. Las sillas de CLI se invocan directo del
+PATH de la máquina; las de API key hablan con los proveedores por HTTP plano. No hay cápsula
+— el [toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo) actúa sobre la máquina real, y esa
+es la idea. Es exactamente lo que corren los launchers, desde un pendrive o desde una carpeta
+del disco.
 
-**Ruta Docker** (`docker compose up`): las sillas de CLI quedan aisladas en contenedores descartables.
-
-| Servicio | Qué hace | Qué ve |
-|----------|----------|--------|
-| `web` | la mesa (encola mensajes, streamea por SSE) | la DB y `~/.enjambre`; **ni credenciales ni docker.sock** |
-| `db` | postgres | su volumen |
-| `worker` | el dispatch real: por cada turno lanza un **runner** | la DB, `~/.enjambre` y el **docker.sock**; pasa rutas de credenciales **sin poder leerlas** |
-| runner | un contenedor **descartable** por invocación de CLI | el binario del CLI (RO), **su** credencial (RO → copia en tmpfs) y la carpeta `/work` de la mesa |
-
-Las **credenciales** usan un *seed-copy efímero*: tu login en el host es la única
-fuente de verdad; cada runner monta el archivo solo-lectura y un
-[`entrypoint.sh`](runner/entrypoint.sh) corto y auditable lo copia a un tmpfs que
-muere con el contenedor. Los refresh de token nunca vuelven al host ni quedan en
-imágenes o volúmenes. Detalle completo en [runner/README.md](runner/README.md).
-
-![Seed-copy efímero: login en tu terminal → copia efímera solo-lectura por turno → muere con el contenedor](docs/img/credenciales-flujo.png)
+**Las credenciales no se copian nunca.** Swarm no pide, guarda ni loguea el login de un CLI:
+tu `claude login` en esa máquina es la única fuente de verdad, y la pantalla Conexiones solo
+reporta si el **archivo existe**. Las API keys son la única excepción: viven cifradas en la
+bóveda (abajo).
 
 ## Modelo de amenaza — leelo antes de usarlo
 
 Swarm es **single-user en tu máquina**. Dicho sin vueltas:
 
-- El contenedor `worker` monta **`/var/run/docker.sock`**, que equivale a **acceso
-  root a tu host**. Es lo que permite lanzar los runners descartables con `docker
-  compose up` y nada más. No expongas este compose a terceros.
-- Los agentes ejecutan comandos arbitrarios dentro del runner y **pueden leer el
-  token montado**: el RO protege la integridad de tu credencial, no su
-  confidencialidad. Un agente confundido o prompt-injected podría exfiltrarla. Se
-  acepta porque son **tus** cuentas corriendo **tus** pedidos en **tu** máquina.
-- Mitigaciones en el runner: contenedor descartable por invocación, `--cap-drop ALL`
-  (+`DAC_OVERRIDE`), `no-new-privileges`, límites de pids/memoria/cpu, HOME en tmpfs.
+- **No hay sandbox.** Swarm corre en la máquina, como vos. Las sillas de CLI son subprocesos
+  pelados y los agentes pueden leer todo lo que pueda leer tu usuario — incluidos tus tokens
+  de CLI y, con la bóveda desbloqueada, tus API keys. Un agente confundido o prompt-injected
+  podría exfiltrarlos. Se acepta porque son **tus** cuentas corriendo **tus** pedidos en una
+  máquina que estás autorizado a operar.
 - Las **credenciales de CLI** jamás se piden, guardan ni loguean; la pantalla Conexiones
-  solo reporta si el archivo **existe**. **Las API keys son la excepción**: la ruta
-  portátil las guarda, cifradas (ver la bóveda abajo).
-- **Linux-only** (ruta Docker): en macOS `claude` guarda el token en el Keychain (no hay
-  archivo que montar).
-- La web escucha en `localhost:8080` sin login humano: no la publiques tal cual.
+  solo reporta si el archivo **existe**. **Las API keys son la excepción**: se guardan
+  cifradas (ver la bóveda abajo).
+- La web escucha en `127.0.0.1:8799` sin login humano: no la publiques tal cual.
+- Lo que las sillas fabrican con `/armar` queda en la carpeta git de la mesa; lo que hacen con
+  el **toolbelt** cae sobre la máquina real. Leé las dos secciones de abajo antes de prender
+  ese switch.
 
 **Bóveda de API keys (ruta portátil).** Cuando corrés sillas por **API key** en vez de un
 CLI, Swarm tiene que guardar las keys — así que las guarda **cifradas con una passphrase que
@@ -433,8 +334,7 @@ con alcance a todo el equipo. El permiso es el switch, no cada comando. Dos acla
 - **Todo queda logueado.** Cada lectura y cada mutación va a la Bitácora de la mesa (modelo
   `Accion`), exportable como informe de soporte.
 - **Es un tool de mucho poder, peligroso en manos equivocadas.** Habilitalo solo en máquinas que
-  estés autorizado a atender, y leé cada `apply_fix` antes de aprobar. En modo Docker las
-  herramientas ven el contenedor worker, no el host — el toolbelt es para la ruta **nativa/portátil**.
+  estés autorizado a atender, y leé cada `apply_fix` antes de aprobar.
 
 Limitación conocida: los contenedores corren como root, así que los archivos que las
 mesas fabrican en `~/.enjambre` quedan de root en tu host (git incluso se queja de

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# scripts/build_bundle.sh — arma el PENDRIVE portátil de Swarm (Linux + Windows en la misma carpeta).
+# scripts/build_bundle.sh — arma la CARPETA portátil de Swarm (Linux + Windows en la misma carpeta).
+# Va en un pendrive para llevarla de máquina en máquina, o en una carpeta del disco: es lo mismo.
 #
 # Produce dist/swarm-portable/ con:
 #   app/                  el código de Swarm
@@ -9,7 +10,7 @@
 #   enjambre.sh           doble-clic en Linux  → migra + worker + web + navegador
 #   Enjambre.bat          doble-clic en Windows → idem
 #
-# El técnico enchufa el pendrive en una PC pelada (SIN Python ni Docker), corre el launcher de su SO
+# Se enchufa (o se copia) en una PC pelada (SIN Python ni Docker), corre el launcher de su SO
 # y ya tiene el Enjambre en el navegador. Solo carga sus API keys (Conexiones) y le da masa.
 #
 # Requisitos para BUILDEAR (no para usar): bash, curl, tar, y un pip que pueda descargar wheels
@@ -294,7 +295,8 @@ BAT
 cat > "$OUT/LEEME.txt" <<'TXT'
 SWARM — enjambre multi-agente PORTÁTIL
 ======================================
-No hace falta instalar nada (ni Python ni Docker).
+No hace falta instalar nada (ni Python ni Docker). Esta carpeta se basta sola: podés dejarla
+en el disco de la PC o llevarla en un pendrive — funciona igual en los dos casos.
 
   · Linux:   doble-clic en  enjambre.sh  → "Ejecutar en terminal"  (o  ./enjambre.sh  en una terminal)
   · Windows: doble-clic en  Enjambre.bat
@@ -320,7 +322,8 @@ primera API key y tocá Guardar. Con ese único paso la bóveda queda creada, ci
 Cuando reabras Swarm, desbloqueá con esa misma passphrase. La pantalla Conexiones muestra tu
 ESCALERA: qué desbloquea cada escalón (silla gratis → CLI opencode → API keys).
 
-Tus datos (base + bóveda de keys) viven en la carpeta data/ de este pendrive.
+Tus datos (base + bóveda de keys) viven en la carpeta data/ de acá al lado. Si movés o
+copiás esta carpeta entera, se van con ella.
 
 ¿Ya tenías tus sillas armadas en otra PC o en una versión anterior? No las rehagas a mano:
 en "Sillas" (arriba) tenés EXPORTAR e IMPORTAR. Exportar te baja un archivo .json con toda tu
@@ -329,7 +332,7 @@ Al importar elegís FUSIONAR (pisa las que coinciden y agrega las nuevas, sin bo
 REEMPLAZAR (deja la mesa igual al archivo). Ese archivo NO lleva credenciales: las API keys
 quedan cifradas en la bóveda, aparte — en la máquina nueva las cargás una vez.
 
-Para que las sillas puedan OPERAR la máquina donde enchufás el pendrive (revisar disco, procesos,
+Para que las sillas puedan OPERAR la máquina donde corre Swarm (revisar disco, procesos,
 proponer arreglos), prendé el TOOLBELT desde la interfaz: "Conexiones → Toolbelt" y activá el
 switch (arranca apagado, no hace falta editar nada). Ojo: es poderoso — las LECTURAS son
 automáticas, pero cada CAMBIO queda pendiente en la Bitácora hasta que vos lo aprobás. Solo en

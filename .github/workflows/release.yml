@@ -49,3 +49,21 @@ jobs:
           gh release create "$GITHUB_REF_NAME" swarm-portable.zip \
             --title "Swarm — pendrive $GITHUB_REF_NAME" --notes-file notes.md \
           || gh release upload "$GITHUB_REF_NAME" swarm-portable.zip --clobber
+
+      # La landing muestra qué versión sirve el botón de descarga. El asset mantiene el nombre
+      # fijo (si llevara la versión se rompería `releases/latest/download/<nombre>`), así que la
+      # versión va como texto y se actualiza acá, después de publicar.
+      - name: Poner la versión bajo el botón de descarga de la web
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git fetch origin main --depth=1
+          git checkout -B main origin/main
+          python3 scripts/actualizar_version_web.py "$GITHUB_REF_NAME"
+          if git diff --quiet -- index.html; then
+            echo "la web ya estaba en $GITHUB_REF_NAME"; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Web: el botón de descarga ahora sirve $GITHUB_REF_NAME"
+          git push origin main

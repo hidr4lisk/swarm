@@ -85,6 +85,8 @@ h2{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.15;letter-spacing:-.5px;ma
 .btn{display:inline-block;padding:15px 30px;border-radius:10px;font-weight:700;
   font-size:1rem;text-decoration:none;letter-spacing:.03em;transition:transform .12s,box-shadow .12s;cursor:pointer;}
 .btn-primary{background:var(--accent);color:#04130b;box-shadow:0 0 34px var(--accent-glow);border:none;font-family:var(--font);}
+/* Versión debajo del botón de descarga: discreta, no compite con los CTAs. */
+.dl-ver{margin:.7em 0 0;font-family:var(--mono,monospace);font-size:.8rem;color:var(--text-dim);letter-spacing:.04em;}
 .btn-secondary{border:1px solid var(--border-strong);color:var(--text-soft);}
 .btn:hover{transform:translateY(-2px);}
 .hero .relnote{margin-top:26px;color:var(--text-disabled);font-size:.86rem;}
@@ -283,6 +285,9 @@ footer a{color:var(--text-dim);}
       <a class="btn btn-secondary" href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener" data-i18n="go_repo">▸ REPO &amp; README</a>
       <a class="btn btn-secondary" href="#apoya" data-i18n="go_donate">☕️ APOYAR</a>
     </div>
+    <!-- Versión del zip que sirve el botón. La reescribe scripts/actualizar_version_web.py
+         desde el workflow al publicar cada release: no se toca a mano. -->
+    <p class="dl-ver" id="dl-ver">v0.4.0 · Windows + Linux · ~100 MB</p>
     <p class="relnote" data-i18n="relnote">descargá el pendrive listo, o corré instalada · Linux &amp; Windows · sin cuenta</p>
   </div>
 </header>
@@ -307,13 +312,13 @@ footer a{color:var(--text-dim);}
 <!-- ── 02 dos formas ── -->
 <section>
   <div class="wrap">
-    <p class="eyebrow" data-i18n="s2_eyebrow">// 02 · DOS FORMAS DE CORRERLA</p>
-    <h2 data-i18n="s2_h">Instalada, o en un pendrive.</h2>
-    <p class="body-txt" data-i18n-html="s2_body">Mismo app, mismo SQLite. Dos envoltorios — elegí el que le sirve a la máquina que tenés enfrente.</p>
+    <p class="eyebrow" data-i18n="s2_eyebrow">// 02 · UNA CARPETA, DONDE QUIERAS</p>
+    <h2 data-i18n="s2_h">En el disco, o en un pendrive.</h2>
+    <p class="body-txt" data-i18n-html="s2_body">Swarm es <b>una carpeta que se basta sola</b> —app, Python y tus datos adentro—. Dónde la dejes es lo único que cambia.</p>
     <div class="slots">
-      <div class="slot a"><div class="t" data-i18n="s2_at">INSTALADA</div><p data-i18n-html="s2_ap">Un comando: <code>python manage.py serve</code>. Sin Docker. (O <code>docker compose up</code> para aislar las sillas de CLI.)</p></div>
+      <div class="slot a"><div class="t" data-i18n="s2_at">EN LA PC</div><p data-i18n-html="s2_ap">Descomprimila en una carpeta del disco y doble-clic. Queda ahí, lista para la próxima. Ideal para tu máquina de todos los días.</p></div>
       <div class="arr" aria-hidden="true">⇄</div>
-      <div class="slot b"><div class="t" data-i18n="s2_bt">PORTÁTIL ⟳</div><p data-i18n-html="s2_bp">Un Python bundleado por SO en un pendrive. En una PC con <b>Windows o Linux</b>, pelada (sin Python ni Docker) → doble-clic (<code>Enjambre.bat</code> / <code>enjambre.sh</code>) y la mesa abre en el navegador.</p></div>
+      <div class="slot b"><div class="t" data-i18n="s2_bt">EN UN PENDRIVE ⟳</div><p data-i18n-html="s2_bp">La misma carpeta en un pendrive. La enchufás en cualquier PC <b>Windows o Linux</b> pelada → doble-clic y la mesa abre en el navegador. Tus mesas y sillas viajan con vos.</p></div>
     </div>
     <p class="punch" data-i18n="s2_punch">El kit del técnico: un pendrive que vuelve cualquier PC de cliente una mesa completa.</p>
     <p class="body-txt" data-i18n-html="s2_cfg">Y tu config viaja con vos: <b>Sillas → Exportar</b> baja tus sillas —nombres, modelos, prompts, retratos, colores— a un JSON, e <b>Importar</b> las repone en otra PC o en una versión nueva. Sin credenciales adentro: las keys quedan cifradas en la bóveda, aparte.</p>
@@ -403,7 +408,7 @@ footer a{color:var(--text-dim);}
         <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_note">¿Windows avisa «Windows protegió su PC»? Es normal (el código no tiene firma paga, es público en GitHub) — «Más información» → «Ejecutar de todos modos». Guía paso a paso: botón <b>Ayuda</b> dentro de la app.</p>
       </div></div>
       <div class="step"><div>
-        <div class="st-t" data-i18n="go1_t">Nativa / portátil (sin Docker)</div>
+        <div class="st-t" data-i18n="go1_t">Desde el código (Python 3.12)</div>
         <code class="cmd"><span class="pr">$</span> git clone https://github.com/hidr4lisk/swarm.git &amp;&amp; cd swarm
 <span class="pr">$</span> pip install -r requirements-portable.txt
 <span class="pr">$</span> python manage.py serve</code>
@@ -452,12 +457,12 @@ const I18N = {
     s1_l3: 'nginx down: missing reload after logrotate',
     s1_l4: 'proposal: clean logs + reload nginx', s1_l5: '⧗ waiting for your OK',
     s1_punch: 'Many small tables, one per task. Live, in the browser.',
-    s2_eyebrow: '// 02 · TWO WAYS TO RUN IT', s2_h: 'Installed, or on a pendrive.',
+    s2_eyebrow: '// 02 · ONE FOLDER, ANYWHERE', s2_h: 'On the disk, or on a pendrive.',
     s2_body: 'Same app, same SQLite. Two wrappers — pick the one that fits the machine in front of you.',
     s2_at: 'INSTALLED',
-    s2_ap: 'One command: <code>python manage.py serve</code>. No Docker. (Or <code>docker compose up</code> to isolate the CLI seats.)',
+    s2_at: 'ON THE PC', s2_ap: 'Unzip it into a folder on the disk and double-click. It stays there, ready for next time. Ideal for your everyday machine.',
     s2_bt: 'PORTABLE ⟳',
-    s2_bp: 'A whole Python bundled per-OS on a pendrive. On a bare <b>Windows or Linux</b> PC (no Python, no Docker) → double-click (<code>Enjambre.bat</code> / <code>enjambre.sh</code>) and the table opens in the browser.',
+    s2_bt: 'ON A PENDRIVE ⟳', s2_bp: 'The same folder on a stick. Plug it into any bare <b>Windows or Linux</b> PC → double-click and the table opens in the browser. Your tables and seats travel with you.',
     s2_punch: 'The technician\'s kit: a stick that turns any client PC into a full worktable.',
     s2_cfg: 'And your setup travels with you: <b>Sillas → Export</b> downloads your seats —names, models, prompts, portraits, colors— to a JSON file, and <b>Import</b> restores them on another PC or on a fresh version. No credentials inside: keys stay encrypted in the vault, separately.',
     s3_eyebrow: '// 03 · THREE KINDS OF SEAT', s3_h: 'By CLI, by API key, or local.',
@@ -488,7 +493,7 @@ const I18N = {
     go0_t: 'Download the pendrive · ready to use',
     go0_p: 'Unzip it <b>straight onto a pendrive</b> and double-click <code>Enjambre.bat</code> (Windows) or <code>enjambre.sh</code> (Linux). No Python, no Docker, no cloning. First run asks each PC whether to install it there or run trace-free.',
     go0_note: 'Windows warns "Windows protected your PC"? That\'s normal (no paid signing cert, code is public on GitHub) — "More info" → "Run anyway". Step-by-step guide: the <b>Help</b> button inside the app.',
-    go1_t: 'Native / portable (no Docker)',
+    go1_t: 'From source (Python 3.12)',
     go1_p: 'Opens <code>127.0.0.1:8799</code>. Go to <b>Connections → API keys</b>, load a key (stored encrypted) and start a table.',
     go2_t: 'Build the pendrive (Linux + Windows)',
     go2_p: 'Copy <code>dist/swarm-portable/</code> to a pendrive — just a handful of big files, so it copies fast. On any bare PC: double-click <code>enjambre.sh</code> (Linux) or <code>Enjambre.bat</code> (Windows). First run asks whether to install it on that PC or run trace-free.',

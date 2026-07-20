@@ -93,18 +93,15 @@ class LimpiarSalidaTests(TestCase):
         self.assertTrue(es_ruido(
             'Error: Bad Request: {"detail":"The model is not supported..."}'))
 
-    def test_mount_de_docker_roto_se_traduce_a_marcador_amigable(self):
-        # silla activada SIN tener el CLI en el host: el --mount corta con el error del
-        # daemon; tiene que llegar a la mesa como (❌ …) apuntando a Conexiones, no crudo.
-        fake = mock.Mock()
-        fake.stdout = ''
-        fake.stderr = ('docker: Error response from daemon: invalid mount config for type '
-                       '"bind": bind source path does not exist: /root/.gemini/antigravity-cli.')
-        p = Participante.objects.create(key='sin-cli', nombre='Pelado', comando=['agy', '-p'])
-        with mock.patch('enjambre.engine.subprocess.run', return_value=fake):
+    def test_cli_que_no_esta_instalado_no_rompe_la_mesa(self):
+        # Silla activada sin tener el CLI: subprocess tira FileNotFoundError y eso tiene que
+        # llegar a la mesa como marcador de ruido, no como excepción.
+        p = Participante.objects.create(key='sin-cli', nombre='Pelado',
+                                        comando=['binario-que-no-existe', '-p'])
+        with mock.patch('enjambre.engine.subprocess.run', side_effect=FileNotFoundError()):
             salida, ruido = ejecutar_cli(p, 'hola', timeout=5)
         self.assertTrue(ruido)
-        self.assertIn('Conexiones', salida)
+        self.assertIn('no instalado', salida)
         self.assertTrue(salida.startswith('(❌ Pelado'))
 
 
@@ -1076,14 +1073,6 @@ class ModoMaquinaCliTests(TestCase):
             Enjambre(self.sesion).enviar(local, 'hola')
         self.assertTrue(http.called)
         self.assertFalse(Accion.objects.exists())
-
-    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
-    def test_modo_maquina_no_pasa_por_el_runner(self, _h):
-        """Con runner configurado, el CLI correría encerrado en un contenedor que solo ve /work
-        — lo contrario de operar el equipo. En modo máquina se invoca directo en el host."""
-        with override_settings(ENJAMBRE_RUNNER='/app/runner/enjambre-run.sh'):
-            args = self._correr()
-        self.assertNotIn('enjambre-run.sh', ' '.join(args.args[0]))
 
     def test_opera_maquina_distingue_los_tres_backends(self):
         from .clientes import opera_maquina

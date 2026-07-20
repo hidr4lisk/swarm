@@ -2147,3 +2147,18 @@ msgstr "API and CLI seats can operate this machine."
 #: enjambre/templates/enjambre/conexiones.html:0
 msgid "Las sillas solo conversan; no ven la máquina."
 msgstr "Seats only chat; they can't see the machine."
+
+#: enjambre/templates/enjambre/ayuda.html:0
+msgid ""
+"Las sillas de CLI corren como procesos de tu propia sesión, con el login que ya\n"
+"            tenés en esta máquina; las sillas por API hablan directo con el proveedor. No hay contenedores\n"
+"            ni cápsula: Swarm es una carpeta que se basta sola, la dejes en el disco o en un pendrive."
+msgstr ""
+"CLI seats run as processes in your own session, using the login you already "
+"have on this machine; API seats talk straight to the provider. No "
+"containers, no capsule: Swarm is one self-contained folder, whether you keep"
+" it on the disk or on a pendrive."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid "Chequeado en vivo, en esta máquina."
+msgstr "Checked live, on this machine."

@@ -96,10 +96,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ── Enjambre — el motor de la mesa ──────────────────────────────────────────────
 
-# Wrapper de dispatch de los CLIs. Si está seteada, el motor antepone este runner
-# (contenedor descartable); vacía = llamada directa al CLI en PATH del worker.
-ENJAMBRE_RUNNER = os.environ.get('ENJAMBRE_RUNNER', '')
-
 # Carpetas de trabajo persistentes por mesa. Vacío = ~/.enjambre/mesas.
 ENJAMBRE_MESAS_DIR = os.environ.get('ENJAMBRE_MESAS_DIR', '')
 

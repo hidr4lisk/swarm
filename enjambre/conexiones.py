@@ -3,21 +3,14 @@ enjambre/conexiones.py — detección de credenciales de los CLIs (pantalla Cone
 
 Reporta solo EXISTENCIA por archivo: acá jamás se lee, muestra ni loguea el
 contenido de una credencial. La app no pide ni guarda credenciales propias: el
-login vive en tu terminal (`claude login`, etc.) y el runner lo monta RO.
+login vive en tu terminal (`claude login`, etc.) y Swarm solo mira si el archivo está.
 
-Dos modos de detección, mismo resultado {cli: bool}:
-  · directo — os.path.exists, cuando las rutas son visibles (dev en el host).
-  · sonda DooD — dentro del contenedor `worker` las rutas viven en el HOST, así
-    que se prueba montarlas en un contenedor efímero sin red que solo corre
-    `true`; si el path no existe el daemon corta con error (--mount no crea nada).
-
-El worker persiste el resultado en <data>/conexiones.json al arrancar; la web lo
-lee de ahí (no tiene docker.sock) y cae al chequeo directo si no existe (dev).
+El worker persiste el resultado en <data>/conexiones.json al arrancar; la web lo lee
+de ahí y cae al chequeo directo si no existe.
 """
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 from django.utils import timezone
@@ -51,43 +44,16 @@ def ruta_creds(cli):
 
 
 def ruta_corta(ruta):
-    """Versión para MOSTRAR: colapsa el home a `~` (no expone el usuario del host en
+    """Versión para MOSTRAR: colapsa el home a `~` (no expone el usuario de la máquina en
     pantalla ni en capturas). Solo display; la detección usa la ruta completa.
-    Por regex y no Path.home(): en el worker Docker las rutas son del HOST (/home/x)
-    y el home del contenedor es /root — no coincidirían. Cubre Linux y Windows."""
+    Por regex y no Path.home(): cubre Linux, Windows y rutas de otro usuario."""
     import re
     return re.sub(r'^(/home/[^/]+|/root|[A-Za-z]:[\\/]Users[\\/][^\\/]+)(?=[\\/]|$)', '~', ruta)
 
 
-def _sonda_docker(ruta):
-    """¿Existe `ruta` en el HOST? Intenta montarla RO en un contenedor efímero sin red
-    que solo corre `true`. --mount (a diferencia de -v) no crea paths inexistentes:
-    si falta, el daemon devuelve error y eso ES el resultado. No se lee contenido."""
-    img = os.environ.get('ENJAMBRE_IMG', 'swarm-runner:latest')
-    try:
-        r = subprocess.run(
-            ['docker', 'run', '--rm', '--network', 'none', '--cap-drop', 'ALL',
-             '--mount', f'type=bind,source={ruta},target=/sonda,readonly',
-             '--entrypoint', 'true', img],
-            capture_output=True, timeout=60,
-        )
-        return r.returncode == 0
-    except Exception:  # noqa: BLE001 — sin docker/timeout = no detectado, no rompe
-        return False
-
-
-def detectar(con_sonda=False):
-    """{cli: bool} por existencia. `con_sonda=True` solo donde hay docker.sock (worker)."""
-    estados = {}
-    for cli in CLIS:
-        ruta = ruta_creds(cli)
-        if os.path.exists(ruta):
-            estados[cli] = True
-        elif con_sonda and os.environ.get('SWARM_DOOD'):
-            estados[cli] = _sonda_docker(ruta)
-        else:
-            estados[cli] = False
-    return estados
+def detectar():
+    """{cli: bool} según exista el archivo de credencial de cada CLI en esta máquina."""
+    return {cli: os.path.exists(ruta_creds(cli)) for cli in CLIS}
 
 
 # ── Resolución de binarios (doble-clic sin PATH de shell) ────────────────────────

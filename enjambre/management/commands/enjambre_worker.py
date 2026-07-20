@@ -1,12 +1,12 @@
 """
 enjambre/management/commands/enjambre_worker.py — el worker del Enjambre.
 
-Corre aparte de `web` (en el compose es su propio contenedor, con el docker.sock; en dev,
-otra terminal): `web` solo encola (Mensaje/Tarea) y streamea por SSE; este worker hace el
-dispatch real de los CLIs y escribe las respuestas en la DB.
+Reparto de tareas: `web` solo encola (Mensaje/Tarea) y streamea por SSE; este worker hace el
+dispatch real de los CLIs y escribe las respuestas en la DB. Con `manage.py serve` corre en un
+hilo del mismo proceso; también se puede levantar suelto en otra terminal.
 
-Con ENJAMBRE_RUNNER apuntando a runner/enjambre-run.sh los CLIs corren en contenedores
-descartables; vacío = directo del PATH (dev). Ver README y docker-compose.yml.
+Los CLIs se invocan directo del PATH de la máquina (`resolver_bin` los encuentra aunque la
+shell no haya cargado su rc). Ver README.
 
 Procesa cada pasada:
   1) Tareas en estado 'pendiente' → ejecutar_tarea (worktree aislado → commit → branch).

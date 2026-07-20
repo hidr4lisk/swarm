@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-scripts/actualizar_version_web.py — deja `index.html` (la landing de GitHub Pages) apuntando al
-zip de la ÚLTIMA versión publicada, con la versión en el nombre del archivo.
+scripts/actualizar_version_web.py — escribe la versión publicada debajo del botón de descarga
+de `index.html` (la landing de GitHub Pages).
 
-Por qué existe: el asset del release se llama `swarm-portable_vX.Y.Z.zip` para que el que lo baja
-sepa qué versión tiene en el pendrive. Pero eso rompe el link cómodo `releases/latest/download/
-<nombre>`, que exige un nombre FIJO y predecible. Solución: el workflow corre esto después de
-publicar el release y pushea la landing con la URL concreta de esa versión. Sin JS, sin consultar
-la API de GitHub en runtime, sin CDN — coherente con el resto de la casa.
+Por qué existe: el botón apunta a `releases/latest/download/swarm-portable.zip`, que siempre
+sirve la última versión pero no dice CUÁL. El nombre del asset se deja fijo a propósito (si
+llevara la versión, esa URL cómoda dejaría de existir): la versión se muestra como texto.
 
-Uso:  python3 scripts/actualizar_version_web.py v0.3.3 [index.html]
+Lo corre el workflow `release.yml` después de publicar el release, y pushea la landing. Sin JS
+y sin consultar la API de GitHub en runtime — coherente con el resto de la casa.
+
+Uso:  python3 scripts/actualizar_version_web.py v0.4.1 [index.html]
 
 Idempotente: si ya está en esa versión no toca nada (y el workflow no commitea).
 """
@@ -17,33 +18,16 @@ import re
 import sys
 from pathlib import Path
 
-REPO = 'hidr4lisk/swarm'
-
-# Matchea la URL del zip tanto en su forma vieja (`latest/download/swarm-portable.zip`) como en
-# la nueva ya versionada — si no, el segundo release no encontraría qué reemplazar.
-URL = re.compile(
-    r'https://github\.com/' + re.escape(REPO) +
-    r'/releases/(?:latest/download|download/v[\d.]+)/swarm-portable(?:_v[\d.]+)?\.zip'
-)
-# El nombre del archivo mostrado como texto (el `<a>` del paso 0 de «Arrancar»).
-NOMBRE = re.compile(r'swarm-portable(?:_v[\d.]+)?\.zip')
-# Las etiquetas del botón: ES en el HTML, EN en el diccionario I18N. El sufijo « · vX.Y.Z» se
-# reemplaza entero para no ir acumulando versiones al re-correr.
-CTA_ES = re.compile(r'(data-i18n="cta_download">⬇ DESCARGAR)[^<]*(</a>)')
-CTA_EN = re.compile(r"(cta_download: '⬇ DOWNLOAD)[^']*(')")
+# La línea que se reescribe. El texto de la derecha (SO y peso) se conserva tal cual esté.
+LINEA = re.compile(r'(<p class="dl-ver" id="dl-ver">)v[\d.]+(\s*·)')
 
 
 def actualizar(texto, tag):
-    """Devuelve el HTML apuntando a `tag`. `tag` viene como 'v0.3.3'."""
-    zip_nuevo = f'swarm-portable_{tag}.zip'
-    url_nueva = f'https://github.com/{REPO}/releases/download/{tag}/{zip_nuevo}'
-    texto = URL.sub(url_nueva, texto)
-    # Ojo con el orden: la URL ya quedó con el nombre nuevo adentro, así que este sub sobre el
-    # nombre suelto es inofensivo (ya coincide) y arregla el texto visible del enlace.
-    texto = NOMBRE.sub(zip_nuevo, texto)
-    texto = CTA_ES.sub(rf'\1 · {tag}\2', texto)
-    texto = CTA_EN.sub(rf'\1 · {tag}\2', texto)
-    return texto
+    """Devuelve el HTML con `tag` debajo del botón. `tag` viene como 'v0.4.1'."""
+    nuevo, n = LINEA.subn(rf'\g<1>{tag}\g<2>', texto)
+    if not n:
+        raise SystemExit("no encontré la línea <p class=\"dl-ver\" id=\"dl-ver\"> en el HTML")
+    return nuevo
 
 
 def main():
