@@ -69,8 +69,9 @@ extienden de acá sin cambios.
     </header>
 
     <main>
-        {# Avisos de las vistas que redirigen («config importada», «no subiste archivo»…).
-           Se consumen al pintarlos: no reaparecen al recargar. #}
+        {% comment %} Avisos de las vistas que redirigen («config importada», «no subiste
+           archivo»…). Se consumen al pintarlos: no reaparecen al recargar.
+           OJO: {# #} es de UNA línea en Django — multilínea se imprime. {% endcomment %}
         {% if messages %}
         <style>
             .enj-msgs { margin: 0 0 1rem; display: flex; flex-direction: column; gap: .4rem; }

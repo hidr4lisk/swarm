@@ -149,8 +149,9 @@
                 <i class="fas fa-chevron-right enj-silla-chevron"></i>
                 <span class="enj-silla-dot" data-dot title="{% if s.activo %}{% trans 'Activa' %}{% else %}{% trans 'Inactiva' %}{% endif %}"></span>
                 <span class="enj-silla-color-dot" data-color-dot title="{% trans 'Color en la mesa' %}" style="background:{{ s.color_ui|default:'#4a6cff' }};"></span>
-                {# src solo si HAY avatar: src="" lo resuelve el browser como la URL de la página
-                   y dispara un request de más (aunque esté hidden). El JS lo repuebla al elegir. #}
+                {% comment %} src solo si HAY avatar: src="" lo resuelve el browser como la URL
+                   de la página y dispara un request de más (aunque esté hidden). El JS lo
+                   repuebla al elegir. {% endcomment %}
                 <img class="enj-av-thumb" alt="" data-sum-avatar{% if s.avatar %} src="{{ s.avatar }}"{% else %} hidden{% endif %}>
                 <span class="enj-silla-sum-nombre" data-sum-nombre>{{ s.nombre }}</span>
                 <span class="enj-silla-sum-meta">@{{ s.alias }} · {{ s.motor }}{% if s.rol_tarjeta %} · {{ s.rol_tarjeta }}{% endif %}</span>

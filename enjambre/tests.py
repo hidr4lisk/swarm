@@ -14,12 +14,14 @@ Sin mocks de red ni servicios externos: los CLIs no se invocan (se prueban los c
 de error, que son los nuestros); git sí se usa de verdad sobre un tmpdir.
 """
 import json
+import re
 import tempfile
 from pathlib import Path
 from unittest import mock
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import translation
 
 from .clientes import build_comando
 from . import conexiones as conexiones_mod
@@ -905,3 +907,48 @@ class ConfigIOTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(Participante.objects.filter(key='subida').exists())
         self.assertContains(r, 'Config importada')
+
+
+class PlantillasTests(TestCase):
+    """Errores de plantilla que el navegador NO grita: quedan impresos en la página."""
+
+    def _plantillas(self):
+        raiz = Path(__file__).resolve().parent / 'templates'
+        return sorted(raiz.rglob('*.html'))
+
+    def test_no_hay_comentarios_multilinea(self):
+        """`{# … #}` en Django es de UNA sola línea: si abarca dos, deja de ser comentario y se
+        IMPRIME en la página. Para varias líneas va `{% comment %}…{% endcomment %}`.
+        Ya nos mordió más de una vez (el peor caso fue en base_swarm.html: salía en TODAS
+        las vistas), así que lo chequea la suite y no el ojo."""
+        malos = []
+        for f in self._plantillas():
+            texto = f.read_text(encoding='utf-8')
+            for m in re.finditer(r'\{#', texto):
+                fin = texto.find('#}', m.start())
+                if fin == -1 or '\n' in texto[m.start():fin]:
+                    malos.append(f"{f.name}:{texto[:m.start()].count(chr(10)) + 1}")
+        self.assertEqual(malos, [], f"Comentarios {{# #}} multilínea (se imprimen): {malos}")
+
+    def test_los_comentarios_de_bloque_cierran(self):
+        """Un `{% comment %}` sin `{% endcomment %}` se come el resto de la plantilla."""
+        for f in self._plantillas():
+            texto = f.read_text(encoding='utf-8')
+            self.assertEqual(texto.count('{% comment %}'), texto.count('{% endcomment %}'),
+                             f"{f.name}: comment/endcomment desbalanceados")
+
+    def test_las_vistas_no_escupen_sintaxis_de_plantilla(self):
+        """Red final: renderizar de verdad y mirar que no se filtre `{# … #}`, `{{ var }}` ni
+        `{% tag %}` al HTML (fuera de <script>/<style>, donde las llaves son legítimas)."""
+        sesion = Sesion.objects.create(nombre='prueba')
+        urls = ['/', '/ayuda/', '/conexiones/', '/sillas/', f'/sesion/{sesion.pk}/']
+        sospechas = [r'\{#', r'#\}', r'\{%\s*comment', r'\{\{\s*\w+\s*\}\}',
+                     r'\{%\s*(if|for|trans|blocktrans|url|include)\b']
+        for lang in ('es', 'en'):
+            with translation.override(lang):
+                for url in urls:
+                    cuerpo = self.client.get(url, follow=True).content.decode('utf-8', 'replace')
+                    limpio = re.sub(r'<script[\s\S]*?</script>|<style[\s\S]*?</style>', '', cuerpo)
+                    for patron in sospechas:
+                        self.assertIsNone(re.search(patron, limpio),
+                                          f"[{lang}] {url}: se filtró sintaxis de plantilla")
