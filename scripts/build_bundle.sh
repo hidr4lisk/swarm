@@ -185,6 +185,12 @@ export PYTHONNOUSERSITE=1   # ignorar ~/.local del equipo ajeno: el bundle es he
 export DJANGO_SETTINGS_MODULE="swarm.settings"
 export DATABASE_URL="sqlite:///$DIR/data/db.sqlite3"
 export SWARM_DATA_DIR="$DIR/data"       # los datos SIEMPRE viven en el pendrive, no en el cache
+# Carpetas de trabajo de las mesas (/armar): sin esto caían a ~/.enjambre/mesas del HOST (no
+# portátil — te ibas con el pendrive y dejabas los archivos fabricados en esa PC). Mismo sandbox
+# de siempre (mesa_workspace crea su propio git repo, nunca toca el árbol desplegado ni el resto
+# de la PC — eso es el toolbelt, aparte); esto solo cambia DÓNDE vive ese sandbox.
+export ENJAMBRE_MESAS_DIR="$DIR/data/mesas"
+export ENJAMBRE_WORKSPACES_DIR="$DIR/data/workspaces"
 # El toolbelt (que las sillas operen esta máquina) se prende desde la interfaz:
 # Conexiones → Toolbelt → switch. NO hace falta tocar este archivo. La línea de abajo es un
 # override opcional para forzarlo SIEMPRE encendido desde el launcher:
@@ -271,6 +277,10 @@ set "PYTHONNOUSERSITE=1"
 set "DJANGO_SETTINGS_MODULE=swarm.settings"
 set "DATABASE_URL=sqlite:///%DIR%data/db.sqlite3"
 set "SWARM_DATA_DIR=%DIR%data"
+rem Carpetas de trabajo de las mesas (/armar): sin esto caian a %%USERPROFILE%%\.enjambre\mesas
+rem del host (no portatil). Mismo sandbox de siempre, solo cambia donde vive.
+set "ENJAMBRE_MESAS_DIR=%DIR%data\mesas"
+set "ENJAMBRE_WORKSPACES_DIR=%DIR%data\workspaces"
 rem El toolbelt (que las sillas operen esta maquina) se prende desde la interfaz:
 rem en Conexiones, pestana Toolbelt, activa el switch. NO hace falta tocar este archivo. La linea
 rem de abajo es un override opcional para forzarlo SIEMPRE encendido desde el launcher:
