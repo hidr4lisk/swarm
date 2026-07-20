@@ -7,4 +7,4 @@ corriendo desde el código queda en `dev`, que es la verdad: no salió de un rel
 
 No se edita a mano.
 """
-__version__ = 'v0.6.3'
+__version__ = 'v0.6.4'
