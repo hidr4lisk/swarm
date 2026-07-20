@@ -163,12 +163,15 @@ h2{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.15;letter-spacing:-.5px;ma
 
 /* ── Steps (arrancar) ── */
 #arrancar{border-bottom:none;}
-.steps{counter-reset:st;margin-top:40px;display:flex;flex-direction:column;gap:30px;}
+.steps{margin-top:40px;display:flex;flex-direction:column;gap:30px;}
 .step{display:flex;gap:20px;}
 .step>div{min-width:0;flex:1;} /* sin esto, los <code> pre fuerzan el ancho y desbordan en celu */
-.step::before{counter-increment:st;content:counter(st,decimal-leading-zero);
-  color:var(--accent);font-weight:700;font-size:1.15rem;flex-shrink:0;}
+/* A y B son OPCIONES, no pasos: antes iban 01/02/03 con un counter y se leía como una
+   secuencia que había que hacer entera. La letra sale de data-opt. */
+.step::before{content:attr(data-opt);color:var(--accent);font-weight:700;font-size:1.15rem;flex-shrink:0;}
 .step .st-t{font-weight:700;margin-bottom:8px;font-size:1.05rem;}
+/* Segunda variante dentro de la opción B (armar la carpeta uno mismo). */
+.step .st-sub{font-weight:700;margin:22px 0 8px;font-size:.95rem;color:var(--text-dim);}
 .step p{color:var(--text-dim);font-size:.93rem;margin-top:8px;}
 .step p code, .body-txt code{background:var(--surface2);border:1px solid var(--border-strong);
   border-radius:5px;padding:1px 6px;font-size:.86em;color:var(--text-soft);}
@@ -288,7 +291,7 @@ footer a{color:var(--text-dim);}
     <!-- Versión del zip que sirve el botón. La reescribe scripts/actualizar_version_web.py
          desde el workflow al publicar cada release: no se toca a mano. -->
     <p class="dl-ver" id="dl-ver">v0.5.0 · Windows + Linux · ~100 MB</p>
-    <p class="relnote" data-i18n="relnote">descargá el pendrive listo, o corré instalada · Linux &amp; Windows · sin cuenta</p>
+    <p class="relnote" data-i18n="relnote">una carpeta que se basta sola · Linux &amp; Windows · sin instalar, sin cuenta</p>
   </div>
 </header>
 
@@ -399,25 +402,23 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <p class="eyebrow" data-i18n="go_eyebrow">// ARRANCAR</p>
     <h2 data-i18n="go_h">Arriba en un comando.</h2>
-    <p class="body-txt" data-i18n-html="go_body">¿No querés clonar nada? Bajá el pendrive listo. ¿Preferís el código? Cloná y arrancá — sin Docker, sin cuenta, solo Python 3.12.</p>
+    <p class="body-txt" data-i18n-html="go_body">¿No querés clonar nada? Bajá la carpeta lista y doble-clic. ¿Preferís el código? Cloná y arrancá — sin Docker, sin cuenta, solo Python 3.12.</p>
     <div class="steps">
-      <div class="step"><div>
-        <div class="st-t" data-i18n="go0_t">Bajar el pendrive · listo para usar</div>
+      <div class="step" data-opt="A"><div>
+        <div class="st-t" data-i18n="go0_t">Bajar Swarm · listo para usar</div>
         <code class="cmd"><span class="pr">⬇</span> <a href="https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip" style="color:inherit">swarm-portable.zip</a>  <span class="dim"># Windows + Linux, ~100 MB</span></code>
-        <p data-i18n-html="go0_p">Descomprimilo <b>directo a un pendrive</b> y doble-clic a <code>Enjambre.bat</code> (Windows) o <code>enjambre.sh</code> (Linux). Sin Python, sin Docker, sin clonar. La primera vez cada PC pregunta si instalarlo ahí o correr sin dejar rastro.</p>
+        <p data-i18n-html="go0_p">Descomprimilo en <b>una carpeta del disco o en un pendrive</b> y doble-clic a <code>Enjambre.bat</code> (Windows) o <code>enjambre.sh</code> (Linux). Sin Python, sin Docker, sin clonar. La primera vez cada PC pregunta si instalarlo ahí o correr sin dejar rastro.</p>
         <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_note">¿Windows avisa «Windows protegió su PC»? Es normal (el código no tiene firma paga, es público en GitHub) — «Más información» → «Ejecutar de todos modos». Guía paso a paso: botón <b>Ayuda</b> dentro de la app.</p>
       </div></div>
-      <div class="step"><div>
+      <div class="step" data-opt="B"><div>
         <div class="st-t" data-i18n="go1_t">Desde el código (Python 3.12)</div>
         <code class="cmd"><span class="pr">$</span> git clone https://github.com/hidr4lisk/swarm.git &amp;&amp; cd swarm
 <span class="pr">$</span> pip install -r requirements-portable.txt
 <span class="pr">$</span> python manage.py serve</code>
         <p data-i18n-html="go1_p">Abre <code>127.0.0.1:8799</code>. Andá a <b>Conexiones → API keys</b>, cargá una key (se guarda cifrada) y armá una mesa.</p>
-      </div></div>
-      <div class="step"><div>
-        <div class="st-t" data-i18n="go2_t">Armar el pendrive (Linux + Windows)</div>
+        <div class="st-sub" data-i18n="go2_t">Armar la carpeta portátil (Linux + Windows)</div>
         <code class="cmd"><span class="pr">$</span> ./scripts/build_bundle.sh   <span class="dim"># → dist/swarm-portable/</span></code>
-        <p data-i18n-html="go2_p">Copiás <code>dist/swarm-portable/</code> a un pendrive — son pocos archivos grandes, se copia al toque. En cualquier PC pelada: doble-clic a <code>enjambre.sh</code> (Linux) o <code>Enjambre.bat</code> (Windows). La primera vez te pregunta si instalarlo en esa PC o usarlo sin dejar rastro.</p>
+        <p data-i18n-html="go2_p">Copiás <code>dist/swarm-portable/</code> adonde quieras —una carpeta del disco o un pendrive—: son pocos archivos grandes, se copia al toque. En cualquier PC pelada: doble-clic a <code>enjambre.sh</code> (Linux) o <code>Enjambre.bat</code> (Windows). La primera vez te pregunta si instalarlo en esa PC o usarlo sin dejar rastro.</p>
       </div></div>
     </div>
   </div>
@@ -449,7 +450,7 @@ const I18N = {
     tagline: 'A <b>multi-agent worktable</b> in your browser: several AIs chat, debate and <b>act</b> — coordinated by a leader.',
     badges: 'multi-agent · API keys or CLIs · portable · open source (MIT)',
     cta_go: '▸ GET STARTED', cta_download: '⬇ DOWNLOAD · READY TO USE',
-    relnote: 'grab the ready-made pendrive, or run it installed · Linux & Windows · no account',
+    relnote: 'one self-contained folder · Linux &amp; Windows · nothing to install, no account',
     s1_eyebrow: '// 01 · ONE TABLE, MANY MINDS', s1_h: 'Several AIs, one table.',
     s1_body: 'Each <b>seat</b> is an AI with its own voice and job. You drop a request; they discuss it flat or under a <b>leader</b>, and the leader closes — with an answer, or by <b>acting</b>. Your browser, your machine, your accounts.',
     s1_l1: 'split: Arch checks the disk, Red looks at the service…',
@@ -489,14 +490,14 @@ const I18N = {
     ct_body: 'Found a bug, got an idea, or want to use Swarm with your team? Open an <a href="https://github.com/hidr4lisk/swarm/issues" target="_blank" rel="noopener">issue on GitHub</a> or write to us directly:',
     ct_note: 'We read everything. Your feedback is what makes Swarm grow.',
     go_eyebrow: '// GET STARTED', go_h: 'Up in one command.',
-    go_body: 'Don\'t want to clone anything? Grab the ready-made pendrive. Prefer the code? Clone and run — no Docker, no account, just Python 3.12.',
-    go0_t: 'Download the pendrive · ready to use',
-    go0_p: 'Unzip it <b>straight onto a pendrive</b> and double-click <code>Enjambre.bat</code> (Windows) or <code>enjambre.sh</code> (Linux). No Python, no Docker, no cloning. First run asks each PC whether to install it there or run trace-free.',
+    go_body: 'Don\'t want to clone anything? Grab the ready-made folder and double-click. Prefer the code? Clone and run — no Docker, no account, just Python 3.12.',
+    go0_t: 'Download Swarm · ready to use',
+    go0_p: 'Unzip it into <b>a folder on the disk or onto a pendrive</b> and double-click <code>Enjambre.bat</code> (Windows) or <code>enjambre.sh</code> (Linux). No Python, no Docker, no cloning. First run asks each PC whether to install it there or run trace-free.',
     go0_note: 'Windows warns "Windows protected your PC"? That\'s normal (no paid signing cert, code is public on GitHub) — "More info" → "Run anyway". Step-by-step guide: the <b>Help</b> button inside the app.',
     go1_t: 'From source (Python 3.12)',
     go1_p: 'Opens <code>127.0.0.1:8799</code>. Go to <b>Connections → API keys</b>, load a key (stored encrypted) and start a table.',
-    go2_t: 'Build the pendrive (Linux + Windows)',
-    go2_p: 'Copy <code>dist/swarm-portable/</code> to a pendrive — just a handful of big files, so it copies fast. On any bare PC: double-click <code>enjambre.sh</code> (Linux) or <code>Enjambre.bat</code> (Windows). First run asks whether to install it on that PC or run trace-free.',
+    go2_t: 'Build the portable folder (Linux + Windows)',
+    go2_p: 'Copy <code>dist/swarm-portable/</code> wherever you want —a folder on the disk or a pendrive—: just a handful of big files, so it copies fast. On any bare PC: double-click <code>enjambre.sh</code> (Linux) or <code>Enjambre.bat</code> (Windows). First run asks whether to install it on that PC or run trace-free.',
     go_repo: '▸ REPO & README', go_donate: '☕️ SUPPORT',
     foot: 'many minds, one table'
   }

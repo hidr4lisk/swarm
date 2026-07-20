@@ -1074,6 +1074,14 @@ class ModoMaquinaCliTests(TestCase):
         self.assertTrue(http.called)
         self.assertFalse(Accion.objects.exists())
 
+    def test_el_footer_muestra_la_version(self):
+        """El footer dice qué versión estás corriendo: es lo primero que se pregunta cuando
+        alguien reporta algo desde un pendrive que no sabés de cuándo es. La sella el workflow
+        de release en `swarm/version.py`; en un clone queda 'dev', que también es la verdad."""
+        with mock.patch('enjambre.context_processors.__version__', 'v9.9.9'):
+            cuerpo = self.client.get('/').content.decode()
+        self.assertIn('Hidr4lisk_Swarm v9.9.9', cuerpo)
+
     def test_opera_maquina_distingue_los_tres_backends(self):
         from .clientes import opera_maquina
         self.assertTrue(opera_maquina(self.cli))

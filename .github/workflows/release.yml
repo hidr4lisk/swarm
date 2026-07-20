@@ -1,4 +1,4 @@
-# Publica el pendrive "listo para usar" como asset de un GitHub Release.
+# Publica la carpeta portátil "lista para usar" como asset de un GitHub Release.
 # El build corre en un runner Linux (ubuntu-latest) → NADIE necesita Linux para tener el zip.
 # Se dispara al pushear un tag vX.Y.Z; o a mano ("Run workflow") para probar el build sin cortar release.
 name: portable-release
@@ -17,12 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ANTES de buildear: así el zip lleva su versión adentro y el footer de la app la muestra.
+      # (También deja lista la línea de la landing; el push de ambos va al final.)
+      - name: Sellar la versión en la app y en la web
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python3 scripts/actualizar_version.py "$GITHUB_REF_NAME"
+
       # build_bundle.sh usa bash/curl/tar (presentes) + el pip del Python PBS que baja él mismo.
       # Cross-buildea las wheels de Windows desde Linux → el zip sirve para Windows Y Linux.
       - name: Buildear el bundle portátil (Linux + Windows en una carpeta)
         run: ./scripts/build_bundle.sh
 
-      - name: Empaquetar el pendrive en un zip
+      - name: Empaquetar la carpeta portátil en un zip
         run: cd dist && zip -r -q ../swarm-portable.zip swarm-portable
 
       # Queda descargable desde la corrida aunque no sea un tag (para probar el build).
@@ -38,32 +44,35 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'EOF'
-          Pendrive **listo para usar** — Windows + Linux, sin instalar nada.
+          **Listo para usar** — Windows + Linux, sin instalar nada.
 
-          Bajá `swarm-portable.zip`, descomprimilo directo a un pendrive y corré
-          **Enjambre.bat** (Windows) o **enjambre.sh** (Linux). No necesitás Python,
-          Docker ni clonar el repo. La primera vez cada PC pregunta si instalar el
-          runtime ahí (arranque rápido) o correr sin dejar rastro. Tus mesas, sillas
-          y bóveda viven en `data/` del pendrive y se mueven con él entre PCs.
+          Bajá `swarm-portable.zip` y descomprimilo donde quieras: una **carpeta del disco** si
+          es tu máquina de siempre, o un **pendrive** si querés llevarlo. Después corré
+          **Enjambre.bat** (Windows) o **enjambre.sh** (Linux). No necesitás Python, Docker ni
+          clonar el repo. La primera vez cada PC pregunta si instalar el runtime ahí (arranque
+          rápido) o correr sin dejar rastro.
+
+          Tus mesas, sillas y bóveda viven en `data/`, al lado del launcher, y se mueven con la
+          carpeta entre PCs. ¿Ya tenías tus sillas armadas? **Sillas → Importar** te las repone
+          desde un JSON.
           EOF
           gh release create "$GITHUB_REF_NAME" swarm-portable.zip \
-            --title "Swarm — pendrive $GITHUB_REF_NAME" --notes-file notes.md \
+            --title "Swarm $GITHUB_REF_NAME — portátil" --notes-file notes.md \
           || gh release upload "$GITHUB_REF_NAME" swarm-portable.zip --clobber
 
-      # La landing muestra qué versión sirve el botón de descarga. El asset mantiene el nombre
-      # fijo (si llevara la versión se rompería `releases/latest/download/<nombre>`), así que la
-      # versión va como texto y se actualiza acá, después de publicar.
-      - name: Poner la versión bajo el botón de descarga de la web
+      # Ya publicado: dejar la versión sellada también en main, para que el repo (y la landing
+      # de Pages, que sale de main) digan lo mismo que el release recién subido.
+      - name: Dejar la versión sellada en main
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           git fetch origin main --depth=1
           git checkout -B main origin/main
-          python3 scripts/actualizar_version_web.py "$GITHUB_REF_NAME"
-          if git diff --quiet -- index.html; then
-            echo "la web ya estaba en $GITHUB_REF_NAME"; exit 0
+          python3 scripts/actualizar_version.py "$GITHUB_REF_NAME"
+          if git diff --quiet -- index.html swarm/version.py; then
+            echo "main ya estaba en $GITHUB_REF_NAME"; exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git commit -m "Web: el botón de descarga ahora sirve $GITHUB_REF_NAME"
+          git add index.html swarm/version.py
+          git commit -m "Versión $GITHUB_REF_NAME: footer de la app y botón de descarga de la web"
           git push origin main
