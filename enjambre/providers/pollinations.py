@@ -1,23 +1,19 @@
 """
-providers/pollinations.py — cliente de Pollinations.AI (tier anónimo: SIN API key).
+providers/pollinations.py — cliente de Pollinations.AI (proveedor por API key).
 
-Es el ESCALÓN 0 de la escalera de arranque: la silla que charla al primer arranque sin que el
-usuario configure nada. Pollinations habla el protocolo de OpenAI, así que reusamos openai_compat
-con su base_url (verificado 2026-07-19: el path anidado /openai/chat/completions devuelve 200, y
-un `Authorization: Bearer ` vacío no molesta — no hace falta tocar openai_compat).
+Pollinations habla el protocolo de OpenAI, así que reusamos openai_compat con su base_url (el path
+anidado /openai/chat/completions). Es un proveedor por token como cualquier otro api-*: el token
+sale de enter.pollinations.ai y viaja como Bearer.
 
-Tiers (verificados en vivo):
-- Anónimo: 1 request / 15 s, UN solo modelo (`openai-fast` = GPT-OSS 20B). Sin cuenta.
-- Registrado (token gratis de auth.pollinations.ai, sin tarjeta): 1 request / 5 s. El mismo
-  código cubre ambos: si hay token en la bóveda, viaja como Bearer y listo.
+⚠️ HISTÓRICO: hasta el 2026-07-20 Pollinations tenía un tier ANÓNIMO sin key (era el escalón 0 de
+la escalera, la silla «Chispa»). Ese tier MURIÓ: pasó a créditos «pollen» y todo request sin saldo
+devuelve HTTP 402 "budget too low" (con o sin `model`, con o sin auth — no es por IP). Por eso
+Chispa se retiró y Pollinations quedó como un proveedor por key más. NO re-proponer el tier
+anónimo: verificado muerto en vivo.
 
 Gotcha a favor: Pollinations CACHEA payloads idénticos (misma respuesta, mismo `created`) — el
-retry del mismo request tras un fallo transitorio puede volver del cache, gratis y sin latencia.
-
-SEGURIDAD — sin toolbelt: acá NO hay chat_agentic. Un endpoint de terceros no autenticado
-dirigiendo ejecución de herramientas en la máquina del usuario es otro perfil de amenaza que una
-key que vos controlás; el dispatcher (providers/__init__.py) degrada chat_agentic → chat() para
-este proveedor. Si algún día se habilita, tiene que ser un opt-in separado y ruidoso.
+retry del mismo request tras un fallo transitorio puede volver del cache. Ojo al depurar: un 200
+inesperado puede ser cache viejo, no que el request nuevo haya pasado.
 """
 from . import openai_compat
 
@@ -30,9 +26,18 @@ _ATTR = {'Referer': 'https://github.com/hidr4lisk/swarm', 'User-Agent': 'Swarm'}
 
 
 def chat(model, prompt, api_key, timeout, base_url=''):
-    # api_key = '' en tier anónimo (el Bearer vacío está verificado inocuo); con token, tier seed.
-    # throttle_key: espaciar 1 req/15 s (o /5 s con token) — ver enjambre/ratelimit.py.
+    # throttle_key: espaciar los requests (rate limit de Pollinations) — ver enjambre/ratelimit.py.
     return openai_compat.chat(
         model or DEFAULT_MODEL, prompt, api_key, timeout,
         base_url=POLLINATIONS_BASE, extra_headers=_ATTR, throttle_key='pollinations',
+    )
+
+
+def chat_agentic(model, prompt, api_key, timeout, sesion, participante):
+    """Con el toolbelt: Pollinations es un api más (el openai-fast soporta tool-use). Mismo loop de
+    function-calling que openai_compat, apuntado a la base_url y headers de Pollinations."""
+    from .. import toolbelt
+    return openai_compat.chat_agentic(
+        model or DEFAULT_MODEL, prompt, api_key, timeout, sesion, participante,
+        base_url=POLLINATIONS_BASE, system=toolbelt.system_prompt(), extra_headers=_ATTR,
     )

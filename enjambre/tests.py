@@ -289,15 +289,16 @@ class VistasTests(TestCase):
     """El flujo real del usuario, con el test client (sin login: single-user)."""
 
     def test_seeds_vienen_apagadas_y_sin_keys(self):
-        # Los CLIs siguen apagados (requieren login). La ÚNICA activa de fábrica es Chispa
-        # (escalón 0: sin credencial, no hay nada que filtrar).
+        # Los CLIs siguen apagados (requieren login). Chispa se retiró (0008: murió el tier anónimo
+        # de Pollinations) → una instalación de fábrica NO tiene ninguna silla activa.
         sillas = {p.key: p for p in Participante.objects.all()}
         self.assertIn('claude', sillas)
         self.assertIn('opencode', sillas)
         self.assertFalse(sillas['claude'].activo)
         self.assertFalse(sillas['opencode'].activo)
+        self.assertNotIn('chispa', sillas)     # retirada por la migración 0008
         activas = [p.key for p in sillas.values() if p.activo]
-        self.assertEqual(activas, ['chispa'])
+        self.assertEqual(activas, [])
 
     def test_paginas_principales_responden(self):
         for nombre in ('enjambre:home', 'enjambre:gestionar_sillas',
@@ -498,36 +499,40 @@ class ParamTokensTests(TestCase):
         self.assertEqual(_param_tokens('https://api.groq.com/openai/v1'), 'max_tokens')
 
 
-class SinKeyGateTests(TestCase):
-    """El gate de API key del dispatcher: los proveedores SIN_KEY (pollinations) pasan sin
-    credencial; el resto sigue exigiéndola. Es el cambio más delicado del escalón 0."""
+class ApiKeyGateTests(TestCase):
+    """El gate de API key del dispatcher: TODOS los proveedores la exigen. Pollinations dejó de ser
+    la excepción cuando su tier anónimo murió (2026-07-20) — ahora es un api más, con key."""
 
-    def test_pollinations_sin_key_no_devuelve_marcador_de_sin_key(self):
+    def test_pollinations_sin_key_devuelve_marcador(self):
         from .providers import chat
-        with mock.patch('enjambre.providers.openai_compat._http_json',
-                        return_value=(True, {'choices': [{'message': {'content': 'hola'}}]})):
-            self.assertEqual(chat('pollinations', 'openai-fast', 'hi', '', timeout=5), 'hola')
+        salida = chat('pollinations', 'openai-fast', 'hi', '', timeout=5)
+        self.assertIn('sin API key', salida)
 
     def test_openai_sin_key_sigue_gateado(self):
         from .providers import chat
         salida = chat('openai', 'gpt-5.2', 'hi', '', timeout=5)
         self.assertIn('sin API key', salida)
 
-    def test_chat_agentic_pollinations_degrada_a_charla_plana(self):
-        # SEGURIDAD: un endpoint anónimo no dirige el toolbelt — chat_agentic cae a chat().
+    def test_pollinations_con_key_charla(self):
+        from .providers import chat
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'hola'}}]})):
+            self.assertEqual(chat('pollinations', 'openai-fast', 'hi', 'tok', timeout=5), 'hola')
+
+    def test_chat_agentic_pollinations_usa_el_toolbelt(self):
+        # Ahora es un api más: con key, chat_agentic corre el loop de tool-use (payload con tools).
         from .providers import chat_agentic
         with mock.patch('enjambre.providers.openai_compat._http_json',
                         return_value=(True, {'choices': [{'message': {'content': 'ok'}}]})) as m:
-            salida = chat_agentic('pollinations', 'openai-fast', 'hi', '', 5,
+            salida = chat_agentic('pollinations', 'openai-fast', 'hi', 'tok', 5,
                                   sesion=None, participante=None)
         self.assertEqual(salida, 'ok')
-        # el payload NO lleva tools (charla plana, no loop agéntico)
         payload = m.call_args[0][1]
-        self.assertNotIn('tools', payload)
+        self.assertIn('tools', payload)   # loop agéntico, no charla plana
 
 
 class PollinationsClienteTests(TestCase):
-    """El cliente del escalón 0: URL final correcta y Bearer con/sin token."""
+    """El cliente de Pollinations: URL final correcta y Bearer con el token."""
 
     def _llamar(self, api_key):
         from .providers import pollinations
@@ -595,10 +600,10 @@ class GeminiClienteTests(TestCase):
 
 
 class ClientePollinationsTests(TestCase):
-    """El registro del cliente sin_key: derivaciones y el precio $0 del escalón 0."""
+    """Pollinations pasó de silla-gratis-sin-key a proveedor por API key (tier anónimo muerto)."""
 
     def _silla(self, **kw):
-        base = dict(key='chispa-t', nombre='Chispa',
+        base = dict(key='polli-t', nombre='Polli',
                     comando=['api-pollinations', '--model', 'openai-fast'])
         base.update(kw)
         return Participante.objects.create(**base)
@@ -614,21 +619,19 @@ class ClientePollinationsTests(TestCase):
 
     def test_endpoint_url_gana_sobre_api(self):
         from .clientes import api_de
-        p = self._silla(key='chispa-ollama', endpoint_url='http://lab:11434')
+        p = self._silla(key='polli-ollama', endpoint_url='http://lab:11434')
         self.assertEqual(api_de(p), '')
 
-    def test_precio_cero(self):
-        # Regresión: 'openai-fast' no matchea PRECIOS_POR_MODELO ni FREE_MARKERS → sin la regla
-        # sin_key caería al default (3/15) y la silla gratis marcaría costo falso.
-        from .clientes import precio_silla
-        self.assertEqual(precio_silla(self._silla()), (0.0, 0.0))
+    def test_ya_no_tiene_flag_sin_key(self):
+        from .clientes import CLIENTES
+        self.assertNotIn('sin_key', CLIENTES['api-pollinations'])
 
-    def test_vault_acepta_token_opcional(self):
+    def test_vault_lo_trata_como_proveedor_con_key(self):
         from . import vault
-        self.assertIn('pollinations', vault.TODOS)
-        self.assertNotIn('pollinations', vault.PROVIDERS)
+        self.assertIn('pollinations', vault.PROVIDERS)      # ahora requiere key
+        self.assertEqual(vault.PROVIDERS_OPCIONALES, ())
 
-    def test_listar_modelos_filtra_tier_anonimo(self):
+    def test_listar_modelos_marca_no_free_y_pide_token(self):
         from .providers import listar_modelos
         catalogo = [
             {'name': 'openai-fast', 'tier': 'anonymous', 'tools': True},
@@ -637,13 +640,9 @@ class ClientePollinationsTests(TestCase):
         with mock.patch('enjambre.providers._http_get_json', return_value=catalogo):
             source, out, nota = listar_modelos('pollinations')
         self.assertEqual(source, 'live')
-        self.assertEqual([m['id'] for m in out], ['openai-fast'])  # sin token, solo anónimo
-        self.assertTrue(out[0]['free'] and out[0]['tools'])
-        self.assertIn('15 s', nota)
-        with mock.patch('enjambre.providers._http_get_json', return_value=catalogo):
-            _, out, nota = listar_modelos('pollinations', api_key='tok')
-        self.assertEqual(len(out), 2)  # con token entra el tier seed
-        self.assertEqual(nota, '')
+        self.assertEqual({m['id'] for m in out}, {'openai-fast', 'gemini-fast'})  # ya no filtra tier
+        self.assertFalse(any(m['free'] for m in out))       # nada es gratis: todo cuesta pollen
+        self.assertIn('token', nota.lower())
 
 
 class RatelimitTests(TestCase):
@@ -794,27 +793,20 @@ class RetryHttpJsonTests(TestCase):
         self.assertEqual(llamadas, 3)
 
 
-class SeedChispaTests(TestCase):
-    """La migración 0006: Chispa existe, apunta a Pollinations y es la única activa de fábrica."""
+class ChispaRetiradaTests(TestCase):
+    """La migración 0008 retira Chispa: su tier anónimo (Pollinations sin key) murió."""
 
-    def test_chispa_sembrada_activa_y_gratis(self):
-        from .clientes import api_de, precio_silla
-        chispa = Participante.objects.get(key='chispa')
-        self.assertTrue(chispa.activo)
-        self.assertTrue(chispa.permitir_consulta)
-        self.assertEqual(api_de(chispa), 'pollinations')
-        self.assertEqual(precio_silla(chispa), (0.0, 0.0))
-        self.assertEqual(Participante.objects.filter(activo=True).count(), 1)
+    def test_chispa_no_existe(self):
+        self.assertFalse(Participante.objects.filter(key='chispa').exists())
 
-    def test_chispa_trae_retrato_de_fabrica(self):
-        """0007: sale con cara, no con el cuadradito de color (es la primera impresión)."""
-        chispa = Participante.objects.get(key='chispa')
-        self.assertTrue(chispa.avatar.startswith('data:image/'))
-        self.assertLess(len(chispa.avatar), 200_000)  # tope de _avatar_limpio
+    def test_no_hay_silla_activa_de_fabrica(self):
+        # Sin Chispa, una instalación de fábrica arranca sin ninguna silla lista → la escalera
+        # empuja a sentar opencode o una API key.
+        self.assertEqual(Participante.objects.filter(activo=True).count(), 0)
 
 
 class OnboardingTests(TestCase):
-    """El estado de la escalera, con filesystem y bóveda mockeados (sin red, sin binarios)."""
+    """El estado de la escalera de 2 escalones (opencode / API keys), sin red ni binarios."""
 
     def test_arranque_de_fabrica(self):
         from . import onboarding
@@ -822,10 +814,11 @@ class OnboardingTests(TestCase):
                 mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}), \
                 mock.patch('enjambre.vault.configured_providers', return_value=[]):
             e = onboarding.escalones()
-        self.assertTrue(e[0]['listo'])    # Chispa sembrada y activa
-        self.assertFalse(e[1]['listo'])
-        self.assertFalse(e[1]['instalado'])
-        self.assertFalse(e[2]['listo'])
+        self.assertEqual(len(e), 2)
+        self.assertEqual([x['n'] for x in e], [1, 2])   # ya no hay escalón 0
+        self.assertFalse(e[0]['listo'])   # opencode: sin binario
+        self.assertFalse(e[0]['instalado'])
+        self.assertFalse(e[1]['listo'])   # keys: bóveda vacía
         self.assertFalse(onboarding.completa())
 
     def test_opencode_instalado_sin_login(self):
@@ -834,9 +827,9 @@ class OnboardingTests(TestCase):
         with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/opencode'), \
                 mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}):
             e = onboarding.escalones()
-        self.assertFalse(e[1]['listo'])
-        self.assertTrue(e[1]['instalado'])
-        self.assertFalse(e[1]['logueado'])
+        self.assertFalse(e[0]['listo'])
+        self.assertTrue(e[0]['instalado'])
+        self.assertFalse(e[0]['logueado'])
 
     def test_escalera_completa(self):
         from . import onboarding
@@ -846,14 +839,6 @@ class OnboardingTests(TestCase):
             e = onboarding.escalones()
             self.assertTrue(all(x['listo'] for x in e))
             self.assertTrue(onboarding.completa())
-
-    def test_chispa_apagada_apaga_el_escalon_0(self):
-        from . import onboarding
-        Participante.objects.filter(key='chispa').update(activo=False)
-        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None), \
-                mock.patch('enjambre.conexiones.detectar', return_value={}), \
-                mock.patch('enjambre.vault.configured_providers', return_value=[]):
-            self.assertFalse(onboarding.escalones()[0]['listo'])
 
 
 class ConfigIOTests(TestCase):

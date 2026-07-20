@@ -6,8 +6,8 @@ el worker del Enjambre en un hilo, abre el navegador y sirve la web (runserver t
 vive en su hilo, sin gevent). Es lo que corre el launcher del pendrive (enjambre.sh / Enjambre.bat).
 
 No hay caja ni cápsula: las sillas por API key hablan directo con el proveedor y, con el toolbelt
-encendido, tanto ellas como las de CLI operan la máquina real. Sin API keys tampoco te quedás
-afuera: la silla gratis (Chispa) charla sin configurar nada.
+encendido, tanto ellas como las de CLI operan la máquina real. Para arrancar, sentá una silla
+desde Conexiones: opencode (login gratis) o una API key propia.
 """
 import threading
 import webbrowser

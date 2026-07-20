@@ -1,9 +1,9 @@
 {% load i18n %}
-{% comment %} ── La ESCALERA de arranque: estado de los 3 escalones (calculado en onboarding.py, sin red).
+{% comment %} ── La ESCALERA de arranque: estado de los 2 escalones (calculado en onboarding.py, sin red).
      Autocontenido (estilos scoped): se incluye en Conexiones Y en el banner de home.
 
      Es un <details> nativo (sin JS, accesible gratis). Plegado, el `<summary>` igual muestra los
-     3 puntitos y el "N de 3": el estado se ve de un vistazo sin abrir nada. En Conexiones se
+     puntitos y el "N de 2": el estado se ve de un vistazo sin abrir nada. En Conexiones se
      incluye con `abierta=True` (ahí la escalera ES el contenido); en home va plegada, que es
      donde estorbaba. El JS del final solo recuerda si la abriste. ── {% endcomment %}
 <style>
@@ -46,19 +46,14 @@
     <div class="cx-fila" style="font-size:.85rem;padding:.25rem 0;">
         <span>
             <span class="cx-dot {% if e.listo %}on{% else %}off{% endif %}"></span>
-            {% if e.n == 0 %}
-                {% trans 'Silla gratis (sin cuentas): Chispa charla ya' %}
-            {% elif e.n == 1 %}
+            {% if e.n == 1 %}
                 {% trans 'opencode CLI (login gratis): ~6 modelos free y fabricar con /armar' %}
             {% else %}
                 {% trans 'API keys en la bóveda: todos los modelos' %}
             {% endif %}
         </span>
         <span class="enj-muted" style="font-size:.75rem;text-align:right;">
-            {% if e.n == 0 %}
-                {% if e.listo %}{% trans 'lista — 1 mensaje cada 15 s, modelo chico' %}
-                {% else %}{% trans 'encendé una silla Pollinations en Sillas' %}{% endif %}
-            {% elif e.n == 1 %}
+            {% if e.n == 1 %}
                 {% if e.listo %}{% trans 'detectado y logueado' %}
                 {% elif e.instalado %}<code>opencode auth login</code>
                 {% else %}<code>curl -fsSL https://opencode.ai/install | bash</code>{% endif %}
@@ -70,7 +65,7 @@
     </div>
     {% endfor %}
     <p class="enj-muted" style="font-size:.72rem;margin:.5rem 0 0;">
-        {% trans 'La silla gratis manda lo que escribís (y el contexto de la mesa) a un servicio público sin cuenta (Pollinations). Para trabajo sensible, usá sillas con tus propias keys o un modelo local.' %}
+        {% trans 'Las sillas mandan lo que escribís (y el contexto de la mesa) al proveedor de cada una. Para trabajo sensible, elegí bien el proveedor o usá un modelo local.' %}
     </p>
     </div>
 </details>

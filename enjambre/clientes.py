@@ -115,12 +115,13 @@ CLIENTES = {
         'modelos': ['', 'gemini-3.5-flash', 'gemini-3.1-pro', 'gemini-3-flash'],
     },
     'api-pollinations': {
-        'label': 'Pollinations (gratis, sin cuenta)',
+        'label': 'Pollinations (token de enter.pollinations.ai)',
         'api': 'pollinations',
-        'sin_key': True,  # tier anónimo: funciona sin credencial (el token gratis acelera 3×)
         'comando': ['api-pollinations'],
         'model_flag': '--model',
-        # Tier anónimo verificado 2026-07-19: UN modelo (openai-fast = GPT-OSS 20B), 1 req/15 s.
+        # El tier anónimo SIN key murió el 2026-07-20 (HTTP 402 "budget too low": Pollinations pasó
+        # a créditos "pollen"). Ahora es un proveedor por API key como cualquier otro: token de
+        # enter.pollinations.ai en la bóveda. openai-fast (GPT-OSS 20B) soporta tool-use.
         'modelos': ['', 'openai-fast'],
     },
     'ollama': {
@@ -237,11 +238,6 @@ def precio_silla(participante):
     cli = cliente_de(participante)
     mod = (modelo_de(participante) or '').lower()
     if cli == 'opencode' and any(f in mod for f in FREE_MARKERS):
-        return (0.0, 0.0)
-    # Proveedores sin_key (Pollinations): gratis en ambos tiers (el token solo acelera). Sin esta
-    # regla, 'openai-fast' no matchea ninguna tarifa y caería al default (3/15) — costo falso en
-    # el velocímetro para la silla del escalón 0.
-    if (CLIENTES.get(cli) or {}).get('sin_key'):
         return (0.0, 0.0)
     tabla = PRECIOS.get(cli)
     if tabla and mod in tabla:

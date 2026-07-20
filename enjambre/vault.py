@@ -26,11 +26,11 @@ from pathlib import Path
 from django.conf import settings
 from cryptography.fernet import Fernet, InvalidToken
 
-# Proveedores por API key soportados (espejo de los api-* de clientes.py).
-# PROVIDERS la REQUIEREN; los OPCIONALES andan sin key (tier anónimo) y el token solo mejora el
-# servicio (Pollinations: 1 req/5 s en vez de 1/15 s, con token gratis de auth.pollinations.ai).
-PROVIDERS = ('anthropic', 'openai', 'openrouter', 'gemini')
-PROVIDERS_OPCIONALES = ('pollinations',)
+# Proveedores por API key soportados (espejo de los api-* de clientes.py). TODOS requieren key.
+# (Pollinations tuvo un tier anónimo sin key hasta 2026-07-20; murió → pasó a proveedor con token,
+# ver providers/pollinations.py. PROVIDERS_OPCIONALES quedó vacío pero se conserva por compat.)
+PROVIDERS = ('anthropic', 'openai', 'openrouter', 'gemini', 'pollinations')
+PROVIDERS_OPCIONALES = ()
 TODOS = PROVIDERS + PROVIDERS_OPCIONALES
 
 # Passphrase mínima al CREAR la bóveda. El salt va EN CLARO en secrets.enc (para listar

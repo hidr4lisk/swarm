@@ -151,17 +151,15 @@ def listar_modelos(provider, api_key='', base_url=''):
                 out.append({'id': mid, 'free': bool(free), 'tools': 'tools' in sp})
             return 'live', out, ''
         if provider == 'pollinations':
-            # Público, sin key (como OpenRouter). OJO: la respuesta es una LISTA, no {'data': […]};
-            # se parsea defensivamente por si algún día cambia de forma. Cada modelo trae 'tier'
-            # ('anonymous'/'seed'/…): sin token solo los anonymous son alcanzables — listar el
-            # resto como usable sería mentir en el modal.
+            # El catálogo es público (LISTA, no {'data': […]}; se parsea defensivamente). El tier
+            # anónimo murió (2026-07-20 → HTTP 402): ahora TODO cuesta «pollen», así que ningún
+            # modelo se marca `free` y hace falta un token de enter.pollinations.ai para usarlos.
             data = _http_get_json('https://text.pollinations.ai/models', {'User-Agent': 'Swarm'})
             modelos = data if isinstance(data, list) else (data.get('data') or [])
-            tiers = ('anonymous',) if not api_key else ('anonymous', 'seed')
-            out = [{'id': m.get('name') or m.get('id') or '', 'free': True,
+            out = [{'id': m.get('name') or m.get('id') or '', 'free': False,
                     'tools': bool(m.get('tools'))}
-                   for m in modelos if m.get('tier') in tiers]
-            nota = '' if api_key else 'sin token se ve solo el tier anónimo (1 request cada 15 s)'
+                   for m in modelos if (m.get('name') or m.get('id'))]
+            nota = '' if api_key else 'necesita un token de enter.pollinations.ai (Conexiones → API keys)'
             return 'live', out, nota
         if provider == 'openai':
             if not api_key:
@@ -195,14 +193,9 @@ def listar_modelos(provider, api_key='', base_url=''):
     return 'error', [], 'este proveedor no tiene listado en vivo'
 
 
-# Proveedores que funcionan SIN credencial (tier anónimo). La key sigue siendo opcional y útil
-# (en Pollinations el token gratis triplica el rate limit), pero su ausencia no es error.
-SIN_KEY = frozenset({'pollinations'})
-
-
 def chat(provider, model, prompt, api_key, timeout, base_url=''):
     """Dispatcher: llama al cliente del proveedor. Devuelve el texto o un marcador de ruido."""
-    if provider not in SIN_KEY and not (api_key or '').strip():
+    if not (api_key or '').strip():
         return '(❌ sin API key para este proveedor — cargala en Conexiones → API keys, o desbloqueá la bóveda)'
     if provider == 'pollinations':
         from . import pollinations as p
@@ -225,13 +218,11 @@ def chat(provider, model, prompt, api_key, timeout, base_url=''):
 def chat_agentic(provider, model, prompt, api_key, timeout, sesion, participante, base_url=''):
     """Como chat() pero con el LOOP DE TOOL-USE del toolbelt (F3): la silla puede inspeccionar y
     operar la máquina real. El `system` OS-aware con las reglas lo arma toolbelt.system_prompt()."""
-    if provider not in SIN_KEY and not (api_key or '').strip():
+    if not (api_key or '').strip():
         return '(❌ sin API key para este proveedor — cargala en Conexiones → API keys, o desbloqueá la bóveda)'
     if provider == 'pollinations':
-        # SEGURIDAD: sin toolbelt sobre un endpoint anónimo — un tercero no autenticado no dirige
-        # ejecución de herramientas en la máquina del usuario. Degrada a charla plana.
         from . import pollinations as p
-        return p.chat(model, prompt, api_key, timeout)
+        return p.chat_agentic(model, prompt, api_key, timeout, sesion, participante)
     from .. import toolbelt
     system = toolbelt.system_prompt()
     if provider == 'anthropic':

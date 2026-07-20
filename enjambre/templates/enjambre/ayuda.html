@@ -58,9 +58,8 @@
         <h2><i class="fas fa-bug"></i> {% trans '¿Qué es esto?' %}</h2>
         <p style="margin:.2rem 0;">
             {% blocktrans %}Una <strong>mesa de trabajo multi-agente</strong>: varias IAs se sientan como
-            <strong>sillas</strong> de una misma mesa — CLIs que ya tenés logueados en tu terminal,
-            modelos por <strong>API key</strong> (guardada en la bóveda cifrada) o la
-            <strong>silla gratis</strong> que viene de fábrica y anda sin configurar nada.
+            <strong>sillas</strong> de una misma mesa — CLIs que ya tenés logueados en tu terminal o
+            modelos por <strong>API key</strong> (guardada en la bóveda cifrada).
             Vos preguntás; las sillas <strong>charlan, debaten</strong> y, si se lo pedís,
             <strong>fabrican archivos de verdad</strong> en la carpeta git de la mesa.{% endblocktrans %}
         </p>
@@ -73,15 +72,12 @@
 
     <div class="ay-seccion enj-card">
         <h2><i class="fas fa-play"></i> {% trans 'Primeros pasos — la escalera' %}</h2>
-        <div class="ay-paso"><span class="n">0</span><span>
-            {% blocktrans %}<strong>Nada que configurar</strong>: la silla gratis (<span class="ay-code">Chispa</span>)
-            ya está sentada. Creá una mesa y probá — es el escalón cero de la escalera que
-            ves en la portada.{% endblocktrans %}</span></div>
         <div class="ay-paso"><span class="n">1</span><span>
             {% blocktrans %}Entrá a <a href="/conexiones/">Conexiones</a>: te muestra qué CLIs
             tienen login detectado en tu máquina (<span class="ay-code">claude</span>,
             <span class="ay-code">opencode</span>, <span class="ay-code">agy</span>).
-            <span class="ay-code">opencode</span> tiene login gratis si no tenés ninguno.{% endblocktrans %}</span></div>
+            <span class="ay-code">opencode</span> tiene login gratis si no tenés ninguno — es la
+            forma más rápida de tener una silla andando.{% endblocktrans %}</span></div>
         <div class="ay-paso"><span class="n">2</span><span>
             {% blocktrans %}¿Tenés API keys? Cargalas en <a href="/conexiones/">Conexiones → API keys</a>:
             quedan en la <strong>bóveda</strong>, cifradas con una passphrase que elegís vos.{% endblocktrans %}</span></div>
@@ -115,7 +111,7 @@
                         firma paga, no es un virus: clic en <strong>«Más información»</strong> y después
                         <strong>«Ejecutar de todos modos»</strong>. El código es público en GitHub, cualquiera lo puede
                         revisar.{% endblocktrans %}</li>
-                    <li>{% trans 'Se abre una ventana negra un momento (está preparando todo) y después el navegador, con la mesa ya charlando con Chispa.' %}</li>
+                    <li>{% trans 'Se abre una ventana negra un momento (está preparando todo) y después el navegador. Sentá tu primera silla desde Conexiones (opencode con login gratis, o una API key) y creá una mesa.' %}</li>
                     <li>{% trans 'La primera vez en cada PC te pregunta si instalar ahí (arranca más rápido después) o correr sin dejar rastro — elegí lo que prefieras.' %}</li>
                 </ol>
             </div>
@@ -225,8 +221,7 @@
                     <span class="ay-code">opencode</span> (OpenCode, multi-modelo),
                     <span class="ay-code">agy</span> (Antigravity),
                     <span class="ay-code">ollama</span> (un modelo local tuyo, por URL),
-                    un proveedor por <strong>API key</strong> (Anthropic, OpenRouter, Gemini, compatibles OpenAI)
-                    o la <strong>silla gratis</strong> sin key (Pollinations){% endblocktrans %}</td></tr>
+                    o un proveedor por <strong>API key</strong> (Anthropic, OpenRouter, Gemini, Pollinations, compatibles OpenAI){% endblocktrans %}</td></tr>
                 <tr><td><strong>Prompt</strong></td><td>{% trans 'la personalidad: quién es y cómo responde (↺ Reset vuelve al de fábrica)' %}</td></tr>
                 <tr><td><strong>{% trans 'Recordatorio' %}</strong></td><td>{% trans 'se repite al final de cada turno (lo que no debe olvidar)' %}</td></tr>
                 <tr><td><strong>{% trans 'Especialidad' %}</strong></td><td>{% trans 'pista corta para que el líder reparta mejor' %}</td></tr>
@@ -267,8 +262,7 @@
             <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
                 {% blocktrans %}Viene <strong>apagado</strong>; se enciende en <a href="/conexiones/">Conexiones</a>.
                 Todo queda registrado en la <a href="/bitacora/">Bitácora</a> de la mesa: las acciones de las sillas
-                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo.
-                La silla gratis solo conversa: no usa el toolbelt.{% endblocktrans %}
+                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo.{% endblocktrans %}
             </p>
         </div>
         <div class="enj-card">
