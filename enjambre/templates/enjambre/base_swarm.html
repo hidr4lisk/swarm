@@ -69,6 +69,22 @@ extienden de acá sin cambios.
     </header>
 
     <main>
+        {# Avisos de las vistas que redirigen («config importada», «no subiste archivo»…).
+           Se consumen al pintarlos: no reaparecen al recargar. #}
+        {% if messages %}
+        <style>
+            .enj-msgs { margin: 0 0 1rem; display: flex; flex-direction: column; gap: .4rem; }
+            .enj-msg { border: 1px solid var(--enj-border); border-left: 3px solid var(--accent-color);
+                border-radius: 8px; padding: .55rem .8rem; font-size: .85rem;
+                background: rgba(var(--accent-rgb), .07); }
+            .enj-msg.success { border-left-color: #2ecc40; background: rgba(46, 204, 64, .07); }
+            .enj-msg.warning { border-left-color: #e0a800; background: rgba(224, 168, 0, .08); }
+            .enj-msg.error   { border-left-color: #c0392b; background: rgba(192, 57, 43, .08); }
+        </style>
+        <div class="enj-msgs" role="status" aria-live="polite">
+            {% for m in messages %}<div class="enj-msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+        </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 

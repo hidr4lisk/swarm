@@ -24,12 +24,16 @@ INSTALLED_APPS = [
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
+    'django.contrib.messages',
     'django.contrib.staticfiles',
     'enjambre',
 ]
 
 # Sin login humano, pero sessions+auth quedan para que request.user exista (AnonymousUser)
 # y CSRF proteja los POST de la mesa.
+# `messages` es el canal de avisos «acción hecha / algo falló» de las vistas que redirigen:
+# el aviso se calcula en el POST y se pinta después del redirect (lo muestra base_swarm.html,
+# una sola vez). Guardado en la sesión, que ya está montada.
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -37,6 +41,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
 ]
 
 ROOT_URLCONF = 'swarm.urls'
@@ -50,6 +55,7 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
             ],
         },
     },

@@ -1946,7 +1946,7 @@ msgstr "Upload an exported config file"
 msgid "Importar"
 msgstr "Import"
 
-#: enjambre/templates/enjambre/sillas.html:0
+#: enjambre/views.py:0
 msgid ""
 "Config importada: %(n)s nueva(s), %(a)s actualizada(s), %(b)s borrada(s)."
 msgstr "Config imported: %(n)s new, %(a)s updated, %(b)s deleted."

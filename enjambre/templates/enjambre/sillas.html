@@ -30,14 +30,10 @@
     .enj-silla-sum-nombre { min-width:0; }
     .enj-silla-sum-meta { font-size:.68rem; margin-left:0; width:100%; white-space:normal; text-align:left; }
 }
-/* Exportar/Importar config: botones chicos de la toolbar + banner del resultado. */
+/* Exportar/Importar config: botones chicos de la toolbar. El resultado lo pinta el bloque
+   de `messages` de base_swarm.html (canal común a toda la app). */
 .enj-cfg-btn { display:inline-flex; align-items:center; gap:.35rem; text-decoration:none;
     font-size:.82rem; white-space:nowrap; }
-.enj-import-rep { border:1px solid var(--enj-border); border-left:3px solid #2ecc40;
-    border-radius:8px; padding:.55rem .8rem; margin:0 0 1rem; font-size:.85rem;
-    background:rgba(46,204,64,.07); }
-.enj-import-rep.enj-import-err { border-left-color:#c0392b; background:rgba(192,57,43,.08); }
-.enj-import-aviso { font-size:.78rem; opacity:.85; margin-top:.25rem; }
 .enj-fieldlabel { font-size:.7rem; opacity:.7; display:block; margin-bottom:.1rem; }
 .enj-saved-btn { font-size:.78rem; }
 .enj-saved-btn:disabled { opacity:.55; cursor:default; }
@@ -140,17 +136,6 @@
         </form>
     </div>
 
-    {% if import_rep %}
-    <div class="enj-import-rep{% if import_rep.error %} enj-import-err{% endif %}">
-        {% if import_rep.error %}
-            <strong><i class="fas fa-circle-exclamation"></i> {{ import_rep.error }}</strong>
-        {% else %}
-            <strong><i class="fas fa-circle-check"></i>
-                {% blocktrans with n=import_rep.creadas a=import_rep.actualizadas b=import_rep.borradas %}Config importada: {{ n }} nueva(s), {{ a }} actualizada(s), {{ b }} borrada(s).{% endblocktrans %}</strong>
-            {% for aviso in import_rep.avisos %}<div class="enj-import-aviso">⚠ {{ aviso }}</div>{% endfor %}
-        {% endif %}
-    </div>
-    {% endif %}
 
     {# Modelos por cliente para el JS (poblar el <select> de modelo) #}
     {{ clientes_meta|json_script:"clientes-meta" }}
