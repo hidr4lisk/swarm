@@ -322,6 +322,13 @@ ESCALERA: qué desbloquea cada escalón (silla gratis → CLI opencode → API k
 
 Tus datos (base + bóveda de keys) viven en la carpeta data/ de este pendrive.
 
+¿Ya tenías tus sillas armadas en otra PC o en una versión anterior? No las rehagas a mano:
+en "Sillas" (arriba) tenés EXPORTAR e IMPORTAR. Exportar te baja un archivo .json con toda tu
+config —nombres, modelos, prompts, retratos, colores y orden—; importarlo acá te la repone.
+Al importar elegís FUSIONAR (pisa las que coinciden y agrega las nuevas, sin borrar nada) o
+REEMPLAZAR (deja la mesa igual al archivo). Ese archivo NO lleva credenciales: las API keys
+quedan cifradas en la bóveda, aparte — en la máquina nueva las cargás una vez.
+
 Para que las sillas puedan OPERAR la máquina donde enchufás el pendrive (revisar disco, procesos,
 proponer arreglos), prendé el TOOLBELT desde la interfaz: "Conexiones → Toolbelt" y activá el
 switch (arranca apagado, no hace falta editar nada). Ojo: es poderoso — las LECTURAS son
