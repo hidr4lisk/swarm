@@ -240,8 +240,10 @@
 
     <!-- Comandos (solo control) + globito de Participantes (hover/tap, se abre hacia arriba) -->
     <div class="enj-chips">
-        {% if sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo %}
+        {% if sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo and toolbelt_on %}
         <span class="enj-chip enj-lider-chip" title="{% trans 'Modo Líder: el líder descompone tu pedido en subtareas, las reparte y al final integra; @silla habla directo a una' %}">👑 {% trans 'Líder' %}: {{ sesion.lider.nombre }}</span>
+        {% elif sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo %}
+        <span class="enj-chip enj-lider-chip" title="{% trans 'El modo Líder necesita el TOOLBELT encendido: sin él las sillas solo hablan, no hay trabajo que coordinar → la mesa corre PLANA. Prendé el toolbelt en Conexiones.' %}">⚠️ {% trans 'Líder → Plana (prendé el toolbelt)' %}</span>
         {% elif sesion.topologia == 'lider' %}
         <span class="enj-chip enj-lider-chip" title="{% trans 'La mesa está en modo Líder pero el líder está inactivo o sin asignar → corre PLANA. Asigná un líder activo en ⚙ Sillas de la mesa.' %}">⚠️ {% trans 'Líder caído → Plana' %}</span>
         {% else %}
@@ -358,6 +360,8 @@
                         <p class="enj-muted" style="margin:.1rem 0 .2rem;font-size:.78rem;">
                             {% blocktrans %}En modo Líder, el líder descompone tu pedido en subtareas, se las reparte a las
                             otras sillas y al final integra todo. Con <code>@silla</code> hablás directo a una.{% endblocktrans %}
+                            <br><strong>{% blocktrans %}Necesita el toolbelt encendido{% endblocktrans %}</strong>{% blocktrans %}: sin él las sillas
+                            solo hablan y no hay trabajo que coordinar, así que la mesa corre plana.{% endblocktrans %}
                         </p>
                         <label class="enj-topo-row">
                             <span>💸 {% trans 'Tope de gasto (USD)' %}</span>

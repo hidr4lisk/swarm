@@ -405,6 +405,7 @@ def fijar_sesion(request, pk):
 
 @requiere_acceso
 def mesa(request, pk):
+    from . import toolbelt
     if not _can_access(request):
         return HttpResponseForbidden("Sin acceso al Enjambre.")
     sesion = get_object_or_404(Sesion, pk=pk)
@@ -457,6 +458,9 @@ def mesa(request, pk):
         'tokens_total': tokens_total,
         'gasto_por_silla': gasto_por_silla,
         'color_humano': COLOR_HUMANO,
+        # El modo Líder necesita el toolbelt encendido (sin él las sillas solo hablan, no hay
+        # trabajo que coordinar) → el chip y la ayuda de ⚙ lo avisan. Ver Enjambre.liderar.
+        'toolbelt_on': toolbelt.habilitado(),
     })
 
 

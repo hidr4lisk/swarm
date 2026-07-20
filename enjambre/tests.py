@@ -1127,7 +1127,20 @@ class ModoMaquinaCliTests(TestCase):
         with mock.patch('enjambre.engine.ejecutar_http', return_value=('hola', False)) as http:
             Enjambre(self.sesion).enviar(local, 'hola')
         self.assertTrue(http.called)
-        self.assertFalse(Accion.objects.exists())
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_el_lider_opera_la_maquina_como_una_silla_mas(self, _h):
+        """Bug real (Parrot, Mesa 2): el líder integraba en un modo lee-RO con el comando de CHARLA
+        (sin el flag de auto-aprobación) y opencode auto-rechazaba al querer verificar el resultado
+        en la máquina real. Ahora el líder no es un caso aparte: opera la máquina como cualquiera."""
+        with self._parche_cli('verifiqué /home/fede/nombres.txt, quedó completo') as run:
+            # editar=False es como lo llama `liderar` cuando el líder coordina con workers.
+            Enjambre(self.sesion).enviar(self.cli, 'integrá lo que hicieron', editar=False)
+        cli = [c for c in run.call_args_list if 'git' not in str(c.args[0][0])][0]
+        self.assertIn('--agent', cli.args[0])                       # comando agéntico, no charla
+        self.assertEqual(cli.kwargs['cwd'], toolbelt_mod.cwd_maquina())  # sobre la máquina real
+        acc = Accion.objects.get(sesion=self.sesion)                # y el turno queda auditado
+        self.assertEqual(acc.herramienta, 'cli_maquina')
 
     def test_el_footer_muestra_la_version(self):
         """El footer dice qué versión estás corriendo: es lo primero que se pregunta cuando
@@ -1154,3 +1167,37 @@ class ModoMaquinaCliTests(TestCase):
         # es_cli sigue distinguiendo POR DÓNDE actúa cada backend (cwd vs rutas absolutas).
         self.assertTrue(es_cli(self.cli))
         self.assertFalse(es_cli(api))
+
+
+class LiderNecesitaToolbeltTests(TestCase):
+    """El modo LÍDER solo se habilita con el toolbelt encendido: apagado, las sillas solo hablan
+    y no hay trabajo que coordinar, así que la mesa líder degrada a PLANA (como el líder inactivo)."""
+
+    def setUp(self):
+        from .models import Topologia
+        self.sesion = Sesion.objects.create(nombre='conduccion', topologia=Topologia.LIDER)
+        self.lider = Participante.objects.create(key='pr', nombre='PickleRick',
+                                                 comando=['opencode', 'run'], activo=True)
+        self.otra = Participante.objects.create(key='neo', nombre='Neo',
+                                                comando=['opencode', 'run'], activo=True)
+        self.sesion.participantes.add(self.lider, self.otra)
+        self.sesion.lider = self.lider
+        self.sesion.save()
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=False)
+    def test_toolbelt_off_la_mesa_lider_corre_plana(self, _h):
+        with mock.patch.object(Enjambre, 'responder', return_value={}) as plana:
+            Enjambre(self.sesion).liderar('hola mesa')
+        self.assertTrue(plana.called)   # cayó a plana, no repartió como líder
+        aviso = Mensaje.objects.filter(sesion=self.sesion, es_sistema=True).last()
+        self.assertIsNotNone(aviso)
+        self.assertIn('toolbelt', aviso.texto.lower())
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_toolbelt_on_el_lider_toma_la_posta(self, _h):
+        """Con el toolbelt encendido NO degrada a plana: entra al flujo de líder (planifica)."""
+        with mock.patch.object(Enjambre, 'responder', return_value={}) as plana:
+            with mock.patch.object(Enjambre, 'enviar', return_value='(plan)') as env:
+                Enjambre(self.sesion).liderar('hola mesa')
+        self.assertFalse(plana.called)  # no degradó
+        self.assertTrue(env.called)     # el líder arrancó su turno

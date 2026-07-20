@@ -214,21 +214,17 @@ def ejecutar_api(participante, provider, prompt, timeout, sesion=None):
     return salida, es_ruido(salida)
 
 
-def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, workdir_ro=None,
+def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
                  sesion=None, cwd_maquina=None):
     """Corre la silla con el prompt dado. Devuelve (salida, ruido).
 
     Sillas de modelo local (endpoint_url seteado) van por HTTP (ejecutar_http); las sillas por API
     key (api-*) van por HTTP al proveedor (ejecutar_api); el resto son CLIs por subprocess. Si
-    `workdir` está dado (worktree aislado), el CLI trabaja ahí: vía runner se exporta
-    ENJAMBRE_WORKDIR (el wrapper lo monta en /work); sin runner, es el cwd. `comando` permite
-    override (ej: el de fabricación vs el de charla). `workdir_ro` (excluyente con `workdir`):
-    monta esa carpeta en /work SOLO-LECTURA — para que el líder lea/grepee el código real sin
-    poder editar (exporta ENJAMBRE_WORKDIR_RO).
+    `workdir` está dado (la carpeta de la mesa), el CLI fabrica ahí: es el cwd y se exporta
+    ENJAMBRE_WORKDIR. `comando` permite override (ej: el de fabricación vs el de charla).
 
-    `cwd_maquina` (modo máquina, toolbelt ON): corre sobre el equipo real desde esa carpeta. NO
-    exporta ENJAMBRE_WORKDIR a propósito — con el runner, el wrapper montaría solo /work y la
-    silla quedaría encerrada en el contenedor, que es lo contrario de operar la máquina.
+    `cwd_maquina` (modo máquina, toolbelt ON): corre sobre el equipo real desde esa carpeta, sin
+    exportar ENJAMBRE_WORKDIR — no queremos encerrar la silla en la carpeta de la mesa.
     """
     if participante.endpoint_url and not comando:
         return ejecutar_http(participante, prompt, timeout)
@@ -243,9 +239,6 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, work
     elif workdir:
         env['ENJAMBRE_WORKDIR'] = str(workdir)
         cwd = str(workdir)
-    elif workdir_ro:
-        env['ENJAMBRE_WORKDIR_RO'] = str(workdir_ro)
-        cwd = str(workdir_ro)
     argv = list(comando or participante.comando)
     if argv:
         # El CLI se invoca directo: si el binario no está en el PATH del proceso (arranque por
@@ -345,7 +338,7 @@ class Enjambre:
         rol = resolver(self.sesion.creador) if callable(resolver) else 'control'
         return rol == 'consulta'
 
-    def construir_prompt(self, participante, texto, editar=False, leer=False, maquina=False,
+    def construir_prompt(self, participante, texto, editar=False, maquina=False,
                          cli=True, carpeta=None):
         ctx = self.contexto()
         sillas = self.sillas()
@@ -360,15 +353,6 @@ class Enjambre:
                 "trabajar y dejá ahí decisiones/TODOs/contexto para los próximos turnos. Hacé lo que "
                 "la mesa acordó y al final contá CONCRETAMENTE qué archivos tocaste. No afirmes "
                 "cambios que no hiciste."
-            )
-        elif leer:
-            encuadre = (
-                "IMPORTANTE: como LÍDER tenés la CARPETA DE TRABAJO de esta mesa montada en tu "
-                "DIRECTORIO ACTUAL en modo SOLO-LECTURA. LEÉ/GREPEÁ los archivos REALES (incluido "
-                "`NOTAS.md`, la memoria compartida) ANTES de repartir o integrar: NO planifiques a "
-                "ciegas ni adivines el contenido — abrí el código y citá `archivo:línea` cuando "
-                "corresponda. NO podés editar ni crear archivos (eso es de las sillas de trabajo); si "
-                "algo hay que cambiar, decílo en la subtarea apuntando al archivo y la línea."
             )
         elif maquina:
             from . import toolbelt
@@ -405,13 +389,11 @@ class Enjambre:
             f"RECORDÁ TU ESTILO: {participante.recordatorio}"
         )
 
-    def enviar(self, participante, texto, editar=False, leer=False):
+    def enviar(self, participante, texto, editar=False):
         """Dispatch a una silla y persiste su respuesta. Devuelve el texto crudo.
 
         Si `editar` y la silla puede (control + CLI), corre en modo AGÉNTICO con la carpeta de la
-        mesa como cwd: lee/crea/edita archivos ahí; después se commitea y se postea el diff.
-        Si `leer` (y la silla es CLI, no fabrica en este turno), monta la carpeta de la mesa
-        SOLO-LECTURA: el líder lee/grepea el código real para planificar/integrar sin editar."""
+        mesa como cwd: lee/crea/edita archivos ahí; después se commitea y se postea el diff."""
         from .clientes import es_cli, puede_actuar
         from . import toolbelt
         # UN SOLO PERMISO para tocar cosas: el switch del toolbelt (ver clientes.puede_actuar).
@@ -422,13 +404,16 @@ class Enjambre:
         #   · API (siempre) → modo máquina vía el toolbelt interceptado de `chat_agentic`. No monta
         #     workdir porque sus herramientas escriben por RUTA ABSOLUTA, no por cwd: para que
         #     fabrique en la mesa hay que DECIRLE la carpeta (`carpeta`, más abajo).
+        # El LÍDER no es un caso aparte: como el modo líder exige el toolbelt (ver `liderar`), el
+        # líder siempre puede actuar → entra a modo máquina y coordina desde ahí con acceso completo
+        # (antes iba en un modo lee-RO de la carpeta que se auto-rechazaba al tocar la máquina real).
         actua = puede_actuar(participante)
         cli = es_cli(participante)
         puede = editar and not self._es_consulta() and actua and cli
-        maquina = not puede and not leer and not self._es_consulta() and actua
+        maquina = not puede and not self._es_consulta() and actua
         # API a la que se le pidió `/armar`: opera la máquina, pero apuntada a la carpeta de la mesa.
         fabrica_api = maquina and not cli and editar and not self._es_consulta()
-        workdir = comando = base = workdir_ro = None
+        workdir = comando = base = None
         cwd_maq = carpeta = None
         timeout = self.sesion.timeout
         if maquina:
@@ -447,21 +432,15 @@ class Enjambre:
             base = _git(workdir, 'rev-parse', 'HEAD', check=False)
             # Fabricar tarda más que charlar: subir el techo para no matar el turno a mitad.
             timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
-        elif leer and not participante.endpoint_url:
-            # Líder en planeo/integración: carpeta de la mesa montada SOLO-LECTURA (lee/grepea el
-            # código real, no a ciegas) sin editar ni commitear. Las sillas HTTP no montan FS.
-            from .workspace import mesa_workspace
-            workdir_ro = str(mesa_workspace(self.sesion))
         prompt = self.construir_prompt(participante, texto, editar=puede,
-                                       leer=bool(workdir_ro), maquina=maquina,
-                                       cli=cli, carpeta=carpeta)
+                                       maquina=maquina, cli=cli, carpeta=carpeta)
         modo = ('fabrica en la mesa (API)' if fabrica_api else
                 'opera la máquina' if maquina else
-                'fabrica' if puede else ('lee (ro)' if workdir_ro else 'charla'))
+                'fabrica' if puede else 'charla')
         self.log(f"▶ {participante.nombre} · {modo} (timeout {timeout}s)", nivel='paso')
         t0 = time.monotonic()
         salida, ruido = ejecutar_cli(participante, prompt, timeout,
-                                     workdir=workdir, comando=comando, workdir_ro=workdir_ro,
+                                     workdir=workdir, comando=comando,
                                      sesion=self.sesion, cwd_maquina=cwd_maq)
         dt = time.monotonic() - t0
         # Velocímetro: estimación uniforme tokens ≈ len/4; costo notional por tarifa de la
@@ -954,6 +933,23 @@ class Enjambre:
         if lider is None or not lider.activo or self.mencion(texto) is not None:
             return self.responder(texto, on_respuesta=on_respuesta)
 
+        # El líder SOLO tiene sentido con el toolbelt ENCENDIDO. Apagado, todas las sillas solo
+        # hablan (no construyen), así que un líder que "coordina charla" no aporta nada que plana no
+        # dé — y encima el modo lee-RO de la carpeta se auto-rechazaba. Con el toolbelt off la mesa
+        # líder corre PLANA (misma degradación graceful que el líder inactivo): al prenderlo, el
+        # líder vuelve solo. Ver la nota del switch en Conexiones.
+        from . import toolbelt
+        if not toolbelt.habilitado():
+            self.log("⚠️ toolbelt apagado — la mesa líder corre PLANA (solo charla)", nivel='error')
+            ult_sis = (self.sesion.mensajes.filter(es_sistema=True).order_by('-id')
+                       .values_list('texto', flat=True).first() or '')
+            if 'toolbelt' not in ult_sis.lower():
+                self.guardar("Enjambre", "ℹ️ El modo LÍDER necesita el TOOLBELT encendido (sin él las "
+                             "sillas solo responden texto, no hay trabajo que coordinar). Esta mesa "
+                             "corre PLANA por ahora; prendé el toolbelt en Conexiones para que el "
+                             f"líder ({lider.nombre}) tome la posta.", sistema=True)
+            return self.responder(texto, on_respuesta=on_respuesta)
+
         comando, limpio = parse_comando(texto)
         if comando and self._es_consulta():
             comando, limpio = None, texto  # consulta: el verbo no fabrica, es charla
@@ -988,10 +984,10 @@ class Enjambre:
                  nivel='paso')
 
         # 1) El líder planifica y reparte (si está solo, responde/fabrica el pedido directo).
-        #    `leer=True`: con workers, el líder NO fabrica pero ve la carpeta read-only para no
-        #    planificar a ciegas. Si está solo y es /armar, `puede` gana y fabrica (leer se ignora).
+        #    Con workers, el líder no fabrica en la carpeta (editar=False) pero igual entra a modo
+        #    máquina (el toolbelt está ON por el gate de arriba): coordina y puede mirar la máquina.
         plan = self.enviar(lider, _prompt_plan(pedido, workers, editar) if workers else pedido,
-                           editar=(editar and not workers), leer=bool(workers))
+                           editar=(editar and not workers))
         if on_respuesta:
             on_respuesta(lider, plan)
         resultados = {lider.key: plan}
@@ -1033,7 +1029,7 @@ class Enjambre:
             f"@{s.alias} ({s.nombre}):\n{resultados.get(s.key, '(sin respuesta)')}"
             for s, _ in asignaciones
         )
-        cierre = self.enviar(lider, _prompt_integracion(pedido, resumen), leer=True)
+        cierre = self.enviar(lider, _prompt_integracion(pedido, resumen))
         if on_respuesta:
             on_respuesta(lider, cierre)
         resultados[lider.key] = cierre
