@@ -207,6 +207,13 @@ def _log(sesion, participante, herramienta, comando, salida, estado, es_mutacion
     )
 
 
+def _aviso(sesion, texto):
+    """Aviso de sistema en la mesa (lo que el humano VE pasar por SSE). Único punto donde el
+    toolbelt crea Mensajes: emisor 'Enjambre' + es_sistema=True, uniforme en todos los sitios."""
+    from .models import Mensaje
+    return Mensaje.objects.create(sesion=sesion, emisor='Enjambre', es_sistema=True, texto=texto)
+
+
 # ── Ejecución de lecturas ─────────────────────────────────────────────────────────
 def _correr_readonly(comando, timeout=INSPECT_TIMEOUT):
     """Corre `comando` read-only. Devuelve (salida, error). El gate es la allowlist del primer
@@ -407,13 +414,11 @@ def ejecutar_tool(name, args, sesion, participante):
         estado = Accion.Estado.EJECUTADA if rc == 0 else Accion.Estado.ERROR
         _log(sesion, participante, 'apply_fix', comando, out, estado,
              es_mutacion=True, motivo=motivo)
-        from .models import Mensaje
         icono = '🔧' if rc == 0 else '⚠️'
-        Mensaje.objects.create(
-            sesion=sesion, emisor='Enjambre', es_sistema=True,
-            texto=(f"{icono} {participante.nombre if participante else 'Una silla'} ejecutó un CAMBIO "
-                   f"en el sistema (rc {rc}):\n\n$ {comando}\n"
-                   f"Motivo: {motivo or '(no especificado)'}\n\n{out[:1500]}"))
+        _aviso(sesion,
+               f"{icono} {participante.nombre if participante else 'Una silla'} ejecutó un CAMBIO "
+               f"en el sistema (rc {rc}):\n\n$ {comando}\n"
+               f"Motivo: {motivo or '(no especificado)'}\n\n{out[:1500]}")
         return f'(rc {rc})\n{out}'
     if name == 'write_file':
         ruta = (args.get('ruta') or '').strip()
@@ -423,11 +428,9 @@ def ejecutar_tool(name, args, sesion, participante):
              Accion.Estado.EJECUTADA if ok else Accion.Estado.ERROR,
              es_mutacion=True, motivo=motivo)
         if ok:
-            from .models import Mensaje
-            Mensaje.objects.create(
-                sesion=sesion, emisor='Enjambre', es_sistema=True,
-                texto=(f"📝 {participante.nombre if participante else 'Una silla'} escribió un archivo:\n"
-                       f"{out}" + (f"\nMotivo: {motivo}" if motivo else '')))
+            _aviso(sesion,
+                   f"📝 {participante.nombre if participante else 'Una silla'} escribió un archivo:\n"
+                   f"{out}" + (f"\nMotivo: {motivo}" if motivo else ''))
         return out
     return f'(❌ herramienta desconocida: {name})'
 
@@ -439,7 +442,7 @@ def ejecutar_tool(name, args, sesion, participante):
 def ejecutar_pendiente(accion, aprobada_por):
     """Aprueba y ejecuta una Acción pendiente EN EL HOST (shell=True: ya la revisó un humano).
     Actualiza la Acción y postea el resultado en la mesa. Idempotente sobre no-pendientes."""
-    from .models import Accion, Mensaje
+    from .models import Accion
     if accion.estado != Accion.Estado.PENDIENTE:
         return accion
     try:
@@ -461,25 +464,23 @@ def ejecutar_pendiente(accion, aprobada_por):
     accion.aprobada_por, accion.resuelto_at = aprobada_por, timezone.now()
     accion.save()
     icono = '✅' if estado == Accion.Estado.EJECUTADA else '⚠️'
-    Mensaje.objects.create(
-        sesion=accion.sesion, emisor='Enjambre', es_sistema=True,
-        texto=f"{icono} {aprobada_por} aprobó y se ejecutó (rc {rc}):\n$ {accion.comando}\n\n{out[:1500]}")
+    _aviso(accion.sesion,
+           f"{icono} {aprobada_por} aprobó y se ejecutó (rc {rc}):\n$ {accion.comando}\n\n{out[:1500]}")
     return accion
 
 
 def rechazar_pendiente(accion, por, motivo=''):
     """Marca una Acción pendiente como rechazada (no se ejecuta) y lo avisa en la mesa."""
-    from .models import Accion, Mensaje
+    from .models import Accion
     if accion.estado != Accion.Estado.PENDIENTE:
         return accion
     accion.estado = Accion.Estado.RECHAZADA
     accion.aprobada_por, accion.resuelto_at = por, timezone.now()
     accion.salida = (motivo or 'Rechazada por el técnico.')[:20000]
     accion.save()
-    Mensaje.objects.create(
-        sesion=accion.sesion, emisor='Enjambre', es_sistema=True,
-        texto=f"🚫 {por} rechazó el cambio propuesto:\n$ {accion.comando}"
-              + (f"\nNota: {motivo}" if motivo else ''))
+    _aviso(accion.sesion,
+           f"🚫 {por} rechazó el cambio propuesto:\n$ {accion.comando}"
+           + (f"\nNota: {motivo}" if motivo else ''))
     return accion
 
 

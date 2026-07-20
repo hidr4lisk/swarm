@@ -26,6 +26,7 @@ data/.secrets.runtime.json
 data/.ratelimit.json
 data/.ratelimit.tmp
 data/.ratelimit.lock/
+data/.secret_key
 secrets.enc
 .secrets.runtime.json
 

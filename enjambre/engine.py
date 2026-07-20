@@ -97,6 +97,10 @@ TRIGGERS_SEGUI = ('/seguí', '/segui')        # corre la próxima iteración hac
 TRIGGER_AUTO = '/auto'                        # pasa un continuo en curso a automático
 TRIGGER_CERRAR = '/cerrar'                     # cierra la mesa con un resumen (qué se hizo + costo)
 
+# Centinela de _comando_control: "este texto NO era un comando de control, seguí con build/charla".
+# Se distingue de {} (resultado vacío legítimo de un comando ya manejado, ej. /alto).
+_SIN_MANEJAR = object()
+
 
 def parse_comando(texto):
     """Devuelve (comando, texto_limpio). comando ∈ {'build','undo','debate','alto','continuo',
@@ -905,6 +909,30 @@ class Enjambre:
             agrupado[silla.key][1].append(m.group(2).strip())
         return [(agrupado[k][0], "\n".join(agrupado[k][1])) for k in orden]
 
+    def _comando_control(self, comando, limpio, texto, on_respuesta=None):
+        """Comandos de mesa comunes a las DOS topologías (líder y plana): undo/volver/alto/cerrar/
+        continuo/debate. Único punto de verdad de estos triggers → líder y plana no divergen.
+
+        Devuelve el dict de resultado si el comando se manejó acá; `_SIN_MANEJAR` si no es un
+        comando de control (build y charla los resuelve cada topología a su manera)."""
+        if comando == 'undo':
+            self.deshacer()
+            return {}
+        if comando == 'volver':
+            self.volver(limpio)
+            return {}
+        if comando == 'alto':
+            self.detener()
+            return {}
+        if comando == 'cerrar':
+            self.cerrar(limpio)
+            return {}
+        if comando in ('continuo', 'segui', 'auto'):
+            return self._continuo_iteracion(comando, limpio, on_respuesta=on_respuesta)
+        if comando == 'debate':
+            return self.debatir(limpio or texto, on_respuesta=on_respuesta)
+        return _SIN_MANEJAR
+
     def liderar(self, texto, on_respuesta=None):
         """Modo LÍDER (NO guarda el turno del humano: ya persistido por la web/REPL).
 
@@ -953,22 +981,10 @@ class Enjambre:
         comando, limpio = parse_comando(texto)
         if comando and self._es_consulta():
             comando, limpio = None, texto  # consulta: el verbo no fabrica, es charla
-        if comando == 'undo':
-            self.deshacer()
-            return {}
-        if comando == 'volver':
-            self.volver(limpio)
-            return {}
-        if comando == 'alto':
-            self.detener()
-            return {}
-        if comando == 'cerrar':
-            self.cerrar(limpio)
-            return {}
-        if comando in ('continuo', 'segui', 'auto'):
-            return self._continuo_iteracion(comando, limpio, on_respuesta=on_respuesta)
-        if comando == 'debate':
-            return self.debatir(limpio or texto, on_respuesta=on_respuesta)
+        if comando:
+            r = self._comando_control(comando, limpio, texto, on_respuesta=on_respuesta)
+            if r is not _SIN_MANEJAR:
+                return r  # undo/volver/alto/cerrar/continuo/debate → ya resuelto
         editar = (comando == 'build')
         pedido = limpio if comando else texto
 
@@ -1082,49 +1098,37 @@ class Enjambre:
         if comando:
             if self._es_consulta():
                 texto = limpio  # consulta: ignorar el verbo, tratar como charla
-            elif comando == 'undo':
-                self.deshacer()
-                return {}
-            elif comando == 'volver':
-                self.volver(limpio)
-                return {}
-            elif comando == 'alto':
-                self.detener()
-                return {}
-            elif comando == 'cerrar':
-                self.cerrar(limpio)
-                return {}
-            elif comando in ('continuo', 'segui', 'auto'):
-                return self._continuo_iteracion(comando, limpio, on_respuesta=on_respuesta)
-            elif comando == 'debate':
-                return self.debatir(limpio or texto, on_respuesta=on_respuesta)
-            elif comando == 'build':
-                texto, editar = limpio, True
-                # /armar = trabajo real: solo las sillas que PUEDEN tocar archivos. Con el toolbelt
-                # encendido son las CLI y las api:*; las de modelo local (HTTP) nunca (no tienen
-                # filesystem) → se saltean para que no "actúen" que fabricaron (un modelo tiende a
-                # alucinar que escribió). Con el toolbelt apagado no fabrica nadie: ese es el candado.
-                from . import toolbelt
-                from .clientes import puede_actuar
-                capaces = [s for s in destinatarias if puede_actuar(s)]
-                saltadas = [s for s in destinatarias if not puede_actuar(s)]
-                if not capaces:
-                    if not toolbelt.habilitado():
-                        # Causa más probable, y la que el usuario puede resolver en un clic.
-                        self.guardar("Enjambre", "⚠️ El TOOLBELT está apagado: sin él las sillas solo "
-                                     "responden texto, no editan archivos ni tocan la máquina. "
-                                     "Prendelo para usar /armar.", sistema=True)
-                    else:
-                        self.guardar("Enjambre", "⚠️ Ninguna silla de la mesa puede fabricar: las de "
-                                     "modelo local (HTTP) no tienen acceso a archivos. Sentá una silla "
-                                     "CLI (claude/opencode) o por API key para usar /armar.",
-                                     sistema=True)
-                    return {}
-                if saltadas:
-                    nombres = ", ".join(s.nombre for s in saltadas)
-                    self.guardar("Enjambre", f"ℹ️ {nombres} no edita archivos (modelo local); queda "
-                                 "fuera de este /armar.", sistema=True)
-                destinatarias = capaces
+            else:
+                r = self._comando_control(comando, limpio, texto, on_respuesta=on_respuesta)
+                if r is not _SIN_MANEJAR:
+                    return r  # undo/volver/alto/cerrar/continuo/debate → ya resuelto
+                if comando == 'build':
+                    texto, editar = limpio, True
+                    # /armar = trabajo real: solo las sillas que PUEDEN tocar archivos. Con el toolbelt
+                    # encendido son las CLI y las api:*; las de modelo local (HTTP) nunca (no tienen
+                    # filesystem) → se saltean para que no "actúen" que fabricaron (un modelo tiende a
+                    # alucinar que escribió). Con el toolbelt apagado no fabrica nadie: ese es el candado.
+                    from . import toolbelt
+                    from .clientes import puede_actuar
+                    capaces = [s for s in destinatarias if puede_actuar(s)]
+                    saltadas = [s for s in destinatarias if not puede_actuar(s)]
+                    if not capaces:
+                        if not toolbelt.habilitado():
+                            # Causa más probable, y la que el usuario puede resolver en un clic.
+                            self.guardar("Enjambre", "⚠️ El TOOLBELT está apagado: sin él las sillas solo "
+                                         "responden texto, no editan archivos ni tocan la máquina. "
+                                         "Prendelo para usar /armar.", sistema=True)
+                        else:
+                            self.guardar("Enjambre", "⚠️ Ninguna silla de la mesa puede fabricar: las de "
+                                         "modelo local (HTTP) no tienen acceso a archivos. Sentá una silla "
+                                         "CLI (claude/opencode) o por API key para usar /armar.",
+                                         sistema=True)
+                        return {}
+                    if saltadas:
+                        nombres = ", ".join(s.nombre for s in saltadas)
+                        self.guardar("Enjambre", f"ℹ️ {nombres} no edita archivos (modelo local); queda "
+                                     "fuera de este /armar.", sistema=True)
+                    destinatarias = capaces
         resultados = {}
         for i, silla in enumerate(destinatarias):
             if self._hay_alto():

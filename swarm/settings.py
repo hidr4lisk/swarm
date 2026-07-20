@@ -12,9 +12,34 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Single-user en tu máquina: el default inseguro está bien para desarrollo local.
-# En cualquier despliegue expuesto, setear SWARM_SECRET_KEY en el entorno.
-SECRET_KEY = os.environ.get('SWARM_SECRET_KEY', 'django-insecure-swarm-dev-key-cambiame')
+# SECRET_KEY — orden de resolución:
+#   1. env SWARM_SECRET_KEY (para despliegues expuestos o CI).
+#   2. archivo persistente data/.secret_key (0600): se genera solo la primera vez y se reusa.
+#      Así el pendrive lleva SU propia key, distinta por instalación, sin default compartido.
+# El default inseguro ('django-insecure-…') queda solo como último recurso si data/ no es escribible.
+def _resolver_secret_key():
+    env = os.environ.get('SWARM_SECRET_KEY')
+    if env:
+        return env
+    data_dir = Path(os.environ.get('SWARM_DATA_DIR') or (BASE_DIR / 'data'))
+    key_file = data_dir / '.secret_key'
+    try:
+        if key_file.exists():
+            k = key_file.read_text(encoding='utf-8').strip()
+            if k:
+                return k
+        from django.core.management.utils import get_random_secret_key
+        k = get_random_secret_key()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(k, encoding='utf-8')
+        os.chmod(key_file, 0o600)
+        return k
+    except OSError:
+        # data/ no escribible (raro): no reventar el arranque, caer al default de dev.
+        return 'django-insecure-swarm-dev-key-cambiame'
+
+
+SECRET_KEY = _resolver_secret_key()
 
 DEBUG = os.environ.get('SWARM_DEBUG', '1') == '1'
 

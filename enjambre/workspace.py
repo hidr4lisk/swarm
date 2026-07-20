@@ -70,7 +70,12 @@ def chown_host(path):
 
 def mesa_workspace(sesion):
     """Carpeta persistente de la mesa (git repo, scratch). La crea+inicializa una sola vez;
-    las tareas se acumulan ahí. Devuelve el Path (host). Idempotente."""
+    las tareas se acumulan ahí. Devuelve el Path (host). Idempotente.
+
+    SIDE EFFECT: además de crear la carpeta, persiste la ruta en `sesion.workspace_dir` (un
+    `save(update_fields=['workspace_dir'])`) si cambió — para que el resto del sistema sepa dónde
+    quedó el repo sin recalcularlo. No es una función pura: crear la carpeta y fijar la ruta van
+    juntas a propósito (la ruta depende del `sesion.id`)."""
     dest = Path(mesas_dir()) / f"mesa-{sesion.id}"
     dest.mkdir(parents=True, exist_ok=True)
     if not (dest / '.git').exists():

@@ -131,6 +131,44 @@ class ParseComandoTests(TestCase):
         self.assertEqual(parse_comando(None), (None, None))
 
 
+class ComandoControlTests(TestCase):
+    """El dispatch de los comandos de mesa comunes vive en UN solo lugar (_comando_control),
+    compartido por las dos topologías (líder y plana). Estos tests blindan esa unificación:
+    cada verbo delega en su método, y build/charla NO los maneja el helper (los resuelve cada
+    topología)."""
+
+    def setUp(self):
+        from .engine import _SIN_MANEJAR
+        self.SIN_MANEJAR = _SIN_MANEJAR
+        self.enj = Enjambre(Sesion.objects.create(nombre='m'))
+
+    def test_cada_verbo_delega_en_su_metodo(self):
+        casos = {
+            'undo': 'deshacer',
+            'volver': 'volver',
+            'alto': 'detener',
+            'cerrar': 'cerrar',
+            'continuo': '_continuo_iteracion',
+            'debate': 'debatir',
+        }
+        for comando, metodo in casos.items():
+            with mock.patch.object(Enjambre, metodo, return_value={'ok': comando}) as m:
+                r = self.enj._comando_control(comando, 'arg', 'texto crudo')
+            self.assertTrue(m.called, msg=f'{comando} no llamó a {metodo}')
+            self.assertIsNot(r, self.SIN_MANEJAR, msg=comando)
+
+    def test_segui_y_auto_tambien_van_a_continuo(self):
+        for comando in ('segui', 'auto'):
+            with mock.patch.object(Enjambre, '_continuo_iteracion', return_value={}) as m:
+                self.enj._comando_control(comando, '', 'x')
+            self.assertTrue(m.called, msg=comando)
+
+    def test_build_y_charla_no_los_maneja_el_helper(self):
+        # build y un texto sin verbo devuelven _SIN_MANEJAR → cada topología sigue su camino
+        self.assertIs(self.enj._comando_control('build', 'algo', '/armar algo'), self.SIN_MANEJAR)
+        self.assertIs(self.enj._comando_control(None, 'hola', 'hola'), self.SIN_MANEJAR)
+
+
 class ParticipanteTests(TestCase):
     def test_alias_es_la_primera_palabra_limpia(self):
         p = Participante(key='claude', nombre='Claude Code')
