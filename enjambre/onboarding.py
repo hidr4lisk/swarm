@@ -37,6 +37,12 @@ def escalones():
     ]
 
 
+def listos(esc):
+    """Cuántos escalones están listos. Va al `<summary>` plegado ('2 de 3'), así el estado se
+    ve sin desplegar la escalera."""
+    return sum(1 for e in esc if e['listo'])
+
+
 def completa():
     """True si la escalera está completa (escalón 2 listo) → el banner de home no se muestra."""
     from . import vault

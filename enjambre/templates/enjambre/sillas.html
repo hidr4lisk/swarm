@@ -2,13 +2,34 @@
 {% load i18n %}
 {% block extra_css %}{% include 'enjambre/_skin.html' %}
 <style>
-.enj-sillas-grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); }
-.enj-silla-card { position:relative; border:1px solid var(--enj-border); border-radius:12px;
-    padding:1rem; background:rgba(var(--accent-rgb),.04); display:flex; flex-direction:column; gap:.45rem; }
-.enj-silla-card.enj-inactiva { opacity:.5; }
-.enj-silla-card input[type=text], .enj-silla-card textarea, .enj-silla-card select {
+/* Lista vertical de acordeones: una fila compacta por silla; se abre para editar inline. */
+.enj-sillas-list { display:flex; flex-direction:column; gap:.6rem; }
+.enj-silla { border:1px solid var(--enj-border); border-radius:12px;
+    background:rgba(var(--accent-rgb),.04); overflow:hidden; }
+.enj-silla.enj-inactiva { opacity:.6; }
+/* Cabecera (summary): dot + avatar + nombre + meta + chevron. Único visible cerrado. */
+.enj-silla > summary { list-style:none; cursor:pointer; padding:.6rem .9rem;
+    display:flex; align-items:center; gap:.55rem; }
+.enj-silla > summary::-webkit-details-marker { display:none; }
+.enj-silla-chevron { transition:transform .15s ease; opacity:.6; flex-shrink:0; }
+.enj-silla[open] .enj-silla-chevron { transform:rotate(90deg); }
+.enj-silla-sum-nombre { font-weight:700; font-size:1rem; min-width:0; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+.enj-silla-sum-meta { font-size:.75rem; opacity:.6; margin-left:auto; text-align:right; white-space:nowrap; }
+.enj-silla-dot { width:8px; height:8px; border-radius:50%; background:#2ecc40; flex-shrink:0; }
+.enj-silla.enj-inactiva .enj-silla-dot { background:var(--enj-border); }
+.enj-silla-color-dot { width:13px; height:13px; border-radius:50%; flex-shrink:0;
+    box-shadow:0 0 0 1px rgba(0,0,0,.28); }
+.enj-av-thumb { width:24px; height:24px; border-radius:6px; object-fit:cover; flex-shrink:0;
+    box-shadow:0 0 0 1px rgba(0,0,0,.28); }
+.enj-silla-body { padding:0 .9rem .9rem; display:flex; flex-direction:column; gap:.45rem; }
+.enj-silla-body input[type=text], .enj-silla-body textarea, .enj-silla-body select {
     width:100%; box-sizing:border-box; }
-.enj-silla-card .enj-card-nombre { font-weight:700; font-size:1.05rem; }
+@media (max-width:600px) {
+    .enj-silla > summary { flex-wrap:wrap; }
+    .enj-silla-sum-nombre { min-width:0; }
+    .enj-silla-sum-meta { font-size:.68rem; margin-left:0; width:100%; white-space:normal; text-align:left; }
+}
 .enj-fieldlabel { font-size:.7rem; opacity:.7; display:block; margin-bottom:.1rem; }
 .enj-saved-btn { font-size:.78rem; }
 .enj-saved-btn:disabled { opacity:.55; cursor:default; }
@@ -31,7 +52,6 @@
 .enj-avatares summary { cursor:pointer; font-weight:600; font-size:.85rem; }
 .enj-avatares-grid { display:flex; gap:1.2rem; flex-wrap:wrap; padding:.7rem 0 .3rem; }
 .enj-avatar-voz { display:flex; gap:.6rem; align-items:flex-start; }
-@media (max-width:600px){ .enj-sillas-grid { grid-template-columns:1fr; } }
 </style>
 {% endblock %}
 
@@ -102,111 +122,116 @@
     {# Modelos por cliente para el JS (poblar el <select> de modelo) #}
     {{ clientes_meta|json_script:"clientes-meta" }}
 
-    <div class="enj-sillas-grid">
+    <p class="enj-muted" id="enj-sillas-sin-resultados" hidden style="margin:.5rem 0;">{% trans 'Ninguna silla coincide con la búsqueda.' %}</p>
+
+    <div class="enj-sillas-list">
         {% for s in sillas %}
-        <div>
-            <form class="enj-silla-card{% if not s.activo %} enj-inactiva{% endif %}" method="post"
-                  action="{% url 'enjambre:guardar_silla' s.key %}" data-card>
-                {% csrf_token %}
-                <input type="text" name="nombre" value="{{ s.nombre }}" maxlength="100"
-                       class="enj-card-nombre" placeholder="{% trans 'Nombre' %}" aria-label="{% trans 'Nombre' %}">
-
-                <div class="enj-idrow">
-                    <div class="enj-av-box" data-av-box data-color="{{ s.color_ui|default:'#4a6cff' }}">
-                        {% if s.avatar %}<img class="enj-av-pic" src="{{ s.avatar }}" alt="">
-                        {% else %}<span class="enj-av-pic enj-av-ph" style="background:{{ s.color_ui|default:'#4a6cff' }};"></span>{% endif %}
+        <details class="enj-silla{% if not s.activo %} enj-inactiva{% endif %}" data-silla>
+            <summary>
+                <i class="fas fa-chevron-right enj-silla-chevron"></i>
+                <span class="enj-silla-dot" data-dot title="{% if s.activo %}{% trans 'Activa' %}{% else %}{% trans 'Inactiva' %}{% endif %}"></span>
+                <span class="enj-silla-color-dot" data-color-dot title="{% trans 'Color en la mesa' %}" style="background:{{ s.color_ui|default:'#4a6cff' }};"></span>
+                <img class="enj-av-thumb" src="{{ s.avatar }}" alt="" data-sum-avatar{% if not s.avatar %} hidden{% endif %}>
+                <span class="enj-silla-sum-nombre" data-sum-nombre>{{ s.nombre }}</span>
+                <span class="enj-silla-sum-meta">@{{ s.alias }} · {{ s.motor }}{% if s.rol_tarjeta %} · {{ s.rol_tarjeta }}{% endif %}</span>
+            </summary>
+            <div class="enj-silla-body">
+                <form method="post" action="{% url 'enjambre:guardar_silla' s.key %}" data-card>
+                    {% csrf_token %}
+                    <div>
+                        <label class="enj-fieldlabel">{% trans 'Nombre' %} <span style="opacity:.6;">{% trans '(define el @alias)' %}</span></label>
+                        <input type="text" name="nombre" value="{{ s.nombre }}" maxlength="100"
+                               placeholder="{% trans 'Nombre' %}" aria-label="{% trans 'Nombre' %}">
                     </div>
-                    <input type="hidden" name="avatar" value="{{ s.avatar }}" data-av-input>
-                    <input type="file" accept="image/*" data-av-file hidden>
-                    <div style="flex:1;min-width:0;">
-                        <label class="enj-fieldlabel">{% trans 'Rol (tarjeta — solo display)' %}</label>
-                        <input type="text" name="rol_tarjeta" value="{{ s.rol_tarjeta }}" maxlength="40"
-                               placeholder="{% trans 'ej: Arquitecto · Red Team' %}">
-                        <div class="enj-row" style="gap:.5rem;align-items:center;margin-top:.4rem;flex-wrap:wrap;">
-                            <span class="enj-colorrow">
-                                <input type="color" data-colorpick value="{{ s.color_ui|default:'#4a6cff' }}"
-                                       aria-label="{% trans 'Color en la mesa' %}"
-                                       title="{% trans 'Color del borde/cuadrado en la mesa' %}">
-                                <input type="hidden" name="color_ui" value="{{ s.color_ui }}" data-colorval>
-                            </span>
-                            <button type="button" class="enj-ghost enj-av-mini" data-av-pick>{% trans 'Retrato' %}</button>
-                            <button type="button" class="enj-ghost enj-av-mini" data-av-clear>{% trans 'Quitar' %}</button>
-                            <button type="button" class="enj-ghost enj-av-mini" data-color-auto
-                                    title="{% trans 'Color automático por orden' %}">{% trans 'Color auto' %}</button>
+
+                    <div class="enj-idrow">
+                        <div class="enj-av-box" data-av-box data-color="{{ s.color_ui|default:'#4a6cff' }}">
+                            {% if s.avatar %}<img class="enj-av-pic" src="{{ s.avatar }}" alt="">
+                            {% else %}<span class="enj-av-pic enj-av-ph" style="background:{{ s.color_ui|default:'#4a6cff' }};"></span>{% endif %}
+                        </div>
+                        <input type="hidden" name="avatar" value="{{ s.avatar }}" data-av-input>
+                        <input type="file" accept="image/*" data-av-file hidden>
+                        <div style="flex:1;min-width:0;">
+                            <label class="enj-fieldlabel">{% trans 'Rol (tarjeta — solo display)' %}</label>
+                            <input type="text" name="rol_tarjeta" value="{{ s.rol_tarjeta }}" maxlength="40"
+                                   placeholder="{% trans 'ej: Arquitecto · Red Team' %}">
+                            <div class="enj-row" style="gap:.5rem;align-items:center;margin-top:.4rem;flex-wrap:wrap;">
+                                <span class="enj-colorrow">
+                                    <input type="color" data-colorpick value="{{ s.color_ui|default:'#4a6cff' }}"
+                                           aria-label="{% trans 'Color en la mesa' %}"
+                                           title="{% trans 'Color del borde/cuadrado en la mesa' %}">
+                                    <input type="hidden" name="color_ui" value="{{ s.color_ui }}" data-colorval>
+                                </span>
+                                <button type="button" class="enj-ghost enj-av-mini" data-av-pick>{% trans 'Retrato' %}</button>
+                                <button type="button" class="enj-ghost enj-av-mini" data-av-clear>{% trans 'Quitar' %}</button>
+                                <button type="button" class="enj-ghost enj-av-mini" data-color-auto
+                                        title="{% trans 'Color automático por orden' %}">{% trans 'Color auto' %}</button>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="enj-row" style="gap:.4rem;align-items:flex-end;">
-                    <div style="flex:1;min-width:0;">
-                        <label class="enj-fieldlabel">{% trans 'Cliente' %}</label>
-                        <select name="cliente" data-cliente>
-                            {% for ckey, c in clientes.items %}
-                            <option value="{{ ckey }}"{% if c.http %} data-http="1"{% endif %}{% if c.model_flag %} data-model="1"{% endif %}{% if ckey == s.cliente_sel %} selected{% endif %}>{{ c.label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div style="flex:1;min-width:0;" data-modelo-wrap>
-                        <label class="enj-fieldlabel">{% trans 'Modelo' %}</label>
-                        <div class="enj-modelo-row">
-                            <input type="text" name="modelo" data-modelo list="modelos-{{ s.key }}"
-                                   value="{{ s.modelo_sel }}" placeholder="(default)" autocomplete="off"
-                                   title="{% trans 'Elegí del catálogo (botón) o tipeá cualquier ID' %}">
-                            <button type="button" class="enj-ghost enj-modelo-pick" data-pick-modelo
-                                    title="{% trans 'Elegir del catálogo' %}"><i class="fas fa-list"></i></button>
-                            <datalist id="modelos-{{ s.key }}"></datalist>
+                    <div class="enj-row" style="gap:.4rem;align-items:flex-end;">
+                        <div style="flex:1;min-width:0;">
+                            <label class="enj-fieldlabel">{% trans 'Cliente' %}</label>
+                            <select name="cliente" data-cliente>
+                                {% for ckey, c in clientes.items %}
+                                <option value="{{ ckey }}"{% if c.http %} data-http="1"{% endif %}{% if c.model_flag %} data-model="1"{% endif %}{% if ckey == s.cliente_sel %} selected{% endif %}>{{ c.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:0;" data-modelo-wrap>
+                            <label class="enj-fieldlabel">{% trans 'Modelo' %}</label>
+                            <div class="enj-modelo-row">
+                                <input type="text" name="modelo" data-modelo list="modelos-{{ s.key }}"
+                                       value="{{ s.modelo_sel }}" placeholder="(default)" autocomplete="off"
+                                       title="{% trans 'Elegí del catálogo (botón) o tipeá cualquier ID' %}">
+                                <button type="button" class="enj-ghost enj-modelo-pick" data-pick-modelo
+                                        title="{% trans 'Elegir del catálogo' %}"><i class="fas fa-list"></i></button>
+                                <datalist id="modelos-{{ s.key }}"></datalist>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div data-endpoint-wrap hidden>
-                    <label class="enj-fieldlabel">{% trans 'Endpoint URL (Ollama)' %}</label>
-                    <input type="text" name="endpoint_url" value="{{ s.endpoint_url }}"
-                           placeholder="http://localhost:11434">
-                </div>
+                    <div data-endpoint-wrap hidden>
+                        <label class="enj-fieldlabel">{% trans 'Endpoint URL (Ollama)' %}</label>
+                        <input type="text" name="endpoint_url" value="{{ s.endpoint_url }}"
+                               placeholder="http://localhost:11434">
+                    </div>
 
-                <div>
-                    <label class="enj-fieldlabel">{% trans 'Prompt A — control' %}</label>
-                    <textarea name="persona_a" rows="4">{{ s.persona }}</textarea>
-                </div>
-                <div>
-                    <label class="enj-fieldlabel">{% trans 'Prompt B — consulta' %} <span style="opacity:.6;">{% trans '(vacío = usa A)' %}</span></label>
-                    <textarea name="persona_b" rows="3">{{ s.persona_consulta }}</textarea>
-                </div>
-                <div>
-                    <label class="enj-fieldlabel">{% trans 'Recordatorio (recencia)' %}</label>
-                    <input type="text" name="recordatorio" value="{{ s.recordatorio }}" placeholder="{% trans '(opcional)' %}">
-                </div>
-                <div>
-                    <label class="enj-fieldlabel">{% trans 'Especialidad' %} <span style="opacity:.6;">{% trans '(el líder reparte por esto)' %}</span></label>
-                    <input type="text" name="especialidad" value="{{ s.especialidad }}" maxlength="120"
-                           placeholder="{% trans 'ej: frontend/CSS · scripts · redacción (opcional)' %}">
-                </div>
+                    <div>
+                        <label class="enj-fieldlabel">{% trans 'Prompt' %}</label>
+                        <textarea name="persona_a" rows="4">{{ s.persona }}</textarea>
+                    </div>
+                    <div>
+                        <label class="enj-fieldlabel">{% trans 'Recordatorio (recencia)' %}</label>
+                        <input type="text" name="recordatorio" value="{{ s.recordatorio }}" placeholder="{% trans '(opcional)' %}">
+                    </div>
+                    <div>
+                        <label class="enj-fieldlabel">{% trans 'Especialidad' %} <span style="opacity:.6;">{% trans '(el líder reparte por esto)' %}</span></label>
+                        <input type="text" name="especialidad" value="{{ s.especialidad }}" maxlength="120"
+                               placeholder="{% trans 'ej: frontend/CSS · scripts · redacción (opcional)' %}">
+                    </div>
 
-                <div class="enj-row" style="gap:1rem;align-items:center;flex-wrap:wrap;">
-                    <label class="enj-check"><input type="checkbox" name="activo" {% if s.activo %}checked{% endif %}> <span>{% trans 'Activa' %}</span></label>
-                    <span class="enj-rango" role="radiogroup" aria-label="{% trans 'Rango' %}" style="display:inline-flex;gap:.6rem;">
-                        <label class="enj-check"><input type="radio" name="rango" value="control" {% if not s.permitir_consulta %}checked{% endif %}> <span>CONTROL</span></label>
-                        <label class="enj-check"><input type="radio" name="rango" value="consulta" {% if s.permitir_consulta %}checked{% endif %}> <span>CONSULTA</span></label>
-                    </span>
-                    <label class="enj-fieldlabel" style="margin-left:auto;display:flex;align-items:center;gap:.3rem;">{% trans 'Orden' %}
-                        <input type="number" name="orden" value="{{ s.orden }}" style="width:58px;"></label>
-                </div>
+                    <div class="enj-row" style="gap:1rem;align-items:center;flex-wrap:wrap;">
+                        <label class="enj-check"><input type="checkbox" name="activo" {% if s.activo %}checked{% endif %}> <span>{% trans 'Activa' %}</span></label>
+                        <label class="enj-fieldlabel" style="margin-left:auto;display:flex;align-items:center;gap:.3rem;">{% trans 'Orden' %}
+                            <input type="number" name="orden" value="{{ s.orden }}" style="width:58px;"></label>
+                    </div>
 
-                <div class="enj-silla-actions">
-                    <button type="submit" data-save class="enj-saved-btn enj-ghost" disabled>{% trans 'Guardado' %}</button>
-                    <button type="button" class="enj-del enj-ghost" data-reset-a data-default="{{ s.persona_default }}"
-                            title="{% trans 'Restaurar el prompt A de fábrica' %}">↺ Reset A</button>
-                    <span class="enj-muted" style="font-size:.7rem;margin-left:auto;">@{{ s.alias }} · {{ s.motor }}</span>
+                    <div class="enj-silla-actions">
+                        <button type="submit" data-save class="enj-saved-btn enj-ghost" disabled>{% trans 'Guardado' %}</button>
+                        <button type="button" class="enj-del enj-ghost" data-reset-a data-default="{{ s.persona_default }}"
+                                title="{% trans 'Restaurar el prompt de fábrica' %}">↺ Reset</button>
+                    </div>
+                </form>
+                <div class="enj-silla-actions" style="margin-top:.4rem;">
+                    <form method="post" action="{% url 'enjambre:clonar_silla' s.key %}">{% csrf_token %}
+                        <button class="enj-del enj-ghost" type="submit"><i class="fas fa-copy"></i> {% trans 'Clonar' %}</button></form>
+                    <form method="post" action="{% url 'enjambre:borrar_silla' s.key %}"
+                          onsubmit="return confirm('{% blocktrans with nombre=s.nombre|escapejs %}¿Borrar la silla «{{ nombre }}»? Sus tareas viejas quedan huérfanas.{% endblocktrans %}');">
+                        {% csrf_token %}<button class="enj-del enj-ghost" type="submit"><i class="fas fa-trash"></i> {% trans 'Borrar' %}</button></form>
                 </div>
-            </form>
-            <div class="enj-silla-actions" style="margin-top:.4rem;">
-                <form method="post" action="{% url 'enjambre:clonar_silla' s.key %}">{% csrf_token %}
-                    <button class="enj-del enj-ghost" type="submit"><i class="fas fa-copy"></i> {% trans 'Clonar' %}</button></form>
-                <form method="post" action="{% url 'enjambre:borrar_silla' s.key %}"
-                      onsubmit="return confirm('{% blocktrans with nombre=s.nombre|escapejs %}¿Borrar la silla «{{ nombre }}»? Sus tareas viejas quedan huérfanas.{% endblocktrans %}');">
-                    {% csrf_token %}<button class="enj-del enj-ghost" type="submit"><i class="fas fa-trash"></i> {% trans 'Borrar' %}</button></form>
             </div>
-        </div>
+        </details>
         {% empty %}
         <p class="enj-muted">{% trans 'No hay sillas. Agregá una arriba.' %}</p>
         {% endfor %}
@@ -264,15 +289,20 @@
 // ── Buscador de sillas (filtro client-side por nombre) ──
 (function () {
     var q = document.getElementById('silla-buscar');
-    var grid = document.querySelector('.enj-sillas-grid');
-    if (!q || !grid) return;
+    var lista = document.querySelector('.enj-sillas-list');
+    if (!q || !lista) return;
+    var vacio = document.getElementById('enj-sillas-sin-resultados');
     q.addEventListener('input', function () {
         var v = q.value.trim().toLowerCase();
-        Array.prototype.forEach.call(grid.children, function (cell) {
-            var el = cell.querySelector('.enj-card-nombre');
-            var name = (el ? el.value : '').toLowerCase();
-            cell.style.display = (!v || name.indexOf(v) !== -1) ? '' : 'none';
+        var visibles = 0;
+        lista.querySelectorAll('.enj-silla').forEach(function (s) {
+            var el = s.querySelector('[data-sum-nombre]');
+            var name = (el ? el.textContent : '').toLowerCase();
+            var match = !v || name.indexOf(v) !== -1;
+            s.style.display = match ? '' : 'none';
+            if (match) visibles++;
         });
+        if (vacio) vacio.hidden = !(v && visibles === 0);
     });
 })();
 // ── Avatar: recorte cuadrado 128px en canvas → JPEG data-URI < ~40KB (sin backend de imágenes) ──
@@ -307,6 +337,8 @@ function enjPaintBox(box, uri, color) {
     }
 }
 // Cablea un bloque avatar/color (card o voz global). onDirty() se llama en cada cambio.
+// Si el scope vive dentro de un acordeón [data-silla], espeja avatar/color al summary
+// (el retrato/color plegados tienen que verse sin abrir la card).
 function enjWireAvatar(scope, onDirty) {
     var box = scope.querySelector('[data-av-box]');
     var input = scope.querySelector('[data-av-input]');
@@ -316,12 +348,20 @@ function enjWireAvatar(scope, onDirty) {
     var colorpick = scope.querySelector('[data-colorpick]');
     var colorval = scope.querySelector('[data-colorval]');
     var autoBtn = scope.querySelector('[data-color-auto]');
+    var det = scope.closest('[data-silla]');
+    var sumAv = det && det.querySelector('[data-sum-avatar]');
+    var sumDot = det && det.querySelector('[data-color-dot]');
+    function syncSummary(uri, color) {
+        if (sumAv) { sumAv.src = uri || ''; sumAv.hidden = !uri; }
+        if (sumDot) sumDot.style.background = color || (box && box.dataset.color) || '#4a6cff';
+    }
     if (pick && file) pick.addEventListener('click', function () { file.click(); });
     if (file) file.addEventListener('change', function () {
         if (!file.files || !file.files[0]) return;
         enjCropAvatar(file.files[0], function (uri) {
             if (input) input.value = uri;
             if (box) enjPaintBox(box, uri, colorval && colorval.value);
+            syncSummary(uri, colorval && colorval.value);
             onDirty();
         });
         file.value = '';
@@ -329,11 +369,14 @@ function enjWireAvatar(scope, onDirty) {
     if (clear) clear.addEventListener('click', function () {
         if (input) input.value = '';
         if (box) enjPaintBox(box, '', colorval && colorval.value);
+        syncSummary('', colorval && colorval.value);
         onDirty();
     });
     if (colorpick) colorpick.addEventListener('input', function () {
         if (colorval) colorval.value = colorpick.value;
         if (box) { box.dataset.color = colorpick.value; if (!input || !input.value) enjPaintBox(box, '', colorpick.value); }
+        if (!input || !input.value) syncSummary('', colorpick.value);
+        else if (sumDot) sumDot.style.background = colorpick.value;
         onDirty();
     });
     if (autoBtn) autoBtn.addEventListener('click', function () {
@@ -481,7 +524,13 @@ function enjWireAvatar(scope, onDirty) {
             if (r.ok) {
                 setSaved(card, true);
                 var act = card.querySelector('[name="activo"]');
-                card.classList.toggle('enj-inactiva', act && !act.checked);
+                var det = card.closest('[data-silla]');
+                if (det) {
+                    var inactiva = act && !act.checked;
+                    det.classList.toggle('enj-inactiva', inactiva);
+                    var dot = det.querySelector('[data-dot]');
+                    if (dot) dot.title = inactiva ? '{% trans "Inactiva" %}' : '{% trans "Activa" %}';
+                }
             } else { setSaved(card, false); }
         }).catch(function () { setSaved(card, false); });
     }
@@ -490,6 +539,13 @@ function enjWireAvatar(scope, onDirty) {
         syncCliente(card);
         setSaved(card, true);   // arranca limpia → "Guardado"
         enjWireAvatar(card, function () { setSaved(card, false); });
+        // Nombre → summary en vivo (el @alias del acordeón depende del nombre).
+        var det = card.closest('[data-silla]');
+        var nombreIn = card.querySelector('[name="nombre"]');
+        var sumNombre = det && det.querySelector('[data-sum-nombre]');
+        if (nombreIn && sumNombre) nombreIn.addEventListener('input', function () {
+            sumNombre.textContent = nombreIn.value || '{% trans "Silla" %}';
+        });
         card.addEventListener('input', function () { setSaved(card, false); });
         card.addEventListener('change', function (e) {
             if (e.target.matches('[data-cliente]')) {

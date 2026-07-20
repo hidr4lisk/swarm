@@ -237,6 +237,7 @@ def home(request):
         'todas_sillas': todas,
         'puede_controlar': _puede_controlar(request),
         'escalera': escalera,
+        'escalera_listos': onboarding.listos(escalera) if escalera else 0,
     })
 
 
@@ -821,7 +822,11 @@ def _aplicar_form_silla(silla, post):
         silla.endpoint_url = ''
         silla.endpoint_model = ''
     silla.persona = (post.get('persona_a') or '').strip()
-    silla.persona_consulta = (post.get('persona_b') or '').strip()
+    # persona_consulta (variante B) y permitir_consulta son del modelo multiusuario del origen:
+    # en Swarm no hay rango consulta, el form ya no los manda y acá no se tocan (ver docstring
+    # del módulo). Se aplican solo si algún día un form los repone.
+    if 'persona_b' in post:
+        silla.persona_consulta = (post.get('persona_b') or '').strip()
     silla.recordatorio = (post.get('recordatorio') or '').strip()
     silla.especialidad = (post.get('especialidad') or '').strip()[:120]
     silla.rol_tarjeta = (post.get('rol_tarjeta') or '').strip()[:40]
@@ -831,8 +836,8 @@ def _aplicar_form_silla(silla, post):
         silla.color_ui = _color_limpio(post.get('color_ui'))
     if 'avatar' in post:
         silla.avatar = _avatar_limpio(post.get('avatar'))
-    # Rango exclusivo: CONTROL (solo control) o CONSULTA (también el rango consulta la usa).
-    silla.permitir_consulta = (post.get('rango') == 'consulta')
+    if 'rango' in post:
+        silla.permitir_consulta = (post.get('rango') == 'consulta')
     silla.activo = bool(post.get('activo'))
     try:
         silla.orden = int(post.get('orden'))
@@ -843,8 +848,8 @@ def _aplicar_form_silla(silla, post):
 
 @requiere_acceso
 def gestionar_sillas(request):
-    """Panel de Sillas (vista completa, solo CONTROL): CRUD — nombre, cliente+modelo, persona A/B,
-    recordatorio, permisos, activo, orden. Guardado AJAX por card (ver enjambre/sillas.html)."""
+    """Panel de Sillas (vista completa): CRUD — nombre, cliente+modelo, prompt, recordatorio,
+    especialidad, avatar/color, activo, orden. Guardado AJAX por card (ver enjambre/sillas.html)."""
     if not _puede_controlar(request):
         return HttpResponseForbidden("Solo control puede gestionar las sillas.")
     sillas = list(Participante.objects.order_by('orden', 'key'))
@@ -971,15 +976,14 @@ def borrar_silla(request, key):
 
 @requiere_acceso
 def guardar_persona(request, key):
-    """Edita la persona de UNA silla: variante A (control) y B (consulta). Solo CONTROL.
-    Se lee fresca en cada mensaje, así que aplica en el próximo turno sin reiniciar."""
+    """Edita la persona (prompt) de UNA silla. Se lee fresca en cada mensaje, así que aplica en
+    el próximo turno sin reiniciar."""
     if not _puede_controlar(request):
         return HttpResponseForbidden("Solo control puede editar personas.")
     silla = get_object_or_404(Participante, key=key)
     if request.method == 'POST':
         silla.persona = request.POST.get('persona_a', '').strip()
-        silla.persona_consulta = request.POST.get('persona_b', '').strip()
-        silla.save(update_fields=['persona', 'persona_consulta'])
+        silla.save(update_fields=['persona'])
         log_event(request.user, 'ENJAMBRE_PERSONA_EDIT', 'enjambre', {'silla': key}, request)
     return redirect('enjambre:home')
 
@@ -1028,8 +1032,10 @@ def conexiones(request):
     desbloqueada, existe = vault.is_unlocked(), vault.has_vault()
     vault_state = 'abierta' if desbloqueada else ('cerrada' if existe else 'nueva')
     from . import onboarding, toolbelt
+    escalera = onboarding.escalones()
     return render(request, 'enjambre/conexiones.html', {
-        'escalera': onboarding.escalones(),
+        'escalera': escalera,
+        'escalera_listos': onboarding.listos(escalera),
         'filas': filas,
         'chequeado_at': chequeado_at,
         'puede_controlar': _puede_controlar(request),

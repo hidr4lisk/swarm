@@ -89,7 +89,7 @@
     </div>
 
     {% csrf_token %}
-    {% include 'enjambre/_escalera.html' %}
+    {% include 'enjambre/_escalera.html' with abierta=True %}
     <div class="cx-tabs" role="tablist">
         <button class="cx-tab" type="button" role="tab" data-tab="clis" aria-selected="true">
             <i class="fas fa-terminal"></i> {% trans 'CLIs logueados' %}

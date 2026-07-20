@@ -1,17 +1,47 @@
 {% load i18n %}
 {% comment %} ── La ESCALERA de arranque: estado de los 3 escalones (calculado en onboarding.py, sin red).
-     Autocontenido (estilos scoped): se incluye en Conexiones Y en el banner de home. ── {% endcomment %}
+     Autocontenido (estilos scoped): se incluye en Conexiones Y en el banner de home.
+
+     Es un <details> nativo (sin JS, accesible gratis). Plegado, el `<summary>` igual muestra los
+     3 puntitos y el "N de 3": el estado se ve de un vistazo sin abrir nada. En Conexiones se
+     incluye con `abierta=True` (ahí la escalera ES el contenido); en home va plegada, que es
+     donde estorbaba. El JS del final solo recuerda si la abriste. ── {% endcomment %}
 <style>
+    .cx-escalera { margin-bottom: 1rem; }
     .cx-escalera .cx-fila { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
     .cx-escalera .cx-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: .35rem; }
     .cx-escalera .cx-dot.on  { background: #2ecc40; box-shadow: 0 0 6px 1px rgba(46,204,64,.55); }
     .cx-escalera .cx-dot.off { background: #c0392b; box-shadow: 0 0 6px 1px rgba(192,57,43,.4); }
+    /* El summary es la fila plegada: puntero, sin el triangulito nativo (ponemos el nuestro). */
+    .cx-escalera > summary { cursor: pointer; list-style: none; user-select: none; }
+    .cx-escalera > summary::-webkit-details-marker { display: none; }
+    .cx-escalera > summary .cx-chev { transition: transform .18s ease; opacity: .6; font-size: .7rem; }
+    .cx-escalera[open] > summary .cx-chev { transform: rotate(180deg); }
+    /* Dots del resumen: más juntos que los de las filas, leen como un semáforo. */
+    .cx-escalera .cx-mini { display: inline-flex; gap: .22rem; margin: 0 .5rem 0 .45rem; vertical-align: middle; }
+    .cx-escalera .cx-mini .cx-dot { margin-right: 0; }
+    .cx-escalera > summary:hover .cx-chev { opacity: 1; }
+    .cx-escalera .cx-cuerpo { margin-top: .5rem; }
 </style>
-<div class="enj-card cx-escalera" style="margin-bottom:1rem;">
-    <div class="cx-fila" style="margin-bottom:.4rem;">
-        <strong><i class="fas fa-stairs"></i> {% trans 'Tu escalera' %}</strong>
-        <span class="enj-muted" style="font-size:.75rem;">{% trans 'de cero a mesa completa' %}</span>
-    </div>
+<details class="enj-card cx-escalera" data-escalera {% if abierta %}open{% endif %}>
+    <summary>
+        <span class="cx-fila">
+            <span>
+                <strong><i class="fas fa-stairs"></i> {% trans 'Tu escalera' %}</strong>
+                <span class="cx-mini" aria-hidden="true">
+                    {% for e in escalera %}<span class="cx-dot {% if e.listo %}on{% else %}off{% endif %}"></span>{% endfor %}
+                </span>
+                <span class="enj-muted" style="font-size:.75rem;">
+                    {% blocktrans with listos=escalera_listos %}{{ listos }} de 3{% endblocktrans %}
+                </span>
+            </span>
+            <span class="enj-muted" style="font-size:.75rem;">
+                {% trans 'de cero a mesa completa' %} <i class="fas fa-chevron-down cx-chev"></i>
+            </span>
+        </span>
+    </summary>
+
+    <div class="cx-cuerpo">
     {% for e in escalera %}
     <div class="cx-fila" style="font-size:.85rem;padding:.25rem 0;">
         <span>
@@ -42,4 +72,20 @@
     <p class="enj-muted" style="font-size:.72rem;margin:.5rem 0 0;">
         {% trans 'La silla gratis manda lo que escribís (y el contexto de la mesa) a un servicio público sin cuenta (Pollinations). Para trabajo sensible, usá sillas con tus propias keys o un modelo local.' %}
     </p>
-</div>
+    </div>
+</details>
+{% if not abierta %}
+<script>
+// Recuerda si la dejaste abierta (solo donde va plegada por default: el banner de home).
+(function () {
+    var d = document.querySelector('details[data-escalera]');
+    if (!d) { return; }
+    try {
+        if (localStorage.getItem('swarm.escalera') === 'open') { d.open = true; }
+        d.addEventListener('toggle', function () {
+            localStorage.setItem('swarm.escalera', d.open ? 'open' : 'closed');
+        });
+    } catch (e) { /* localStorage bloqueado: queda el default plegado */ }
+})();
+</script>
+{% endif %}

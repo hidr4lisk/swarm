@@ -360,6 +360,20 @@ class VistasTests(TestCase):
         self.client.post(reverse('enjambre:borrar_silla', args=[silla.key]))
         self.assertFalse(Participante.objects.filter(key=silla.key).exists())
 
+    def test_guardar_sin_campos_del_origen_no_los_pisa(self):
+        """El form ya no manda `rango` ni `persona_b` (Swarm es single-user: no hay rango
+        consulta). Un guardado normal no tiene que blanquear esos campos heredados."""
+        silla = Participante.objects.create(
+            key='x', nombre='X', permitir_consulta=True, persona_consulta='B')
+        self.client.post(reverse('enjambre:guardar_silla', args=['x']), {
+            'nombre': 'X', 'cliente': 'opencode', 'modelo': '', 'persona_a': 'A',
+            'activo': 'on', 'orden': '1',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        silla.refresh_from_db()
+        self.assertEqual(silla.persona, 'A')
+        self.assertTrue(silla.permitir_consulta)
+        self.assertEqual(silla.persona_consulta, 'B')
+
 
 class WorkspaceTests(TestCase):
     def test_mesa_workspace_idempotente(self):
@@ -733,6 +747,12 @@ class SeedChispaTests(TestCase):
         self.assertEqual(api_de(chispa), 'pollinations')
         self.assertEqual(precio_silla(chispa), (0.0, 0.0))
         self.assertEqual(Participante.objects.filter(activo=True).count(), 1)
+
+    def test_chispa_trae_retrato_de_fabrica(self):
+        """0007: sale con cara, no con el cuadradito de color (es la primera impresión)."""
+        chispa = Participante.objects.get(key='chispa')
+        self.assertTrue(chispa.avatar.startswith('data:image/'))
+        self.assertLess(len(chispa.avatar), 200_000)  # tope de _avatar_limpio
 
 
 class OnboardingTests(TestCase):
