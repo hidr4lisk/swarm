@@ -961,10 +961,12 @@ class PlantillasTests(TestCase):
         ni carpeta (la Bitácora seguía porque es un link, no JS).
 
         Regla: `{% trans %}` dentro de `<script>` va con `|escapejs`. Este test permite el
-        literal solo si su traducción no trae comillas ni barras."""
-        import polib
-        po = polib.pofile(str(Path(settings.BASE_DIR) / 'locale/en/LC_MESSAGES/django.po'))
-        traducciones = {e.msgid: e.msgstr for e in po if e.msgstr}
+        literal solo si su traducción no trae comillas ni barras.
+
+        Traduce con `gettext` (el `.mo` COMPILADO, que es lo que se despacha) en vez de leer el
+        `.po`: sin dependencias extra —polib no está en requirements y el CI se rompía— y de paso
+        agarra el caso de que el `.po` y el `.mo` estén desincronizados."""
+        idiomas = [c for c, _ in settings.LANGUAGES if c != settings.LANGUAGE_CODE]
         peligrosos = []
         for f in self._plantillas():
             texto = f.read_text(encoding='utf-8')
@@ -975,9 +977,13 @@ class PlantillasTests(TestCase):
                 for m in re.finditer(r"\{%\s*trans\s+([\"'])(.+?)\1\s*%\}", js):
                     if 'escapejs' in js[m.end():m.end() + 40]:
                         continue
-                    en = traducciones.get(m.group(2), '')
-                    if any(c in en for c in ('\'', '"', '\\', '\n')):
-                        linea = texto[:bloque.start()].count(chr(10)) + js[:m.start()].count(chr(10)) + 1
-                        peligrosos.append(f"{f.name}:{linea} «{m.group(2)}» → «{en}»")
+                    for idioma in idiomas:
+                        with translation.override(idioma):
+                            traducido = translation.gettext(m.group(2))
+                        if any(c in traducido for c in ('\'', '"', '\\', '\n')):
+                            linea = (texto[:bloque.start()].count(chr(10))
+                                     + js[:m.start()].count(chr(10)) + 1)
+                            peligrosos.append(
+                                f"{f.name}:{linea} [{idioma}] «{m.group(2)}» → «{traducido}»")
         self.assertEqual(peligrosos, [],
                          f"Traducción con comillas dentro de JS sin |escapejs: {peligrosos}")
