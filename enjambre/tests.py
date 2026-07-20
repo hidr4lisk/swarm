@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import translation
@@ -952,3 +953,31 @@ class PlantillasTests(TestCase):
                     for patron in sospechas:
                         self.assertIsNone(re.search(patron, limpio),
                                           f"[{lang}] {url}: se filtró sintaxis de plantilla")
+
+    def test_ningun_trans_en_js_trae_comillas_en_su_traduccion(self):
+        """Una traducción con apóstrofo interpolada en un string JS de comilla simple CIERRA el
+        string y rompe el `<script>` ENTERO — mueren todos los botones de esa página, en ese
+        idioma nada más. Pasó en mesa.html: EN «couldn't upload» dejó la mesa sin config, toggle
+        ni carpeta (la Bitácora seguía porque es un link, no JS).
+
+        Regla: `{% trans %}` dentro de `<script>` va con `|escapejs`. Este test permite el
+        literal solo si su traducción no trae comillas ni barras."""
+        import polib
+        po = polib.pofile(str(Path(settings.BASE_DIR) / 'locale/en/LC_MESSAGES/django.po'))
+        traducciones = {e.msgid: e.msgstr for e in po if e.msgstr}
+        peligrosos = []
+        for f in self._plantillas():
+            texto = f.read_text(encoding='utf-8')
+            for bloque in re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', texto):
+                if 'src=' in bloque.group(1):
+                    continue
+                js = bloque.group(2)
+                for m in re.finditer(r"\{%\s*trans\s+([\"'])(.+?)\1\s*%\}", js):
+                    if 'escapejs' in js[m.end():m.end() + 40]:
+                        continue
+                    en = traducciones.get(m.group(2), '')
+                    if any(c in en for c in ('\'', '"', '\\', '\n')):
+                        linea = texto[:bloque.start()].count(chr(10)) + js[:m.start()].count(chr(10)) + 1
+                        peligrosos.append(f"{f.name}:{linea} «{m.group(2)}» → «{en}»")
+        self.assertEqual(peligrosos, [],
+                         f"Traducción con comillas dentro de JS sin |escapejs: {peligrosos}")

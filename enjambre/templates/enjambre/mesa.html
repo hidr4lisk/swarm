@@ -839,7 +839,10 @@
                 drop.classList.remove('busy');
                 if (dropTxt) dropTxt.textContent = d && d.ok
                     ? ('✓ ' + (d.guardados || []).join(', '))
-                    : ('✗ ' + ((d && d.error) || '{% trans "no se pudo subir" %}'));
+                    {% comment %} escapejs: sin esto un apóstrofo en la traducción (EN:
+                       "couldn't upload") cierra el string y rompe TODO este <script>
+                       → mueren todos los botones de la mesa. {% endcomment %}
+                    : ('✗ ' + ((d && d.error) || '{% trans "no se pudo subir" as t_subir %}{{ t_subir|escapejs }}'));
                 load();   // refrescar la lista de archivos
                 setTimeout(function () { if (dropTxt) dropTxt.textContent = prev; }, 3500);
             })
