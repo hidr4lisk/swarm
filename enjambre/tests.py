@@ -531,6 +531,60 @@ class ApiKeyGateTests(TestCase):
         self.assertIn('tools', payload)   # loop agéntico, no charla plana
 
 
+class CierreForzadoTests(TestCase):
+    """Al agotar MAX_ROUNDS, una ronda final SIN tools obliga a la silla a resumir en vez de cortar
+    en frío con un marcador confuso. Bug real: Don Zoilo (openrouter) en la Mesa 2 del Parrot hizo
+    el trabajo pero no cerró en texto → salía "(⏹️ corté… pedile que resuma)"."""
+
+    def test_openai_compat_fuerza_un_resumen_final(self):
+        from .providers import openai_compat
+        pide_tool = {'choices': [{'message': {'tool_calls': [
+            {'id': '1', 'function': {'name': 'inspect', 'arguments': '{}'}}]}}]}
+        resumen = {'choices': [{'message': {'content': 'Resumen: escribí /home/fede/saludo3.txt'}}]}
+
+        def fake(url, payload, headers, timeout):
+            # la ronda de cierre es la ÚNICA sin 'tools' → devuelve el texto; el resto pide tool.
+            return True, (resumen if 'tools' not in payload else pide_tool)
+
+        with mock.patch('enjambre.providers.openai_compat._http_json', side_effect=fake) as h, \
+                mock.patch('enjambre.toolbelt.ejecutar_tool', return_value='ok'):
+            out = openai_compat.chat_agentic('m', 'hi', 'k', 5, sesion=None, participante=None)
+        self.assertEqual(out, 'Resumen: escribí /home/fede/saludo3.txt')
+        payloads = [c.args[1] for c in h.call_args_list]
+        self.assertEqual(sum('tools' in p for p in payloads), toolbelt_mod.MAX_ROUNDS)
+        self.assertEqual(sum('tools' not in p for p in payloads), 1)  # exactamente 1 cierre
+
+    def test_anthropic_fuerza_un_resumen_final(self):
+        from .providers import anthropic
+        pide_tool = {'content': [{'type': 'tool_use', 'id': '1', 'name': 'inspect', 'input': {}}]}
+        resumen = {'content': [{'type': 'text', 'text': 'Resumen: toqué NOTAS.md'}]}
+
+        def fake(url, payload, headers, timeout):
+            return True, (resumen if 'tools' not in payload else pide_tool)
+
+        # anthropic.chat_agentic reimporta `_http_json` desde el paquete en tiempo de llamada.
+        with mock.patch('enjambre.providers._http_json', side_effect=fake), \
+                mock.patch('enjambre.toolbelt.ejecutar_tool', return_value='ok'):
+            out = anthropic.chat_agentic('m', 'hi', 'k', 5, sesion=None, participante=None)
+        self.assertEqual(out, 'Resumen: toqué NOTAS.md')
+
+    def test_marcador_honesto_si_el_cierre_tambien_falla(self):
+        # Si hasta la ronda de cierre vuelve vacía, cae a un marcador que aclara que el trabajo se hizo.
+        from .providers import openai_compat
+        pide_tool = {'choices': [{'message': {'tool_calls': [
+            {'id': '1', 'function': {'name': 'inspect', 'arguments': '{}'}}]}}]}
+        vacio = {'choices': [{'message': {'content': ''}}]}
+
+        def fake(url, payload, headers, timeout):
+            return True, (vacio if 'tools' not in payload else pide_tool)
+
+        with mock.patch('enjambre.providers.openai_compat._http_json', side_effect=fake), \
+                mock.patch('enjambre.toolbelt.ejecutar_tool', return_value='ok'):
+            out = openai_compat.chat_agentic('m', 'hi', 'k', 5, sesion=None, participante=None)
+        self.assertIn('⏹️', out)
+        self.assertIn('Bitácora', out)   # aclara que el trabajo quedó hecho
+
+
 class PollinationsClienteTests(TestCase):
     """El cliente de Pollinations: URL final correcta y Bearer con el token."""
 

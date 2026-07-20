@@ -67,4 +67,19 @@ def chat_agentic(model, prompt, api_key, timeout, sesion, participante, system='
             res = toolbelt.ejecutar_tool(u.get('name'), u.get('input', {}), sesion, participante)
             resultados.append({'type': 'tool_result', 'tool_use_id': u.get('id'), 'content': res})
         messages.append({'role': 'user', 'content': resultados})
-    return '(⏹️ corté tras varias rondas de herramientas sin cerrar — pedile a la silla que resuma)'
+    # Se agotaron las rondas sin cerrar con texto: el trabajo real ya se aplicó y quedó en la
+    # Bitácora; falta el cierre en prosa. Una ronda final SIN tools la obliga a resumir en vez de
+    # cortar en frío con un marcador confuso. (Paralelo a openai_compat._cierre_forzado.)
+    messages.append({'role': 'user', 'content':
+                     'Alcanzaste el tope de herramientas por turno. NO pidas más: en TEXTO, resumí '
+                     'concretamente qué hiciste (archivos, comandos, rutas) y qué quedó a medias si algo.'})
+    payload = {'model': model or DEFAULT_MODEL, 'max_tokens': MAX_TOKENS, 'messages': messages}
+    if system:
+        payload['system'] = system
+    ok, data = _http_json(API_URL, payload, headers, timeout)  # sin 'tools' → forzada a cerrar
+    if ok:
+        parts = [b.get('text', '') for b in data.get('content', []) if b.get('type') == 'text']
+        cierre = '\n'.join(p for p in parts if p).strip()
+        if cierre:
+            return cierre
+    return '(⏹️ tope de herramientas alcanzado — el trabajo quedó hecho (ver la Bitácora); la silla no cerró en texto)'

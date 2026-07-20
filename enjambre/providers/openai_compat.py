@@ -80,4 +80,27 @@ def chat_agentic(model, prompt, api_key, timeout, sesion, participante,
                 args = {}
             res = toolbelt.ejecutar_tool(fn.get('name'), args, sesion, participante)
             messages.append({'role': 'tool', 'tool_call_id': tc.get('id'), 'content': res})
-    return '(⏹️ corté tras varias rondas de herramientas sin cerrar — pedile a la silla que resuma)'
+    # Se agotaron las rondas sin que la silla cerrara con texto (típico de modelos chicos que dan
+    # vueltas verificando). El trabajo REAL ya se aplicó y quedó en la Bitácora; lo único que falta
+    # es el cierre en prosa. Una ronda final SIN tools la obliga a resumir en vez de cortar en frío
+    # con un marcador confuso ("hizo cosas pero dice que no pudo"). Ver toolbelt.MAX_ROUNDS.
+    return _cierre_forzado(base, headers, model, base_url, messages, timeout)
+
+
+def _cierre_forzado(base, headers, model, base_url, messages, timeout):
+    """Última llamada sin herramientas: la silla ya no puede pedir tools, tiene que responder texto
+    resumiendo lo que hizo. Si falla o vuelve vacía, cae a un marcador honesto (el trabajo se hizo)."""
+    messages.append({'role': 'user', 'content':
+                     'Alcanzaste el tope de herramientas por turno. NO pidas más: en TEXTO, resumí '
+                     'concretamente qué hiciste (archivos, comandos, rutas) y qué quedó a medias si algo.'})
+    payload = {'model': model or DEFAULT_MODEL, _param_tokens(base_url): MAX_TOKENS,
+               'messages': messages}  # sin 'tools' → forzada a cerrar con texto
+    ok, data = _http_json(base + '/chat/completions', payload, headers, timeout)
+    if ok:
+        try:
+            cierre = (data['choices'][0]['message'].get('content') or '').strip()
+        except (KeyError, IndexError, TypeError):
+            cierre = ''
+        if cierre:
+            return cierre
+    return '(⏹️ tope de herramientas alcanzado — el trabajo quedó hecho (ver la Bitácora); la silla no cerró en texto)'
