@@ -99,6 +99,7 @@ _DIRS_BIN = [
     '~/.opencode/bin',           # instalador oficial de opencode (Linux/mac/Windows)
     '~/.local/bin',              # pipx/uv/instaladores de claude y agy
     '~/.claude/local',           # claude instalado local
+    '~/AppData/Local/agy/bin',   # instalador oficial de Antigravity CLI en Windows (install.ps1)
     '~/bin',
     '~/AppData/Roaming/npm',     # npm global (Windows)
     '~/.npm-global/bin',

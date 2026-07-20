@@ -53,6 +53,13 @@
 
     {% if escalera %}{% include 'enjambre/_escalera.html' %}{% endif %}
 
+    {% if not sesiones %}
+    <div class="enj-card" style="margin-bottom:1rem;font-size:.85rem;">
+        {% blocktrans %}👋 ¿Primera vez? En <a href="/ayuda/">Ayuda</a> está la guía completa —
+        instalar en Windows/Linux y completar la escalera paso a paso.{% endblocktrans %}
+    </div>
+    {% endif %}
+
     {# Modal de donaciones: alias de transferencia, claro que son donaciones voluntarias. #}
     <div class="enj-donar-back" id="donar-modal" hidden>
         <div class="enj-donar-card" role="dialog" aria-modal="true" aria-labelledby="donar-title">

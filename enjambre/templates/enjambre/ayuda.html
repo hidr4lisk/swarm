@@ -27,6 +27,17 @@
         align-items: center; justify-content: center; font-size: .75rem; font-weight: 700;
         background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
     .ay-muted { color: var(--enj-muted); }
+
+    /* mini-wiki: <details> nativo, mismo patrón que Sillas/Escalera (sin JS) */
+    .ay-wiki { border: 1px solid var(--enj-border); border-radius: 10px; margin-bottom: .6rem;
+        padding: .1rem .9rem; }
+    .ay-wiki > summary { cursor: pointer; list-style: none; padding: .6rem 0; font-weight: 600;
+        display: flex; align-items: center; gap: .5rem; }
+    .ay-wiki > summary::-webkit-details-marker { display: none; }
+    .ay-wiki .n-chev { margin-left: auto; opacity: .6; font-size: .75rem; transition: transform .15s ease; }
+    .ay-wiki[open] .n-chev { transform: rotate(180deg); }
+    .ay-wiki > div { padding: 0 0 .8rem; }
+    .ay-wiki ol { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .4rem; }
 </style>
 {% endblock %}
 
@@ -82,6 +93,83 @@
             mencionala: <span class="ay-code">@claude revisá este enfoque</span>. ¿Construir de verdad?
             <span class="ay-code">/armar &lt;pedido&gt;</span> — las sillas editan archivos en la carpeta git
             de la mesa y cada turno queda commiteado (📁 para explorar y descargar).{% endblocktrans %}</span></div>
+    </div>
+
+    <div class="ay-seccion enj-card">
+        <h2><i class="fas fa-book-open"></i> {% trans 'Guía paso a paso — instalar y subir la escalera' %}</h2>
+        <p class="ay-muted" style="margin:.2rem 0 .7rem;font-size:.85rem;">
+            {% trans 'Para cuando algo no queda claro, o si vas a instalar Swarm en la PC de otra persona.' %}
+        </p>
+
+        <details class="ay-wiki">
+            <summary>🪟 {% trans 'Instalar el pendrive — Windows' %} <i class="fas fa-chevron-down n-chev"></i></summary>
+            <div>
+                <ol>
+                    <li>{% blocktrans %}Bajá <code class="ay-code">swarm-portable.zip</code> desde la
+                        <a href="https://hidr4lisk.github.io/swarm/" target="_blank" rel="noopener">página del proyecto</a>
+                        (botón «⬇ Descargar · listo para usar»).{% endblocktrans %}</li>
+                    <li>{% trans 'Clic derecho sobre el zip → «Extraer todo…» → elegí la carpeta (podés hacerlo directo en el pendrive).' %}</li>
+                    <li>{% blocktrans %}Abrí la carpeta que se creó y buscá <code class="ay-code">Enjambre.bat</code>.{% endblocktrans %}</li>
+                    <li>{% blocktrans %}Doble-clic en <code class="ay-code">Enjambre.bat</code>. La primera vez Windows
+                        puede avisar <strong>«Windows protegió su PC»</strong> (SmartScreen) — es normal en programas sin
+                        firma paga, no es un virus: clic en <strong>«Más información»</strong> y después
+                        <strong>«Ejecutar de todos modos»</strong>. El código es público en GitHub, cualquiera lo puede
+                        revisar.{% endblocktrans %}</li>
+                    <li>{% trans 'Se abre una ventana negra un momento (está preparando todo) y después el navegador, con la mesa ya charlando con Chispa.' %}</li>
+                    <li>{% trans 'La primera vez en cada PC te pregunta si instalar ahí (arranca más rápido después) o correr sin dejar rastro — elegí lo que prefieras.' %}</li>
+                </ol>
+            </div>
+        </details>
+
+        <details class="ay-wiki">
+            <summary>🐧 {% trans 'Instalar el pendrive — Linux' %} <i class="fas fa-chevron-down n-chev"></i></summary>
+            <div>
+                <ol>
+                    <li>{% trans 'Bajá el mismo swarm-portable.zip desde la página del proyecto.' %}</li>
+                    <li>{% blocktrans %}Extraelo (clic derecho → «Extraer», o <code class="ay-code">unzip swarm-portable.zip</code>
+                        en una terminal).{% endblocktrans %}</li>
+                    <li>{% blocktrans %}Doble-clic en <code class="ay-code">enjambre.sh</code>: si tu explorador de archivos
+                        pregunta «¿Ejecutar o Ver?», elegí <strong>«Ejecutar en terminal»</strong>. Si preferís, abrí una
+                        terminal en esa carpeta y corré <code class="ay-code">./enjambre.sh</code>.{% endblocktrans %}</li>
+                    <li>{% trans 'Igual que en Windows: la primera vez pregunta instalar-ahí o sin-rastro, y después abre el navegador solo.' %}</li>
+                </ol>
+            </div>
+        </details>
+
+        <details class="ay-wiki">
+            <summary>🪜 {% trans 'Escalón 1 — instalar y loguear opencode' %} <i class="fas fa-chevron-down n-chev"></i></summary>
+            <div>
+                <p style="margin:.2rem 0;">
+                    {% blocktrans %}En <strong>Linux/Mac</strong> es un solo comando en una terminal:
+                    <code class="ay-code">curl -fsSL https://opencode.ai/install | bash</code> y después
+                    <code class="ay-code">opencode auth login</code>.{% endblocktrans %}
+                </p>
+                <p style="margin:.6rem 0 .2rem;">
+                    {% blocktrans %}En <strong>Windows nativo no hay un instalador de un solo paso</strong> — la propia
+                    documentación de opencode recomienda usar WSL para la mejor experiencia. Las alternativas nativas
+                    (<code class="ay-code">choco install opencode</code>, <code class="ay-code">scoop install opencode</code>,
+                    o <code class="ay-code">npm install -g opencode-ai</code> si tenés Node.js) piden tener ya instalado
+                    Chocolatey, Scoop o Node.{% endblocktrans %}
+                </p>
+                <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
+                    {% trans 'Si no sos técnico y estás en Windows, este escalón puede ser el más difícil — no hace falta subirlo: podés saltar directo al escalón 2 (tu propia API key), que funciona igual en cualquier sistema.' %}
+                </p>
+            </div>
+        </details>
+
+        <details class="ay-wiki">
+            <summary>🔑 {% trans 'Escalón 2 — cargar tu propia API key' %} <i class="fas fa-chevron-down n-chev"></i></summary>
+            <div>
+                <ol>
+                    <li>{% trans 'Conseguí una key de un proveedor: Anthropic, OpenRouter, Google AI Studio (Gemini), o cualquier compatible con OpenAI.' %}</li>
+                    <li>{% blocktrans %}Andá a <a href="/conexiones/">Conexiones → API keys</a>.{% endblocktrans %}</li>
+                    <li>{% trans 'Si es la primera vez, elegí una passphrase para la bóveda (no se guarda en ningún lado — si la olvidás, hay que recargar las keys).' %}</li>
+                    <li>{% trans 'Pegá la key del proveedor que quieras y guardá.' %}</li>
+                    <li>{% blocktrans %}Volvé a <a href="/sillas/">Sillas</a> y prendé (o creá) una silla que use ese
+                        proveedor.{% endblocktrans %}</li>
+                </ol>
+            </div>
+        </details>
     </div>
 
     <div class="ay-grid2 ay-seccion">
