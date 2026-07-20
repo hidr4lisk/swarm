@@ -289,6 +289,9 @@ No hace falta instalar nada (ni Python ni Docker).
   · Linux:   doble-clic en  enjambre.sh  → "Ejecutar en terminal"  (o  ./enjambre.sh  en una terminal)
   · Windows: doble-clic en  Enjambre.bat
 
+  ¿Windows avisa "Windows protegió su PC"? Es normal —el instalador no tiene firma paga, el
+  código es público en GitHub—: click en "Más información" y después "Ejecutar de todos modos".
+
 La PRIMERA vez te pregunta (en la terminal/consola) si querés INSTALAR Swarm en esta PC para que
 arranque rápido la próxima vez —descomprime el runtime al disco local, deja ~280 MB— o usarlo en
 modo SIN RASTRO (se borra al cerrar y se re-arma en cada arranque). No hay que editar ningún

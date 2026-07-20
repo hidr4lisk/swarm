@@ -399,6 +399,7 @@ footer a{color:var(--text-dim);}
         <div class="st-t" data-i18n="go0_t">Bajar el pendrive · listo para usar</div>
         <code class="cmd"><span class="pr">⬇</span> <a href="https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip" style="color:inherit">swarm-portable.zip</a>  <span class="dim"># Windows + Linux, ~100 MB</span></code>
         <p data-i18n-html="go0_p">Descomprimilo <b>directo a un pendrive</b> y doble-clic a <code>Enjambre.bat</code> (Windows) o <code>enjambre.sh</code> (Linux). Sin Python, sin Docker, sin clonar. La primera vez cada PC pregunta si instalarlo ahí o correr sin dejar rastro.</p>
+        <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_note">¿Windows avisa «Windows protegió su PC»? Es normal (el código no tiene firma paga, es público en GitHub) — «Más información» → «Ejecutar de todos modos». Guía paso a paso: botón <b>Ayuda</b> dentro de la app.</p>
       </div></div>
       <div class="step"><div>
         <div class="st-t" data-i18n="go1_t">Nativa / portátil (sin Docker)</div>
@@ -484,6 +485,7 @@ const I18N = {
     go_body: 'Don\'t want to clone anything? Grab the ready-made pendrive. Prefer the code? Clone and run — no Docker, no account, just Python 3.12.',
     go0_t: 'Download the pendrive · ready to use',
     go0_p: 'Unzip it <b>straight onto a pendrive</b> and double-click <code>Enjambre.bat</code> (Windows) or <code>enjambre.sh</code> (Linux). No Python, no Docker, no cloning. First run asks each PC whether to install it there or run trace-free.',
+    go0_note: 'Windows warns "Windows protected your PC"? That\'s normal (no paid signing cert, code is public on GitHub) — "More info" → "Run anyway". Step-by-step guide: the <b>Help</b> button inside the app.',
     go1_t: 'Native / portable (no Docker)',
     go1_p: 'Opens <code>127.0.0.1:8799</code>. Go to <b>Connections → API keys</b>, load a key (stored encrypted) and start a table.',
     go2_t: 'Build the pendrive (Linux + Windows)',
