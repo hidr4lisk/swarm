@@ -201,9 +201,11 @@
     <div class="cx-panel" data-panel="belt" hidden data-belt
          data-on="{{ toolbelt_on|yesno:'1,0' }}" data-forced="{{ toolbelt_forzado|yesno:'1,0' }}">
         <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
-            {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas por API key dejan de solo conversar
-            y pueden <strong>inspeccionar y operar la computadora donde corre Swarm</strong> (la del cliente). Es el
-            corazón del soporte: la silla mira el sistema <strong>real</strong> en vez de adivinar.{% endblocktrans %}
+            {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas dejan de solo conversar y pueden
+            <strong>inspeccionar y operar la computadora donde corre Swarm</strong> (la del cliente). Es el corazón
+            del soporte: la silla mira el sistema <strong>real</strong> en vez de adivinar. Vale para las sillas por
+            <strong>API key</strong> y para las de <strong>CLI</strong> (claude · opencode · agy), con una diferencia
+            importante en cómo se controla cada una — mirá abajo.{% endblocktrans %}
         </p>
 
         <div class="cx-belt {% if toolbelt_on %}on{% endif %}" data-beltbar>
@@ -212,8 +214,8 @@
                 <strong data-belttitle>{% if toolbelt_on %}{% trans 'Toolbelt encendido' %}{% else %}{% trans 'Toolbelt apagado' %}{% endif %}</strong>
                 <span class="cx-note" data-beltsub>
                     {% if toolbelt_forzado %}{% trans 'Forzado por SWARM_TOOLBELT en el launcher — se controla desde ahí, no acá.' %}
-                    {% elif toolbelt_on %}{% trans 'Las sillas API pueden operar esta máquina.' %}
-                    {% else %}{% trans 'Las sillas API solo conversan; no ven la máquina.' %}{% endif %}
+                    {% elif toolbelt_on %}{% trans 'Las sillas API y CLI pueden operar esta máquina.' %}
+                    {% else %}{% trans 'Las sillas solo conversan; no ven la máquina.' %}{% endif %}
                 </span>
             </div>
             <label class="cx-switch" title="{% trans 'Encender / apagar el toolbelt' %}">
@@ -223,6 +225,7 @@
         </div>
         <div class="cx-msg" data-beltmsg role="status"></div>
 
+        <p class="cx-note" style="margin:.2rem 0 .5rem;"><strong>{% trans 'Sillas por API key' %}</strong></p>
         <ul class="cx-safety">
             <li><i class="fas fa-magnifying-glass"></i>
                 <span>{% blocktrans %}<strong>Lectura automática:</strong> ver el SO, procesos, disco, archivos y comandos de
@@ -234,10 +237,25 @@
                 <span>{% blocktrans %}<strong>Todo queda registrado</strong> en la Bitácora de cada mesa (lecturas y cambios).{% endblocktrans %}</span></li>
         </ul>
 
+        <p class="cx-note" style="margin:.9rem 0 .5rem;"><strong>{% trans 'Sillas por CLI (claude · opencode · agy)' %}</strong></p>
+        <ul class="cx-safety">
+            <li><i class="fas fa-bolt"></i>
+                <span>{% blocktrans %}<strong>Trabajan directo sobre la máquina</strong> con sus propias herramientas: leen,
+                editan y ejecutan. Arrancan en tu carpeta personal, pero llegan a todo el equipo.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-triangle-exclamation"></i>
+                <span>{% blocktrans %}<strong>Sin aprobación por comando.</strong> Un CLI trae sus herramientas adentro y Swarm no
+                puede interceptarlas una por una: acá <strong>el permiso es este switch</strong>. Si está encendido, la silla
+                aplica los cambios en el momento.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-book"></i>
+                <span>{% blocktrans %}<strong>Cada turno queda en la Bitácora</strong> — qué CLI corrió, en qué carpeta y qué hizo.
+                Es donde se ve trabajar a la silla.{% endblocktrans %}</span></li>
+        </ul>
+
         <p class="cx-note">
-            {% blocktrans %}Apagado por defecto. Necesita una silla por API key con un modelo que soporte
-            <strong>herramientas</strong> (function-calling); si el modelo no las soporta, la silla las ignora.
-            Pedile <code>system_report</code> para probar.{% endblocktrans %}
+            {% blocktrans %}Apagado por defecto. Las sillas por API key necesitan un modelo que soporte
+            <strong>herramientas</strong> (function-calling); si no las soporta, la silla las ignora. Las de CLI
+            usan el login que ya tenés en la máquina. Pedile <code>system_report</code> a una API, o
+            «fijate cuánto disco libre hay» a una CLI, para probar.{% endblocktrans %}
         </p>
     </div>
 </div>

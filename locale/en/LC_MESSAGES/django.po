@@ -2027,3 +2027,123 @@ msgstr ""
 "            adds new ones) or <strong>replace</strong> (leaves the table identical to the file).\n"
 "            The file carries <strong>no credentials</strong>: keys stay encrypted in the vault,\n"
 "            separately."
+
+#: enjambre/templates/enjambre/ayuda.html:0
+msgid ""
+"Con el toolbelt <strong>encendido</strong>, las sillas pueden\n"
+"                <strong>operar esta máquina</strong> para diagnosticar y arreglar, en vez de adivinar.\n"
+"                Vale para las sillas por <strong>API key</strong> y para las de <strong>CLI</strong>."
+msgstr ""
+"With the toolbelt <strong>on</strong>, seats can <strong>operate this "
+"machine</strong> to diagnose and fix things instead of guessing. This covers"
+" both <strong>API key</strong> and <strong>CLI</strong> seats."
+
+#: enjambre/templates/enjambre/ayuda.html:0
+msgid ""
+"Las de <strong>API key</strong> van con red: las <strong>lecturas</strong>\n"
+"                (reporte del sistema, inspección con una lista blanca de comandos que no cambian nada)\n"
+"                corren solas, y cualquier <strong>cambio</strong> te muestra el comando y espera\n"
+"                <strong>tu OK</strong> antes de tocar algo."
+msgstr ""
+"<strong>API key</strong> seats come with a safety net: "
+"<strong>reads</strong> (system report, inspection via an allowlist of "
+"commands that change nothing) run on their own, and any "
+"<strong>change</strong> shows you the command and waits for <strong>your "
+"OK</strong> before touching anything."
+
+#: enjambre/templates/enjambre/ayuda.html:0
+msgid ""
+"Las de <strong>CLI</strong> (claude · opencode · agy) trabajan con sus propias\n"
+"                herramientas: leen, editan y ejecutan <strong>en el momento</strong>, sin aprobación comando por\n"
+"                comando — Swarm no puede interceptarlas por dentro, así que ahí <strong>el permiso es el switch</strong>.\n"
+"                Prendelo solo en máquinas que estés autorizado a atender."
+msgstr ""
+"<strong>CLI</strong> seats (claude · opencode · agy) work with their own "
+"tools: they read, edit and execute <strong>right away</strong>, with no per-"
+"command approval — Swarm can't intercept them from the inside, so there "
+"<strong>the switch is the permission</strong>. Only turn it on for machines "
+"you're authorized to service."
+
+#: enjambre/templates/enjambre/ayuda.html:0
+msgid ""
+"Viene <strong>apagado</strong>; se enciende en <a href=\"/conexiones/\">Conexiones</a>.\n"
+"                Todo queda registrado en la <a href=\"/bitacora/\">Bitácora</a> de la mesa: las acciones de las sillas\n"
+"                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo.\n"
+"                La silla gratis solo conversa: no usa el toolbelt."
+msgstr ""
+"It ships <strong>off</strong>; turn it on in <a "
+"href=\"/conexiones/\">Connections</a>. Everything lands in the mesa's <a "
+"href=\"/bitacora/\">Bitácora</a>: the actions of API seats and, for CLI "
+"seats, every turn with its command, folder and what it did. The free seat "
+"only chats: it doesn't use the toolbelt."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid ""
+"Con el toolbelt <strong>encendido</strong>, las sillas dejan de solo conversar y pueden\n"
+"            <strong>inspeccionar y operar la computadora donde corre Swarm</strong> (la del cliente). Es el corazón\n"
+"            del soporte: la silla mira el sistema <strong>real</strong> en vez de adivinar. Vale para las sillas por\n"
+"            <strong>API key</strong> y para las de <strong>CLI</strong> (claude · opencode · agy), con una diferencia\n"
+"            importante en cómo se controla cada una — mirá abajo."
+msgstr ""
+"With the toolbelt <strong>on</strong>, seats stop merely chatting and can "
+"<strong>inspect and operate the computer Swarm runs on</strong> (the "
+"client's). It's the heart of support: the seat looks at the "
+"<strong>real</strong> system instead of guessing. This covers <strong>API "
+"key</strong> seats and <strong>CLI</strong> ones (claude · opencode · agy), "
+"with an important difference in how each is controlled — see below."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid ""
+"<strong>Trabajan directo sobre la máquina</strong> con sus propias herramientas: leen,\n"
+"                editan y ejecutan. Arrancan en tu carpeta personal, pero llegan a todo el equipo."
+msgstr ""
+"<strong>They work straight on the machine</strong> with their own tools: "
+"reading, editing and executing. They start in your home folder, but they "
+"reach the whole box."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid ""
+"<strong>Sin aprobación por comando.</strong> Un CLI trae sus herramientas adentro y Swarm no\n"
+"                puede interceptarlas una por una: acá <strong>el permiso es este switch</strong>. Si está encendido, la silla\n"
+"                aplica los cambios en el momento."
+msgstr ""
+"<strong>No per-command approval.</strong> A CLI carries its tools inside and"
+" Swarm can't intercept them one by one: here <strong>this switch is the "
+"permission</strong>. With it on, the seat applies changes right away."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid ""
+"<strong>Cada turno queda en la Bitácora</strong> — qué CLI corrió, en qué carpeta y qué hizo.\n"
+"                Es donde se ve trabajar a la silla."
+msgstr ""
+"<strong>Every turn lands in the Bitácora</strong> — which CLI ran, in which "
+"folder and what it did. That's where you watch the seat work."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid ""
+"Apagado por defecto. Las sillas por API key necesitan un modelo que soporte\n"
+"            <strong>herramientas</strong> (function-calling); si no las soporta, la silla las ignora. Las de CLI\n"
+"            usan el login que ya tenés en la máquina. Pedile <code>system_report</code> a una API, o\n"
+"            «fijate cuánto disco libre hay» a una CLI, para probar."
+msgstr ""
+"Off by default. API key seats need a model that supports "
+"<strong>tools</strong> (function-calling); if it doesn't, the seat ignores "
+"them. CLI seats use the login you already have on the machine. Ask an API "
+"seat for <code>system_report</code>, or a CLI one «check how much free disk "
+"there is», to try it out."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid "Sillas por API key"
+msgstr "API key seats"
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid "Sillas por CLI (claude · opencode · agy)"
+msgstr "CLI seats (claude · opencode · agy)"
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid "Las sillas API y CLI pueden operar esta máquina."
+msgstr "API and CLI seats can operate this machine."
+
+#: enjambre/templates/enjambre/conexiones.html:0
+msgid "Las sillas solo conversan; no ven la máquina."
+msgstr "Seats only chat; they can't see the machine."

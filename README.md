@@ -208,6 +208,19 @@ sandbox; it is:
   authorized to service, and read every `apply_fix` before approving. In Docker mode the tools
   see the worker container, not the host — the toolbelt is meant for the **native/portable** route.
 
+**CLI seats with the toolbelt on — no per-command gate.** Everything above (auto reads, mutations
+behind your OK) applies to **API-key** seats, where Swarm intercepts each tool call. A **CLI** seat
+(claude · opencode · agy) carries its own tools: we hand it a prompt on stdin and read text back —
+there is nothing to intercept. So with the toolbelt on, a CLI seat **reads, edits and executes right
+away on the real machine**, starting in your home folder but reaching the whole box. The switch is
+the permission, not each command. Two honest notes:
+
+- This grants **no reach it didn't already have**: a CLI seat under `/armar` already ran with `cwd`
+  set to the mesa folder, and a `cwd` is not a jail (claude's build command ships
+  `--allowedTools Bash`). What changes is that it is now **explicit and recorded**.
+- `/armar` is **unchanged**: it still builds inside the mesa's git folder. Machine mode applies to
+  ordinary support turns.
+
 Known limitation: containers run as root, so the files tables build under `~/.enjambre`
 end up root-owned on your host (git even complains about *dubious ownership* if you
 touch them as your user). It doesn't affect the app; to work on them from your
@@ -404,6 +417,19 @@ seguridad **no** es un sandbox; es esto:
 - **Toda mutación necesita tu OK.** `apply_fix` nunca se ejecuta solo — encola una acción pendiente
   y lo avisa en la mesa; vos la aprobás o rechazás en la **Bitácora**. Los comandos aprobados corren
   con shell completo **porque ya los revisaste**.
+**Sillas por CLI con el toolbelt encendido — sin gate por comando.** Lo de arriba (lecturas auto,
+mutaciones con tu OK) vale para las sillas por **API key**, donde Swarm intercepta cada herramienta.
+Una silla por **CLI** (claude · opencode · agy) trae sus herramientas adentro: le pasamos un prompt
+por stdin y leemos texto, no hay dónde interceptar. Así que con el toolbelt encendido una silla CLI
+**lee, edita y ejecuta en el momento sobre la máquina real**, arrancando en tu carpeta personal pero
+con alcance a todo el equipo. El permiso es el switch, no cada comando. Dos aclaraciones honestas:
+
+- Esto **no** le da alcance que antes no tuviera: una silla CLI en `/armar` ya corría con el `cwd`
+  en la carpeta de la mesa, y un `cwd` no es una jaula (el comando de fabricar de claude trae
+  `--allowedTools Bash`). Lo que cambia es que ahora es **explícito y queda registrado**.
+- `/armar` **no** cambió: sigue fabricando dentro de la carpeta git de la mesa. El modo máquina
+  es para los turnos normales de soporte.
+
 - **Todo queda logueado.** Cada lectura y cada mutación va a la Bitácora de la mesa (modelo
   `Accion`), exportable como informe de soporte.
 - **Es un tool de mucho poder, peligroso en manos equivocadas.** Habilitalo solo en máquinas que

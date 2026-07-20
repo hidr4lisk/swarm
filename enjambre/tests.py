@@ -15,6 +15,7 @@ de error, que son los nuestros); git sí se usa de verdad sobre un tmpdir.
 """
 import json
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -30,7 +31,8 @@ from .conexiones import detectar, resolver_bin, ruta_corta
 from .engine import (
     Enjambre, ejecutar_cli, ejecutar_http, es_ruido, limpiar_salida, parse_comando,
 )
-from .models import Mensaje, Participante, Sesion
+from .models import Accion, Mensaje, Participante, Sesion
+from . import toolbelt as toolbelt_mod
 from .workspace import mesa_workspace
 
 
@@ -987,3 +989,105 @@ class PlantillasTests(TestCase):
                                 f"{f.name}:{linea} [{idioma}] «{m.group(2)}» → «{traducido}»")
         self.assertEqual(peligrosos, [],
                          f"Traducción con comillas dentro de JS sin |escapejs: {peligrosos}")
+
+
+class ModoMaquinaCliTests(TestCase):
+    """Toolbelt ON → una silla CLI opera la MÁQUINA REAL en un turno normal (no solo en /armar),
+    y el turno queda en la Bitácora. Es la tesis de Swarm: CLI y API con el mismo alcance."""
+
+    def setUp(self):
+        self.sesion = Sesion.objects.create(nombre='soporte')
+        self.cli = Participante.objects.create(
+            key='neo', nombre='Neo', comando=['opencode', 'run'],
+            comando_trabajo=['opencode', 'run', '--agent', 'build'], activo=True)
+        self.sesion.participantes.add(self.cli)
+
+    @staticmethod
+    def _parche_cli(salida):
+        """Intercepta SOLO la invocación del CLI. `subprocess` es un módulo compartido, así que
+        parchear `run` a secas también se come los `git` del workspace (y `git init` explota con
+        un Mock por returncode). Este side_effect deja pasar git al subprocess real."""
+        real = subprocess.run
+
+        def dispatch(argv, *a, **kw):
+            if argv and 'git' in str(argv[0]):
+                return real(argv, *a, **kw)
+            return mock.Mock(stdout=salida, stderr='', returncode=0)
+        return mock.patch('enjambre.engine.subprocess.run', side_effect=dispatch)
+
+    def _correr(self, salida='listo: miré /etc/fstab y no toqué nada'):
+        """Corre un turno interceptando el CLI. Devuelve la llamada con que se invocó."""
+        with self._parche_cli(salida) as run:
+            Enjambre(self.sesion).enviar(self.cli, 'revisá el disco')
+        return run.call_args
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_con_toolbelt_on_la_silla_cli_corre_sobre_la_maquina(self, _h):
+        args = self._correr()
+        # cwd = la máquina (home), NO la carpeta de la mesa
+        self.assertEqual(args.kwargs['cwd'], toolbelt_mod.cwd_maquina())
+        self.assertNotIn('mesas', args.kwargs['cwd'])
+        # usa el comando AGÉNTICO (puede leer/editar/ejecutar), no el de charla
+        self.assertIn('--agent', args.args[0])
+        # y el prompt le dice que está sobre la máquina real
+        self.assertIn('TOOLBELT está ENCENDIDO', args.args[0][-1])
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_el_turno_queda_en_la_bitacora(self, _h):
+        self._correr(salida='corrí df -h; /home está al 80%')
+        acc = Accion.objects.get(sesion=self.sesion)
+        self.assertEqual(acc.herramienta, 'cli_maquina')
+        self.assertEqual(acc.estado, Accion.Estado.EJECUTADA)
+        self.assertTrue(acc.es_mutacion)
+        self.assertEqual(acc.emisor, 'Neo')
+        self.assertIn('opencode', acc.comando)      # qué corrió
+        self.assertIn('cwd:', acc.comando)          # dónde
+        self.assertIn('df -h', acc.salida)          # qué hizo
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=False)
+    def test_con_toolbelt_off_no_cambia_nada(self, _h):
+        args = self._correr()
+        self.assertIsNone(args.kwargs['cwd'])                 # charla, sin filesystem
+        self.assertNotIn('--agent', args.args[0])             # comando de charla
+        self.assertFalse(Accion.objects.exists())             # no ensucia la bitácora
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_armar_sigue_fabricando_en_la_carpeta_de_la_mesa(self, _h):
+        """El toolbelt NO se roba /armar: fabricar sigue siendo el taller de entregables."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                with self._parche_cli('hecho') as run:
+                    Enjambre(self.sesion).enviar(self.cli, 'armá un script', editar=True)
+                # call_args es la ÚLTIMA llamada y acá termina siendo un `git` del commit:
+                # hay que buscar la del CLI entre todas.
+                cli = [c for c in run.call_args_list if 'git' not in str(c.args[0][0])]
+                cwd = cli[0].kwargs['cwd']
+        self.assertIn('mesa-', cwd)                # la carpeta de la mesa, no el home
+        self.assertNotEqual(cwd, toolbelt_mod.cwd_maquina())
+        self.assertFalse(Accion.objects.exists())  # eso va al commit, no a la bitácora
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_las_sillas_http_no_operan_la_maquina(self, _h):
+        """Ollama no tiene filesystem: sigue siendo charla por HTTP."""
+        local = Participante.objects.create(
+            key='heis', nombre='Heisenberg', endpoint_url='http://192.168.0.7:11434',
+            endpoint_model='qwen3', activo=True)
+        with mock.patch('enjambre.engine.ejecutar_http', return_value=('hola', False)) as http:
+            Enjambre(self.sesion).enviar(local, 'hola')
+        self.assertTrue(http.called)
+        self.assertFalse(Accion.objects.exists())
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_modo_maquina_no_pasa_por_el_runner(self, _h):
+        """Con runner configurado, el CLI correría encerrado en un contenedor que solo ve /work
+        — lo contrario de operar el equipo. En modo máquina se invoca directo en el host."""
+        with override_settings(ENJAMBRE_RUNNER='/app/runner/enjambre-run.sh'):
+            args = self._correr()
+        self.assertNotIn('enjambre-run.sh', ' '.join(args.args[0]))
+
+    def test_opera_maquina_distingue_los_tres_backends(self):
+        from .clientes import opera_maquina
+        self.assertTrue(opera_maquina(self.cli))
+        self.assertFalse(opera_maquina(Participante(key='o', endpoint_url='http://x:11434')))
+        self.assertFalse(opera_maquina(
+            Participante(key='a', comando=['api-openrouter', '--model', 'x'])))

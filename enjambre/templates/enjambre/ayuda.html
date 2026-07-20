@@ -248,15 +248,26 @@
         <div class="enj-card">
             <h2><i class="fas fa-toolbox"></i> {% trans 'El toolbelt' %}</h2>
             <p style="margin:.2rem 0;">
-                {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas por API key pueden
-                <strong>operar esta máquina</strong> para diagnosticar y arreglar: las <strong>lecturas</strong>
+                {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas pueden
+                <strong>operar esta máquina</strong> para diagnosticar y arreglar, en vez de adivinar.
+                Vale para las sillas por <strong>API key</strong> y para las de <strong>CLI</strong>.{% endblocktrans %}
+            </p>
+            <p style="margin:.5rem 0 0;">
+                {% blocktrans %}Las de <strong>API key</strong> van con red: las <strong>lecturas</strong>
                 (reporte del sistema, inspección con una lista blanca de comandos que no cambian nada)
-                corren solas; cualquier <strong>cambio</strong> te muestra el comando y espera
+                corren solas, y cualquier <strong>cambio</strong> te muestra el comando y espera
                 <strong>tu OK</strong> antes de tocar algo.{% endblocktrans %}
+            </p>
+            <p style="margin:.5rem 0 0;">
+                {% blocktrans %}Las de <strong>CLI</strong> (claude · opencode · agy) trabajan con sus propias
+                herramientas: leen, editan y ejecutan <strong>en el momento</strong>, sin aprobación comando por
+                comando — Swarm no puede interceptarlas por dentro, así que ahí <strong>el permiso es el switch</strong>.
+                Prendelo solo en máquinas que estés autorizado a atender.{% endblocktrans %}
             </p>
             <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
                 {% blocktrans %}Viene <strong>apagado</strong>; se enciende en <a href="/conexiones/">Conexiones</a>.
-                Toda acción — lectura o cambio — queda registrada en la <a href="/bitacora/">Bitácora</a>.
+                Todo queda registrado en la <a href="/bitacora/">Bitácora</a> de la mesa: las acciones de las sillas
+                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo.
                 La silla gratis solo conversa: no usa el toolbelt.{% endblocktrans %}
             </p>
         </div>

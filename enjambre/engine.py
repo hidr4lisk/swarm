@@ -233,7 +233,7 @@ def ejecutar_api(participante, provider, prompt, timeout, sesion=None):
 
 
 def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, workdir_ro=None,
-                 sesion=None):
+                 sesion=None, cwd_maquina=None):
     """Corre la silla con el prompt dado. Devuelve (salida, ruido).
 
     Sillas de modelo local (endpoint_url seteado) van por HTTP (ejecutar_http); las sillas por API
@@ -243,6 +243,10 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, work
     override (ej: el de fabricación vs el de charla). `workdir_ro` (excluyente con `workdir`):
     monta esa carpeta en /work SOLO-LECTURA — para que el líder lea/grepee el código real sin
     poder editar (exporta ENJAMBRE_WORKDIR_RO).
+
+    `cwd_maquina` (modo máquina, toolbelt ON): corre sobre el equipo real desde esa carpeta. NO
+    exporta ENJAMBRE_WORKDIR a propósito — con el runner, el wrapper montaría solo /work y la
+    silla quedaría encerrada en el contenedor, que es lo contrario de operar la máquina.
     """
     if participante.endpoint_url and not comando:
         return ejecutar_http(participante, prompt, timeout)
@@ -252,14 +256,18 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None, work
         return ejecutar_api(participante, prov, prompt, timeout, sesion=sesion)
     env = os.environ.copy()
     cwd = None
-    if workdir:
+    if cwd_maquina:
+        cwd = str(cwd_maquina)
+    elif workdir:
         env['ENJAMBRE_WORKDIR'] = str(workdir)
         cwd = str(workdir)
     elif workdir_ro:
         env['ENJAMBRE_WORKDIR_RO'] = str(workdir_ro)
         cwd = str(workdir_ro)
     argv = list(comando or participante.comando)
-    pref = _runner_prefix()
+    # Modo máquina: SIN runner. El wrapper mete al CLI en un contenedor descartable que solo ve
+    # /work — justo lo contrario de operar el equipo real. Acá se invoca directo en el host.
+    pref = [] if cwd_maquina else _runner_prefix()
     if not pref and argv:
         # Sin runner el CLI se invoca directo: si el binario no está en el PATH del
         # proceso (doble-clic del pendrive), resolver_bin lo busca en los dirs típicos.
@@ -362,7 +370,7 @@ class Enjambre:
         rol = resolver(self.sesion.creador) if callable(resolver) else 'control'
         return rol == 'consulta'
 
-    def construir_prompt(self, participante, texto, editar=False, leer=False):
+    def construir_prompt(self, participante, texto, editar=False, leer=False, maquina=False):
         ctx = self.contexto()
         sillas = self.sillas()
         roster = ", ".join(s.nombre for s in sillas)
@@ -386,6 +394,9 @@ class Enjambre:
                 "corresponda. NO podés editar ni crear archivos (eso es de las sillas de trabajo); si "
                 "algo hay que cambiar, decílo en la subtarea apuntando al archivo y la línea."
             )
+        elif maquina:
+            from . import toolbelt
+            encuadre = toolbelt.encuadre_cli()
         else:
             encuadre = (
                 "IMPORTANTE: esto es CHARLA (respondés con texto). La mesa TIENE una carpeta de "
@@ -416,11 +427,24 @@ class Enjambre:
         mesa como cwd: lee/crea/edita archivos ahí; después se commitea y se postea el diff.
         Si `leer` (y la silla es CLI, no fabrica en este turno), monta la carpeta de la mesa
         SOLO-LECTURA: el líder lee/grepea el código real para planificar/integrar sin editar."""
-        from .clientes import edita_archivos
+        from .clientes import edita_archivos, opera_maquina
+        from . import toolbelt
         puede = editar and not self._es_consulta() and edita_archivos(participante)
+        # MODO MÁQUINA: con el toolbelt ENCENDIDO, una silla CLI opera el equipo real en un turno
+        # normal — igual que las sillas por API key, que ya lo hacían. No pisa a `/armar`: ese
+        # sigue fabricando en la carpeta de la mesa (es el taller de entregables, otra cosa).
+        # Sin gate por comando (no hay dónde interceptar un CLI); el candado es el switch y el
+        # registro es la Bitácora. Ver el bloque «Sillas CLI operando la máquina» en toolbelt.py.
+        maquina = (not puede and not leer and not self._es_consulta()
+                   and opera_maquina(participante) and toolbelt.habilitado())
         workdir = comando = base = workdir_ro = None
+        cwd_maq = None
         timeout = self.sesion.timeout
-        if puede:
+        if maquina:
+            cwd_maq = toolbelt.cwd_maquina()
+            comando = participante.cmd_trabajo()   # el agéntico: puede leer, editar y ejecutar
+            timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
+        elif puede:
             from .workspace import mesa_workspace, _git
             workdir = str(mesa_workspace(self.sesion))
             comando = participante.cmd_trabajo()
@@ -432,13 +456,15 @@ class Enjambre:
             # código real, no a ciegas) sin editar ni commitear. Las sillas HTTP no montan FS.
             from .workspace import mesa_workspace
             workdir_ro = str(mesa_workspace(self.sesion))
-        prompt = self.construir_prompt(participante, texto, editar=puede, leer=bool(workdir_ro))
-        modo = 'fabrica' if puede else ('lee (ro)' if workdir_ro else 'charla')
+        prompt = self.construir_prompt(participante, texto, editar=puede,
+                                       leer=bool(workdir_ro), maquina=maquina)
+        modo = ('opera la máquina' if maquina else
+                'fabrica' if puede else ('lee (ro)' if workdir_ro else 'charla'))
         self.log(f"▶ {participante.nombre} · {modo} (timeout {timeout}s)", nivel='paso')
         t0 = time.monotonic()
         salida, ruido = ejecutar_cli(participante, prompt, timeout,
                                      workdir=workdir, comando=comando, workdir_ro=workdir_ro,
-                                     sesion=self.sesion)
+                                     sesion=self.sesion, cwd_maquina=cwd_maq)
         dt = time.monotonic() - t0
         # Velocímetro: estimación uniforme tokens ≈ len/4; costo notional por tarifa de la
         # silla (local = $0). No es la factura real, es referencia para ver y topear el gasto.
@@ -461,6 +487,14 @@ class Enjambre:
         # comitear() no hace nada si no hubo cambios, así que es seguro llamarlo igual.
         if puede:
             self._comitear_y_postear(participante, workdir, base, parcial=ruido)
+        # Modo máquina: el turno queda en la Bitácora — es donde el equipo ve trabajar a la silla
+        # (qué CLI corrió, en qué carpeta y qué contó que hizo). Nunca rompe el turno.
+        if maquina:
+            try:
+                toolbelt.log_cli(self.sesion, participante,
+                                 comando or participante.comando, cwd_maq, salida)
+            except Exception as e:  # noqa: BLE001 — la bitácora no puede tumbar la mesa
+                self.log(f"no se pudo registrar el turno en la bitácora: {e}", nivel='error')
         return salida
 
     def _comitear_y_postear(self, participante, workdir, base, parcial=False):

@@ -398,3 +398,62 @@ def rechazar_pendiente(accion, por, motivo=''):
         texto=f"🚫 {por} rechazó el cambio propuesto:\n$ {accion.comando}"
               + (f"\nNota: {motivo}" if motivo else ''))
     return accion
+
+
+# ── Sillas CLI operando la máquina ────────────────────────────────────────────────
+# Las sillas por API key operan la máquina con las herramientas de arriba, que Swarm INTERCEPTA
+# una por una (de ahí el gate de `apply_fix`). Con una silla CLI no hay dónde interceptar:
+# claude/opencode/agy traen SUS PROPIAS herramientas y nosotros solo les pasamos un prompt por
+# stdin y leemos el texto que devuelven. Así que el control cambia de forma:
+#
+#   · el CANDADO es el switch del toolbelt (apagado por default): prenderlo ES el permiso;
+#   · el REGISTRO es la Bitácora — cada turno queda anotado con qué CLI corrió, en qué carpeta
+#     y qué hizo, como acción EJECUTADA (no pendiente: ya pasó, no hay nada que aprobar).
+#
+# Antes de esto una silla CLI en `/armar` ya alcanzaba toda la PC (el `cwd` de un subprocess no
+# es una jaula y el comando de fabricar trae Bash habilitado) pero NADA lo anotaba. El modo
+# máquina no agrega poder que no existiera: lo hace explícito y lo deja auditado.
+
+def cwd_maquina():
+    """Carpeta donde arranca una silla CLI en modo máquina. Default: el HOME del usuario —
+    punto de partida sensato para operar el equipo. `SWARM_TOOLBELT_CWD` lo cambia.
+
+    No es una restricción: el agente tiene shell y puede moverse. Es dónde empieza a mirar."""
+    ruta = (getattr(settings, 'SWARM_TOOLBELT_CWD', '')
+            or os.environ.get('SWARM_TOOLBELT_CWD') or str(Path.home()))
+    p = Path(ruta).expanduser()
+    return str(p) if p.is_dir() else str(Path.home())
+
+
+def encuadre_cli():
+    """Encuadre para una silla CLI que opera la máquina real. Paralelo al de las sillas API,
+    con la diferencia clave: acá las herramientas son las del propio CLI, así que los cambios
+    NO pasan por aprobación previa — se le avisa para que sea prudente y explícita."""
+    return (
+        f"IMPORTANTE: el TOOLBELT está ENCENDIDO y estás operando DIRECTAMENTE la máquina real "
+        f"de la persona que te pregunta — no un sandbox, no la carpeta de la mesa. "
+        f"Sistema: {platform.platform()} · shell: {SHELL_NAME} · host: {platform.node()}. "
+        f"Tu directorio inicial es {cwd_maquina()}, pero tenés acceso a todo el equipo.\n"
+        "Usá tus propias herramientas (leer, editar, ejecutar) sobre este sistema. A diferencia "
+        "de las sillas por API key, lo que hacés NO espera aprobación: se aplica en el momento. "
+        "Por eso: mirá ANTES de tocar, un cambio por vez, y NO toques nada que no te hayan "
+        "pedido. Nunca borres ni sobrescribas de forma masiva.\n"
+        "Todo tu turno queda en la BITÁCORA de la mesa, que es donde el equipo TE VE TRABAJAR: "
+        "contá SIEMPRE, de forma concreta, qué comandos corriste, qué archivos miraste y qué "
+        "cambiaste (con rutas). Es tu registro público, no un resumen para quedar bien. "
+        "Si un pedido te parece peligroso o ambiguo, NO lo ejecutes: pedí que te lo confirmen."
+    )
+
+
+def log_cli(sesion, participante, argv, cwd, salida):
+    """Anota en la Bitácora un turno de silla CLI en modo máquina.
+
+    Es la vidriera del producto: acá el equipo VE cómo trabaja una silla CLI sobre la máquina.
+    Por eso se guarda el comando real, la carpeta y la respuesta completa de la silla (donde
+    cuenta qué hizo). Estado EJECUTADA — ya corrió, no hay pendiente que aprobar."""
+    from .models import Accion
+    return _log(
+        sesion, participante, 'cli_maquina',
+        f"$ {' '.join(argv)}\n  (cwd: {cwd})", salida, Accion.Estado.EJECUTADA,
+        es_mutacion=True, motivo='Turno de silla CLI con el toolbelt encendido.',
+    )

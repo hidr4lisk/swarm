@@ -147,6 +147,15 @@ def edita_archivos(participante):
     return not participante.endpoint_url and not api_de(participante)
 
 
+def opera_maquina(participante):
+    """True si la silla puede operar la MÁQUINA REAL por CLI cuando el toolbelt está encendido.
+
+    Son las mismas que fabrican: las CLI (tienen binario, filesystem y herramientas propias).
+    Las HTTP (Ollama) no tienen filesystem; las api:* ya operan la máquina por el toolbelt
+    interceptado (`chat_agentic`), que es un camino distinto y con gate por comando."""
+    return not participante.endpoint_url and not api_de(participante)
+
+
 def build_comando(cliente, modelo):
     """Devuelve (comando, comando_trabajo) para un cliente CLI + modelo opcional.
     Para clientes HTTP (ollama) devuelve ([], []) — esos van por endpoint_url/endpoint_model."""
