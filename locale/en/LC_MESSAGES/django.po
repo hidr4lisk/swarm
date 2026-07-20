@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-20 12:05-0300\n"
+"POT-Creation-Date: 2026-07-20 12:32-0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -74,14 +74,14 @@ msgstr ""
 " keys or a local model."
 
 #: enjambre/templates/enjambre/ayuda.html:47
-#: enjambre/templates/enjambre/home.html:37
+#: enjambre/templates/enjambre/home.html:45
 #: enjambre/templates/enjambre/mesa.html:192
 #: enjambre/templates/enjambre/sillas.html:61
 msgid "Mesas"
 msgstr "Tables"
 
 #: enjambre/templates/enjambre/ayuda.html:53
-#: enjambre/templates/enjambre/home.html:46
+#: enjambre/templates/enjambre/home.html:54
 #: enjambre/templates/enjambre/mesa.html:207
 msgid "Ayuda"
 msgstr "Help"
@@ -190,10 +190,6 @@ msgid "Instalar el pendrive — Windows"
 msgstr "Installing the USB drive — Windows"
 
 #: enjambre/templates/enjambre/ayuda.html:108
-#| msgid ""
-#| "Y si te está resultando útil y querés dar una mano, en la\n"
-#| "            <a href=\"https://hidr4lisk.github.io/swarm/#apoya\" target=\"_blank\" rel=\"noopener\">página del proyecto</a>\n"
-#| "            hay un rincón para apoyarlo ☕"
 msgid ""
 "Bajá <code class=\"ay-code\">swarm-portable.zip</code> desde la\n"
 "                        <a href=\"https://hidr4lisk.github.io/swarm/\" target=\"_blank\" rel=\"noopener\">página del proyecto</a>\n"
@@ -756,7 +752,7 @@ msgstr "Retry"
 
 #: enjambre/templates/enjambre/conexiones.html:81
 #: enjambre/templates/enjambre/conexiones.html:112
-#: enjambre/templates/enjambre/home.html:41
+#: enjambre/templates/enjambre/home.html:49
 #: enjambre/templates/enjambre/sillas.html:67
 msgid "Sillas"
 msgstr "Seats"
@@ -1056,31 +1052,27 @@ msgstr "Toolbelt on — ask an API seat to “run system_report”."
 msgid "Toolbelt apagado."
 msgstr "Toolbelt off."
 
-#: enjambre/templates/enjambre/home.html:40
+#: enjambre/templates/enjambre/home.html:48
 msgid "Panel de sillas (clientes, modelos, prompts)"
 msgstr "Seats panel (clients, models, prompts)"
 
-#: enjambre/templates/enjambre/home.html:45
+#: enjambre/templates/enjambre/home.html:53
 msgid "Ayuda — cómo funciona la mesa, comandos y ejemplos"
 msgstr "Help — how the table works, commands and examples"
 
-#: enjambre/templates/enjambre/home.html:49
+#: enjambre/templates/enjambre/home.html:57
 msgid "Donar — bancá el servidor que sostiene el enjambre"
 msgstr "Donate — support the server that keeps the swarm running"
 
-#: enjambre/templates/enjambre/home.html:50
+#: enjambre/templates/enjambre/home.html:58
 msgid "Donar"
 msgstr "Donate"
 
-#: enjambre/templates/enjambre/home.html:58
-msgid ""
-"👋 ¿Primera vez? En <a href=\"/ayuda/\">Ayuda</a> está la guía completa —\n"
-"        instalar en Windows/Linux y completar la escalera paso a paso."
-msgstr ""
-"👋 First time? <a href=\"/ayuda/\">Help</a> has the full guide —\n"
-"        installing on Windows/Linux and climbing the ladder step by step."
+#: enjambre/templates/enjambre/home.html:67
+msgid "¿Primera vez? La guía completa está en <a href=\"/ayuda/\">Ayuda</a>."
+msgstr "First time? The full guide is in <a href=\"/ayuda/\">Help</a>."
 
-#: enjambre/templates/enjambre/home.html:66
+#: enjambre/templates/enjambre/home.html:74
 #: enjambre/templates/enjambre/mesa.html:433
 #: enjambre/templates/enjambre/mesa.html:468
 #: enjambre/templates/enjambre/mesa.html:482
@@ -1088,11 +1080,11 @@ msgstr ""
 msgid "Cerrar"
 msgstr "Close"
 
-#: enjambre/templates/enjambre/home.html:68
+#: enjambre/templates/enjambre/home.html:76
 msgid "Bancá el enjambre"
 msgstr "Support the swarm"
 
-#: enjambre/templates/enjambre/home.html:69
+#: enjambre/templates/enjambre/home.html:77
 msgid ""
 "Swarm es libre y gratis. Si te sirve y querés dar una mano, podés "
 "<strong>donar</strong>: lo que juntemos va derecho a mejorar el servidor que"
@@ -1102,64 +1094,64 @@ msgstr ""
 "you can <strong>donate</strong>: whatever we gather goes straight into "
 "improving the server that keeps the swarm running."
 
-#: enjambre/templates/enjambre/home.html:71
+#: enjambre/templates/enjambre/home.html:79
 msgid "Alias para donaciones"
 msgstr "Alias for donations"
 
-#: enjambre/templates/enjambre/home.html:74
+#: enjambre/templates/enjambre/home.html:82
 msgid "Copiar"
 msgstr "Copy"
 
-#: enjambre/templates/enjambre/home.html:77
+#: enjambre/templates/enjambre/home.html:85
 #, python-format
 msgid "100%% voluntario. ¡Gracias por bancar la movida! 💚"
 msgstr "100%% volunteer-run. Thanks for backing the ride! 💚"
 
-#: enjambre/templates/enjambre/home.html:83
+#: enjambre/templates/enjambre/home.html:91
 msgid "Buscar mesa…"
 msgstr "Search tables…"
 
-#: enjambre/templates/enjambre/home.html:83
+#: enjambre/templates/enjambre/home.html:91
 msgid "Buscar mesa"
 msgstr "Search tables"
 
-#: enjambre/templates/enjambre/home.html:87
+#: enjambre/templates/enjambre/home.html:95
 msgid "Nueva mesa"
 msgstr "New table"
 
-#: enjambre/templates/enjambre/home.html:99
+#: enjambre/templates/enjambre/home.html:107
 #: enjambre/templates/enjambre/mesa.html:244
 #: enjambre/templates/enjambre/mesa.html:350
 msgid "Líder"
 msgstr "Leader"
 
-#: enjambre/templates/enjambre/home.html:99
+#: enjambre/templates/enjambre/home.html:107
 msgid "Plana (broadcast)"
 msgstr "Flat (broadcast)"
 
-#: enjambre/templates/enjambre/home.html:102
+#: enjambre/templates/enjambre/home.html:110
 msgid "Nuevo nombre de la mesa"
 msgstr "New table name"
 
-#: enjambre/templates/enjambre/home.html:105
-#: enjambre/templates/enjambre/home.html:198
+#: enjambre/templates/enjambre/home.html:113
+#: enjambre/templates/enjambre/home.html:206
 msgid "Desfijar"
 msgstr "Unpin"
 
-#: enjambre/templates/enjambre/home.html:105
-#: enjambre/templates/enjambre/home.html:198
+#: enjambre/templates/enjambre/home.html:113
+#: enjambre/templates/enjambre/home.html:206
 msgid "Fijar arriba"
 msgstr "Pin to top"
 
-#: enjambre/templates/enjambre/home.html:106
+#: enjambre/templates/enjambre/home.html:114
 msgid "Fijar mesa"
 msgstr "Pin table"
 
-#: enjambre/templates/enjambre/home.html:108
+#: enjambre/templates/enjambre/home.html:116
 msgid "Renombrar mesa"
 msgstr "Rename table"
 
-#: enjambre/templates/enjambre/home.html:111
+#: enjambre/templates/enjambre/home.html:119
 #, python-format
 msgid ""
 "¿Borrar la mesa «%(nombre)s» y todos sus mensajes? Las tareas de fabricación"
@@ -1168,23 +1160,23 @@ msgstr ""
 "Delete table “%(nombre)s” and all its messages? Build tasks are kept. This "
 "cannot be undone."
 
-#: enjambre/templates/enjambre/home.html:113
+#: enjambre/templates/enjambre/home.html:121
 msgid "Borrar mesa"
 msgstr "Delete table"
 
-#: enjambre/templates/enjambre/home.html:122
+#: enjambre/templates/enjambre/home.html:130
 msgid "Silla local: no fabrica, no se sienta en una mesa Líder."
 msgstr "Local seat: it does not build and does not sit at a Leader table."
 
-#: enjambre/templates/enjambre/home.html:134
+#: enjambre/templates/enjambre/home.html:142
 msgid "No hay sillas activas."
 msgstr "No active seats."
 
-#: enjambre/templates/enjambre/home.html:139
+#: enjambre/templates/enjambre/home.html:147
 msgid "No hay mesas todavía."
 msgstr "No tables yet."
 
-#: enjambre/templates/enjambre/home.html:276
+#: enjambre/templates/enjambre/home.html:284
 msgid "¡Copiado!"
 msgstr "Copied!"
 
@@ -1781,7 +1773,6 @@ msgstr "Active"
 
 #: enjambre/templates/enjambre/sillas.html:132
 #: enjambre/templates/enjambre/sillas.html:532
-#| msgid "Activa"
 msgid "Inactiva"
 msgstr "Inactive"
 
@@ -1860,7 +1851,6 @@ msgid "Guardado"
 msgstr "Saved"
 
 #: enjambre/templates/enjambre/sillas.html:223
-#| msgid "Restaurar el prompt A de fábrica"
 msgid "Restaurar el prompt de fábrica"
 msgstr "Restore the factory prompt"
 
@@ -1923,7 +1913,6 @@ msgid "Guardando…"
 msgstr "Saving…"
 
 #: enjambre/templates/enjambre/sillas.html:547
-#| msgid "Sillas"
 msgid "Silla"
 msgstr "Seat"
 

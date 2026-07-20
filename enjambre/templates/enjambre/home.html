@@ -24,6 +24,14 @@
 .enj-donar-row code { font-family: var(--enj-mono); font-size: 1.1rem; font-weight: 700;
     color: var(--accent-color); letter-spacing: .02em; word-break: break-all; }
 .enj-donar-fine { font-size: .74rem !important; color: var(--enj-muted) !important; margin: 0 !important; }
+
+/* Aviso de primer inicio: banner chico, sin el hover-lift de .enj-card (esto no es clickeable) */
+.enj-primer { display: flex; align-items: center; gap: .55rem; margin-bottom: 1rem;
+    padding: .55rem .85rem; border-radius: 10px; font-size: .85rem; line-height: 1.4;
+    background: rgba(var(--accent-rgb), .08); border: 1px solid var(--enj-border);
+    color: var(--enj-text); }
+.enj-primer i { color: var(--accent-color); flex-shrink: 0; }
+.enj-primer a { color: var(--accent-color); font-weight: 600; }
 </style>
 {% endblock %}
 
@@ -54,9 +62,9 @@
     {% if escalera %}{% include 'enjambre/_escalera.html' %}{% endif %}
 
     {% if not sesiones %}
-    <div class="enj-card" style="margin-bottom:1rem;font-size:.85rem;">
-        {% blocktrans %}👋 ¿Primera vez? En <a href="/ayuda/">Ayuda</a> está la guía completa —
-        instalar en Windows/Linux y completar la escalera paso a paso.{% endblocktrans %}
+    <div class="enj-primer">
+        <i class="fas fa-hand-sparkles"></i>
+        <span>{% blocktrans %}¿Primera vez? La guía completa está en <a href="/ayuda/">Ayuda</a>.{% endblocktrans %}</span>
     </div>
     {% endif %}
 
