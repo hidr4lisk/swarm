@@ -119,6 +119,11 @@ button in the navbar switches language. The full usage guide — table commands 
 `/armar`, `/debate`, `/continuo`, `/alto`…), flat/leader topologies and seat
 configuration — lives in the app's **Help** button ([preview](docs/img/ayuda-en.png)).
 
+Your seat setup travels: **Sillas → Export** downloads it (names, models, prompts, portraits,
+colors, order) as a JSON file, and **Import** applies it on another PC or on a fresh version
+instead of redoing it by hand — merging by default, or replacing the whole config. The file
+carries **no credentials**: API keys stay encrypted in the vault, separately.
+
 Everything configurable comes in through environment variables with sane defaults:
 see [.env.example](.env.example). Tests: `python manage.py test enjambre`.
 
@@ -315,6 +320,12 @@ carpeta git (`~/.enjambre/mesas/mesa-<id>`). La UI es bilingüe — el botón **
 navbar cambia el idioma. La guía completa de uso — comandos de la mesa (`@alias`, `/armar`,
 `/debate`, `/continuo`, `/alto`…), topologías plana/líder y configuración de sillas — vive
 en el botón **Ayuda** de la app ([vista previa](docs/img/ayuda.png)).
+
+Tu config de sillas viaja: **Sillas → Exportar** te la baja (nombres, modelos, prompts,
+retratos, colores, orden) en un archivo JSON, e **Importar** la aplica en otra PC o al
+estrenar una versión nueva, en vez de rehacerla a mano — fusionando por defecto, o
+reemplazando toda la config. El archivo **no lleva credenciales**: las API keys quedan
+cifradas en la bóveda, aparte.
 
 Todo lo configurable entra por variables de entorno con defaults razonables:
 ver [.env.example](.env.example). Tests: `python manage.py test enjambre`.

@@ -32,7 +32,7 @@
                     {% for e in escalera %}<span class="cx-dot {% if e.listo %}on{% else %}off{% endif %}"></span>{% endfor %}
                 </span>
                 <span class="enj-muted" style="font-size:.75rem;">
-                    {% blocktrans with listos=escalera_listos %}{{ listos }} de 3{% endblocktrans %}
+                    {% blocktrans with listos=escalera_listos total=escalera|length %}{{ listos }} de {{ total }}{% endblocktrans %}
                 </span>
             </span>
             <span class="enj-muted" style="font-size:.75rem;">

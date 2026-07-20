@@ -26,6 +26,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
+from django.utils.translation import gettext
 
 from .clientes import CLIENTES, build_comando, cliente_de, modelo_de
 from .models import (
@@ -873,7 +874,9 @@ def gestionar_sillas(request):
     ]
     return render(request, 'enjambre/sillas.html',
                   {'sillas': sillas, 'clientes': CLIENTES, 'clientes_meta': clientes_meta,
-                   'avatares_voces': avatares_voces, 'paleta16': PALETA_16})
+                   'avatares_voces': avatares_voces, 'paleta16': PALETA_16,
+                   # Resultado del último importar_sillas: se muestra una sola vez.
+                   'import_rep': request.session.pop('sillas_import', None)})
 
 
 @requiere_acceso
@@ -911,6 +914,47 @@ def guardar_silla(request, key):
         log_event(request.user, 'ENJAMBRE_SILLA_SAVE', 'enjambre', {'silla': key}, request)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'ok': True})
+    return redirect('enjambre:gestionar_sillas')
+
+
+@requiere_acceso
+def exportar_sillas(request):
+    """Baja la config de sillas como JSON (para llevarla a otra instalación/versión de Swarm).
+    No incluye credenciales: las keys viven cifradas en la bóveda, aparte."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    from . import config_io
+    stamp = timezone.localtime().strftime('%Y-%m-%d')
+    resp = HttpResponse(config_io.exportar_json(), content_type='application/json; charset=utf-8')
+    resp['Content-Disposition'] = f'attachment; filename="swarm-sillas-{stamp}.json"'
+    log_event(request.user, 'ENJAMBRE_SILLAS_EXPORT', 'enjambre', {}, request)
+    return resp
+
+
+@requiere_acceso
+def importar_sillas(request):
+    """Sube un export y lo aplica. Por defecto FUSIONA (pisa por key, agrega las que faltan);
+    con `reemplazar` deja la DB idéntica al archivo (borra las sillas que no estén)."""
+    if not _puede_controlar(request):
+        return HttpResponseForbidden("Solo control.")
+    # El resultado viaja por la sesión y lo pinta gestionar_sillas (Swarm no monta el framework
+    # de messages de Django: sin login ni base compartida, no valía sumarlo por un banner).
+    if request.method == 'POST':
+        from . import config_io
+        archivo = request.FILES.get('archivo')
+        if not archivo:
+            request.session['sillas_import'] = {'error': gettext("No subiste ningún archivo.")}
+            return redirect('enjambre:gestionar_sillas')
+        try:
+            rep = config_io.importar(
+                archivo.read(), reemplazar=(request.POST.get('reemplazar') == '1'),
+                avatar_limpio=_avatar_limpio, color_limpio=_color_limpio,
+            )
+        except config_io.ErrorImport as e:
+            request.session['sillas_import'] = {'error': str(e)}
+            return redirect('enjambre:gestionar_sillas')
+        request.session['sillas_import'] = rep
+        log_event(request.user, 'ENJAMBRE_SILLAS_IMPORT', 'enjambre', rep, request)
     return redirect('enjambre:gestionar_sillas')
 
 

@@ -64,7 +64,8 @@
     {% if not sesiones %}
     <div class="enj-primer">
         <i class="fas fa-hand-sparkles"></i>
-        <span>{% blocktrans %}¿Primera vez? La guía completa está en <a href="/ayuda/">Ayuda</a>.{% endblocktrans %}</span>
+        {% url 'enjambre:ayuda' as ayuda_url %}
+        <span>{% blocktrans %}¿Primera vez? La guía completa está en <a href="{{ ayuda_url }}">Ayuda</a>.{% endblocktrans %}</span>
     </div>
     {% endif %}
 

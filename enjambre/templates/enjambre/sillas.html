@@ -30,6 +30,14 @@
     .enj-silla-sum-nombre { min-width:0; }
     .enj-silla-sum-meta { font-size:.68rem; margin-left:0; width:100%; white-space:normal; text-align:left; }
 }
+/* Exportar/Importar config: botones chicos de la toolbar + banner del resultado. */
+.enj-cfg-btn { display:inline-flex; align-items:center; gap:.35rem; text-decoration:none;
+    font-size:.82rem; white-space:nowrap; }
+.enj-import-rep { border:1px solid var(--enj-border); border-left:3px solid #2ecc40;
+    border-radius:8px; padding:.55rem .8rem; margin:0 0 1rem; font-size:.85rem;
+    background:rgba(46,204,64,.07); }
+.enj-import-rep.enj-import-err { border-left-color:#c0392b; background:rgba(192,57,43,.08); }
+.enj-import-aviso { font-size:.78rem; opacity:.85; margin-top:.25rem; }
 .enj-fieldlabel { font-size:.7rem; opacity:.7; display:block; margin-bottom:.1rem; }
 .enj-saved-btn { font-size:.78rem; }
 .enj-saved-btn:disabled { opacity:.55; cursor:default; }
@@ -117,7 +125,32 @@
             {% csrf_token %}
             <button class="enj-btn" type="submit"><i class="fas fa-plus"></i> {% trans 'Nueva silla' %}</button>
         </form>
+        {# Llevarse la config a otra PC / versión nueva de Swarm. No incluye credenciales. #}
+        <a class="enj-ghost enj-cfg-btn" href="{% url 'enjambre:exportar_sillas' %}"
+           title="{% trans 'Bajar la config de sillas como archivo JSON' %}">
+            <i class="fas fa-download"></i> {% trans 'Exportar' %}</a>
+        <form method="post" action="{% url 'enjambre:importar_sillas' %}" enctype="multipart/form-data"
+              style="margin:0;" id="enj-import-form">
+            {% csrf_token %}
+            <input type="file" name="archivo" accept="application/json,.json" hidden data-import-file>
+            <input type="hidden" name="reemplazar" value="0" data-import-modo>
+            <button class="enj-ghost enj-cfg-btn" type="button" data-import-pick
+                    title="{% trans 'Subir un archivo de config exportado' %}">
+                <i class="fas fa-upload"></i> {% trans 'Importar' %}</button>
+        </form>
     </div>
+
+    {% if import_rep %}
+    <div class="enj-import-rep{% if import_rep.error %} enj-import-err{% endif %}">
+        {% if import_rep.error %}
+            <strong><i class="fas fa-circle-exclamation"></i> {{ import_rep.error }}</strong>
+        {% else %}
+            <strong><i class="fas fa-circle-check"></i>
+                {% blocktrans with n=import_rep.creadas a=import_rep.actualizadas b=import_rep.borradas %}Config importada: {{ n }} nueva(s), {{ a }} actualizada(s), {{ b }} borrada(s).{% endblocktrans %}</strong>
+            {% for aviso in import_rep.avisos %}<div class="enj-import-aviso">⚠ {{ aviso }}</div>{% endfor %}
+        {% endif %}
+    </div>
+    {% endif %}
 
     {# Modelos por cliente para el JS (poblar el <select> de modelo) #}
     {{ clientes_meta|json_script:"clientes-meta" }}
@@ -131,7 +164,9 @@
                 <i class="fas fa-chevron-right enj-silla-chevron"></i>
                 <span class="enj-silla-dot" data-dot title="{% if s.activo %}{% trans 'Activa' %}{% else %}{% trans 'Inactiva' %}{% endif %}"></span>
                 <span class="enj-silla-color-dot" data-color-dot title="{% trans 'Color en la mesa' %}" style="background:{{ s.color_ui|default:'#4a6cff' }};"></span>
-                <img class="enj-av-thumb" src="{{ s.avatar }}" alt="" data-sum-avatar{% if not s.avatar %} hidden{% endif %}>
+                {# src solo si HAY avatar: src="" lo resuelve el browser como la URL de la página
+                   y dispara un request de más (aunque esté hidden). El JS lo repuebla al elegir. #}
+                <img class="enj-av-thumb" alt="" data-sum-avatar{% if s.avatar %} src="{{ s.avatar }}"{% else %} hidden{% endif %}>
                 <span class="enj-silla-sum-nombre" data-sum-nombre>{{ s.nombre }}</span>
                 <span class="enj-silla-sum-meta">@{{ s.alias }} · {{ s.motor }}{% if s.rol_tarjeta %} · {{ s.rol_tarjeta }}{% endif %}</span>
             </summary>
@@ -286,6 +321,25 @@
 
 {% block extra_js %}
 <script>
+// ── Importar config: elegir archivo → preguntar fusionar/reemplazar → postear ──
+// Reemplazar BORRA las sillas que no estén en el archivo, así que se confirma aparte.
+(function () {
+    var form = document.getElementById('enj-import-form');
+    if (!form) return;
+    var pick = form.querySelector('[data-import-pick]');
+    var file = form.querySelector('[data-import-file]');
+    var modo = form.querySelector('[data-import-modo]');
+    pick.addEventListener('click', function () { file.click(); });
+    file.addEventListener('change', function () {
+        if (!file.files || !file.files[0]) return;
+        var reemplazar = confirm(
+            '{% trans "¿Reemplazar TODA la config?" %}\n\n' +
+            '{% trans "Aceptar = la mesa queda igual al archivo (borra las sillas que no estén en él)." %}\n' +
+            '{% trans "Cancelar = fusionar: pisa las que coinciden y agrega las nuevas, sin borrar nada." %}');
+        modo.value = reemplazar ? '1' : '0';
+        form.submit();
+    });
+})();
 // ── Buscador de sillas (filtro client-side por nombre) ──
 (function () {
     var q = document.getElementById('silla-buscar');

@@ -13,6 +13,7 @@ Cubre lo que protege de verdad:
 Sin mocks de red ni servicios externos: los CLIs no se invocan (se prueban los caminos
 de error, que son los nuestros); git sí se usa de verdad sobre un tmpdir.
 """
+import json
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -796,3 +797,111 @@ class OnboardingTests(TestCase):
                 mock.patch('enjambre.conexiones.detectar', return_value={}), \
                 mock.patch('enjambre.vault.configured_providers', return_value=[]):
             self.assertFalse(onboarding.escalones()[0]['listo'])
+
+
+class ConfigIOTests(TestCase):
+    """Exportar/importar la config de sillas (llevarla a otra PC o a una versión nueva)."""
+
+    def _exportar(self):
+        from . import config_io
+        return json.loads(config_io.exportar_json())
+
+    def test_roundtrip_conserva_la_config(self):
+        p = Participante.objects.create(
+            key='neo', nombre='Neo', comando=['opencode', 'run', '--model', 'opencode/big-pickle'],
+            persona='sos Neo', especialidad='fabricar', rol_tarjeta='Constructor',
+            color_ui='#a0e020', activo=True, orden=7)
+        data = self._exportar()
+        Participante.objects.all().delete()
+
+        from . import config_io
+        rep = config_io.importar(json.dumps(data).encode(), reemplazar=False,
+                                 avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertEqual(rep['avisos'], [])
+        n = Participante.objects.get(key='neo')
+        self.assertEqual(n.nombre, p.nombre)
+        self.assertEqual(n.persona, 'sos Neo')
+        self.assertEqual(n.especialidad, 'fabricar')
+        self.assertEqual(n.color_ui, '#a0e020')
+        self.assertEqual(n.orden, 7)
+        # El comando se RECONSTRUYE con build_comando de esta versión, no se copia crudo.
+        self.assertEqual(n.comando, ['opencode', 'run', '--model', 'opencode/big-pickle'])
+
+    def test_export_no_lleva_comando_crudo(self):
+        """El argv no viaja: importar un JSON no puede inyectar un comando arbitrario."""
+        data = self._exportar()
+        for s in data['sillas']:
+            self.assertNotIn('comando', s)
+            self.assertIn('cliente', s)
+
+    def test_import_ignora_comando_inyectado(self):
+        from . import config_io
+        data = self._exportar()
+        data['sillas'] = [{'key': 'malicia', 'nombre': 'Malicia', 'cliente': 'opencode',
+                           'modelo': '', 'comando': ['rm', '-rf', '/'], 'activo': True}]
+        config_io.importar(json.dumps(data).encode(), avatar_limpio=lambda v: v or '',
+                           color_limpio=lambda v: v or '')
+        self.assertEqual(Participante.objects.get(key='malicia').comando, ['opencode', 'run'])
+
+    def test_import_saltea_cliente_desconocido_y_avisa(self):
+        from . import config_io
+        data = self._exportar()
+        data['sillas'] = [{'key': 'rara', 'nombre': 'Rara', 'cliente': 'inventado', 'modelo': ''}]
+        rep = config_io.importar(json.dumps(data).encode(), avatar_limpio=lambda v: v or '',
+                                 color_limpio=lambda v: v or '')
+        self.assertFalse(Participante.objects.filter(key='rara').exists())
+        self.assertEqual(len(rep['avisos']), 1)
+
+    def test_fusionar_no_borra_las_que_no_estan(self):
+        from . import config_io
+        Participante.objects.create(key='mia', nombre='Mía', comando=['opencode', 'run'])
+        data = self._exportar()
+        data['sillas'] = [{'key': 'nueva', 'nombre': 'Nueva', 'cliente': 'opencode', 'modelo': ''}]
+        config_io.importar(json.dumps(data).encode(), reemplazar=False,
+                           avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertTrue(Participante.objects.filter(key='mia').exists())
+        self.assertTrue(Participante.objects.filter(key='nueva').exists())
+
+    def test_reemplazar_deja_la_db_igual_al_archivo(self):
+        from . import config_io
+        Participante.objects.create(key='mia', nombre='Mía', comando=['opencode', 'run'])
+        data = self._exportar()
+        data['sillas'] = [{'key': 'nueva', 'nombre': 'Nueva', 'cliente': 'opencode', 'modelo': ''}]
+        rep = config_io.importar(json.dumps(data).encode(), reemplazar=True,
+                                 avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertEqual(list(Participante.objects.values_list('key', flat=True)), ['nueva'])
+        self.assertGreaterEqual(rep['borradas'], 1)
+
+    def test_archivo_roto_no_toca_nada(self):
+        from . import config_io
+        antes = Participante.objects.count()
+        for raw in (b'no soy json', b'{}', b'{"swarm_config": 99, "sillas": []}'):
+            with self.assertRaises(config_io.ErrorImport):
+                config_io.importar(raw)
+        self.assertEqual(Participante.objects.count(), antes)
+
+    def test_reemplazar_con_archivo_sin_sillas_validas_no_vacia_la_mesa(self):
+        """Red de seguridad: si TODAS las sillas del archivo se saltean, reemplazar no borra."""
+        from . import config_io
+        data = self._exportar()
+        data['sillas'] = [{'key': 'x', 'nombre': 'X', 'cliente': 'inventado'}]
+        config_io.importar(json.dumps(data).encode(), reemplazar=True,
+                           avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertTrue(Participante.objects.exists())
+
+    def test_vista_exportar_baja_un_json(self):
+        r = self.client.get(reverse('enjambre:exportar_sillas'))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('attachment', r['Content-Disposition'])
+        self.assertEqual(json.loads(r.content)['swarm_config'], 1)
+
+    def test_vista_importar_sube_archivo_y_reporta(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        data = self._exportar()
+        data['sillas'].append({'key': 'subida', 'nombre': 'Subida', 'cliente': 'opencode',
+                               'modelo': '', 'activo': True, 'orden': 4})
+        f = SimpleUploadedFile('cfg.json', json.dumps(data).encode(), 'application/json')
+        r = self.client.post(reverse('enjambre:importar_sillas'), {'archivo': f}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(Participante.objects.filter(key='subida').exists())
+        self.assertContains(r, 'Config importada')

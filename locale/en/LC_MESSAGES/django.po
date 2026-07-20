@@ -22,10 +22,10 @@ msgstr ""
 msgid "Tu escalera"
 msgstr "Your ladder"
 
-#: enjambre/templates/enjambre/_escalera.html:36
+#: enjambre/templates/enjambre/_escalera.html:35
 #, python-format
-msgid "%(listos)s de 3"
-msgstr "%(listos)s of 3"
+msgid "%(listos)s de %(total)s"
+msgstr "%(listos)s of %(total)s"
 
 #: enjambre/templates/enjambre/_escalera.html:40
 msgid "de cero a mesa completa"
@@ -1068,9 +1068,10 @@ msgstr "Donate — support the server that keeps the swarm running"
 msgid "Donar"
 msgstr "Donate"
 
-#: enjambre/templates/enjambre/home.html:67
-msgid "¿Primera vez? La guía completa está en <a href=\"/ayuda/\">Ayuda</a>."
-msgstr "First time? The full guide is in <a href=\"/ayuda/\">Help</a>."
+#: enjambre/templates/enjambre/home.html:68
+msgid ""
+"¿Primera vez? La guía completa está en <a href=\"%(ayuda_url)s\">Ayuda</a>."
+msgstr "First time? The full guide is in <a href=\"%(ayuda_url)s\">Help</a>."
 
 #: enjambre/templates/enjambre/home.html:74
 #: enjambre/templates/enjambre/mesa.html:433
@@ -1928,3 +1929,101 @@ msgstr "Restarting…"
 #: enjambre/templates/enjambre/sillas.html:604
 msgid "Reiniciando (~5s)…"
 msgstr "Restarting (~5s)…"
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid "Bajar la config de sillas como archivo JSON"
+msgstr "Download the chair config as a JSON file"
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid "Exportar"
+msgstr "Export"
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid "Subir un archivo de config exportado"
+msgstr "Upload an exported config file"
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid "Importar"
+msgstr "Import"
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid ""
+"Config importada: %(n)s nueva(s), %(a)s actualizada(s), %(b)s borrada(s)."
+msgstr "Config imported: %(n)s new, %(a)s updated, %(b)s deleted."
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid "¿Reemplazar TODA la config?"
+msgstr "Replace the WHOLE config?"
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid ""
+"Aceptar = la mesa queda igual al archivo (borra las sillas que no estén en "
+"él)."
+msgstr ""
+"OK = the table ends up identical to the file (deletes chairs not in it)."
+
+#: enjambre/templates/enjambre/sillas.html:0
+msgid ""
+"Cancelar = fusionar: pisa las que coinciden y agrega las nuevas, sin borrar "
+"nada."
+msgstr ""
+"Cancel = merge: overwrites matching chairs and adds new ones, deleting "
+"nothing."
+
+#: enjambre/config_io.py:0
+msgid "El archivo es demasiado grande (tope 5 MB)."
+msgstr "The file is too big (5 MB limit)."
+
+#: enjambre/config_io.py:0
+msgid "El archivo no es JSON válido."
+msgstr "The file is not valid JSON."
+
+#: enjambre/config_io.py:0
+msgid "Eso no parece un export de Swarm (falta «swarm_config»)."
+msgstr "That doesn't look like a Swarm export (missing «swarm_config»)."
+
+#: enjambre/config_io.py:0
+msgid "Formato %(f)s desconocido (esta versión lee el %(ok)s)."
+msgstr "Unknown format %(f)s (this version reads %(ok)s)."
+
+#: enjambre/config_io.py:0
+msgid "El export no trae una lista de sillas."
+msgstr "The export has no list of chairs."
+
+#: enjambre/config_io.py:0
+msgid "Silla #%(i)s: no es un objeto, salteada."
+msgstr "Chair #%(i)s: not an object, skipped."
+
+#: enjambre/config_io.py:0
+msgid "Silla #%(i)s: sin key o sin nombre, salteada."
+msgstr "Chair #%(i)s: no key or no name, skipped."
+
+#: enjambre/config_io.py:0
+msgid "«%(n)s»: el cliente «%(c)s» no existe en esta versión, salteada."
+msgstr "«%(n)s»: client «%(c)s» doesn't exist in this version, skipped."
+
+#: enjambre/config_io.py:0
+msgid "«%(n)s»: silla local sin endpoint_url, salteada."
+msgstr "«%(n)s»: local chair with no endpoint_url, skipped."
+
+#: enjambre/views.py:0
+msgid "No subiste ningún archivo."
+msgstr "You didn't upload any file."
+
+#: enjambre/templates/enjambre/ayuda.html:0
+msgid ""
+"<strong>Exportar / Importar</strong>\n"
+"            (arriba, en Sillas): baja toda tu config —nombres, modelos, prompts, retratos, colores,\n"
+"            orden— a un archivo JSON y subila en otra PC o al estrenar una versión nueva, en vez de\n"
+"            rehacerla a mano. Al importar elegís <strong>fusionar</strong> (pisa las que coinciden,\n"
+"            agrega las nuevas) o <strong>reemplazar</strong> (deja la mesa igual al archivo).\n"
+"            El archivo <strong>no lleva credenciales</strong>: las keys viven cifradas en la bóveda,\n"
+"            aparte."
+msgstr ""
+"<strong>Export / Import</strong>\n"
+"            (top of Sillas): downloads your whole setup —names, models, prompts, portraits, colors,\n"
+"            order— to a JSON file, and uploads it on another PC or on a fresh version instead of\n"
+"            redoing it by hand. On import you pick <strong>merge</strong> (overwrites matching chairs,\n"
+"            adds new ones) or <strong>replace</strong> (leaves the table identical to the file).\n"
+"            The file carries <strong>no credentials</strong>: keys stay encrypted in the vault,\n"
+"            separately."
