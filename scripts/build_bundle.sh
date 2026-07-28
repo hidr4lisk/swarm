@@ -312,15 +312,13 @@ vuelve a preguntar). Si elegiste SIN RASTRO y te arrepentís, el próximo arranq
 instalarlo en esa PC (o "no preguntarme más"). Tus datos —mesas, sillas y bóveda— viven SIEMPRE
 en la carpeta data/ del pendrive y se mueven con él entre Windows y Linux, elijas lo que elijas.
 
-Se abre el navegador en http://127.0.0.1:8799 — y ya hay una silla esperándote: CHISPA, la
-silla gratis, responde sin configurar nada (sin cuenta; un modelo chico, 1 mensaje cada 15 s;
-lo que escribís viaja a un servicio público —Pollinations—, así que lo sensible dejalo para
-sillas con tus keys). Escribí en la mesa y listo.
+Se abre el navegador en http://127.0.0.1:8799. Para tener sillas hablando hay dos caminos, y la
+pantalla "Conexiones" te muestra esa ESCALERA:
 
-Para más modelos y velocidad: "Conexiones → API keys": elegí una passphrase (mín. 8), pegá tu
-primera API key y tocá Guardar. Con ese único paso la bóveda queda creada, cifrada y ACTIVA.
-Cuando reabras Swarm, desbloqueá con esa misma passphrase. La pantalla Conexiones muestra tu
-ESCALERA: qué desbloquea cada escalón (silla gratis → CLI opencode → API keys).
+  1) CLI opencode — login gratis desde tu terminal; Swarm lo detecta y usa esa cuenta.
+  2) API keys — "Conexiones → API keys": elegí una passphrase (mín. 8), pegá tu primera API key
+     y tocá Guardar. Con ese único paso la bóveda queda creada, cifrada y ACTIVA. Cuando reabras
+     Swarm, desbloqueá con esa misma passphrase.
 
 Tus datos (base + bóveda de keys) viven en la carpeta data/ de acá al lado. Si movés o
 copiás esta carpeta entera, se van con ella.
@@ -332,12 +330,19 @@ Al importar elegís FUSIONAR (pisa las que coinciden y agrega las nuevas, sin bo
 REEMPLAZAR (deja la mesa igual al archivo). Ese archivo NO lleva credenciales: las API keys
 quedan cifradas en la bóveda, aparte — en la máquina nueva las cargás una vez.
 
-Para que las sillas puedan OPERAR la máquina donde corre Swarm (revisar disco, procesos,
-proponer arreglos), prendé el TOOLBELT desde la interfaz: "Conexiones → Toolbelt" y activá el
-switch (arranca apagado, no hace falta editar nada). Ojo: es poderoso — las LECTURAS son
-automáticas, pero cada CAMBIO queda pendiente en la Bitácora hasta que vos lo aprobás. Solo en
-máquinas que estés autorizado a atender. Necesita una silla por API key con un modelo que soporte
-herramientas (function-calling).
+Para que las sillas puedan OPERAR la máquina donde corre Swarm (revisar disco, procesos, editar
+archivos, arreglar cosas), prendé el TOOLBELT desde la interfaz: "Conexiones → Toolbelt" y activá
+el switch (arranca apagado, no hace falta editar nada). OJO, esto es lo importante: EL SWITCH ES
+EL PERMISO. Prendido, las sillas —por API key y por CLI— leen, editan y construyen, y todo SE
+APLICA EN EL MOMENTO: no se te pide un OK por cada cambio. Lo ves pasar en la mesa mientras pasa,
+y todo queda en la Bitácora. Prendelo SOLO en máquinas que estés autorizado a atender.
+
+Salvo que tu pedido nombre una ruta (o escribas /libre), lo que las sillas produzcan queda en la
+CARPETA DE LA MESA: junto, versionado y descargable con 📁. Las credenciales del sistema (.ssh,
+.gnupg, .aws, /etc/shadow) y la bóveda de keys no las toca el toolbelt.
+
+Para las sillas por API key hace falta un modelo que soporte herramientas (function-calling); las
+de CLI usan las suyas.
 TXT
 
 echo "✅ Listo: $OUT"

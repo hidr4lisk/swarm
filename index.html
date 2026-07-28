@@ -350,15 +350,16 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <p class="eyebrow" data-i18n="s4_eyebrow">// 04 · EL FILO</p>
     <h2 data-i18n="s4_h">Puede tocar la máquina real — con cuidado.</h2>
-    <p class="body-txt" data-i18n-html="s4_body">Prendé el <b>toolbelt</b> (opt-in, apagado por default) y las sillas por API key reciben herramientas que actúan sobre la computadora a la que enchufaste — sin contenedor, sin cápsula. La red de seguridad <b>no</b> es un sandbox; es disciplina:</p>
+    <p class="body-txt" data-i18n-html="s4_body">Prendé el <b>toolbelt</b> (opt-in, apagado por default) y las sillas —por API key <b>y</b> por CLI— reciben herramientas que actúan sobre la computadora a la que enchufaste, sin contenedor y sin cápsula. <b>El switch es el permiso</b>: prendido, lo que hacen se aplica en el momento. La red de seguridad <b>no</b> es un sandbox; es disciplina:</p>
     <ul class="ck">
       <li data-i18n-html="s4_i1"><span><b>Lo de solo-lectura corre solo.</b> Revisar disco, procesos y archivos: allowlist sin shell, corre sin preguntar.</span></li>
-      <li data-i18n-html="s4_i2"><span><b>Toda mutación espera tu OK.</b> Un arreglo nunca corre solo: se encola y lo aprobás o rechazás en la Bitácora.</span></li>
+      <li data-i18n-html="s4_i2"><span><b>Lo ves pasar mientras pasa.</b> Cada cambio avisa en la mesa al aplicarse: sin gate adelante, la visibilidad en vivo es la red.</span></li>
       <li data-i18n-html="s4_i3"><span><b>Todo queda logueado.</b> Cada lectura y cada cambio va a la bitácora de la mesa, exportable como informe.</span></li>
+      <li data-i18n-html="s4_i4"><span><b>El trabajo queda junto.</b> Si no nombrás una ruta, lo que produzcan aterriza en la carpeta de esa mesa, versionado y descargable.</span></li>
     </ul>
     <div class="warn">
       <div class="t" data-i18n="s4_warn_t">⚠ Poder de verdad</div>
-      <span data-i18n="s4_warn_p">Peligroso en manos equivocadas. Habilitalo solo en máquinas que estés autorizado a atender, y leé cada cambio antes de aprobar.</span>
+      <span data-i18n="s4_warn_p">Peligroso en manos equivocadas. Habilitalo solo en máquinas que estés autorizado a atender: con el switch prendido, una silla puede cambiar el sistema sin preguntarte antes.</span>
     </div>
   </div>
 </section>
@@ -475,12 +476,13 @@ const I18N = {
     s3_local: '— runs entirely on your own hardware',
     s3_punch: 'The API-key route needs no binary — it\'s what makes the pendrive possible.',
     s4_eyebrow: '// 04 · THE SHARP EDGE', s4_h: 'It can touch the real machine — carefully.',
-    s4_body: 'Turn on the <b>toolbelt</b> (opt-in, off by default) and API-key seats get tools that act on the actual computer you plugged into — no container, no capsule. The safety net is <b>not</b> a sandbox; it\'s discipline:',
+    s4_body: 'Turn on the <b>toolbelt</b> (opt-in, off by default) and seats —by API key <b>and</b> by CLI— get tools that act on the actual computer you plugged into, no container and no capsule. <b>The switch is the permission</b>: with it on, what they do applies immediately. The safety net is <b>not</b> a sandbox; it\'s discipline:',
     s4_i1: '<span><b>Read-only runs itself.</b> Inspecting disk, processes and files: allowlist with no shell, runs without asking.</span>',
-    s4_i2: '<span><b>Every change waits for your OK.</b> A fix never runs on its own: it queues and you approve or reject it in the Bitácora (log).</span>',
+    s4_i2: '<span><b>You watch it happen.</b> Every change posts a note in the table as it applies: with no gate in front, live visibility is the net.</span>',
     s4_i3: '<span><b>Everything is logged.</b> Every read and every change lands in the per-table log, exportable as a report.</span>',
+    s4_i4: '<span><b>Work stays together.</b> If you don\'t name a path, whatever they produce lands in that table\'s folder — versioned and downloadable.</span>',
     s4_warn_t: '⚠ Real power',
-    s4_warn_p: 'Dangerous in the wrong hands. Only enable it on machines you\'re authorized to service, and read every change before approving.',
+    s4_warn_p: 'Dangerous in the wrong hands. Only enable it on machines you\'re authorized to service: with the switch on, a seat can change the system without asking you first.',
     s5_eyebrow: '// 05 · SEE IT', s5_h: 'A table, at work.',
     s5_body: 'The seats debate, the leader builds real files (one commit per turn) and the flow shows on the right. The UI is bilingual, though its soul speaks Spanish.',
     s5_cap: 'A table with a leader: debate, real building, live flow.',

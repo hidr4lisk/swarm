@@ -45,13 +45,10 @@ pip install -r requirements-portable.txt
 python manage.py serve        # migrate + worker + web + browser, one process
 ```
 
-`serve` opens **http://127.0.0.1:8799** — and the table already talks: **Chispa**, the free
-seat, answers with zero configuration (anonymous Pollinations tier: no account, one small
-model, 1 message every 15 s; what you type goes to that public service, so keep sensitive
-work for your own keys). From there it's a **ladder**: install + log into the free
-`opencode` CLI for ~6 free models and file-building, or go to **Conexiones → API keys** and
-load a key (stored encrypted under a passphrase you choose — see the vault below) for
-everything else. The **Conexiones** screen shows the ladder and what each step unlocks.
+`serve` opens **http://127.0.0.1:8799**. From there it's a two-step **ladder**: install and log
+into the free `opencode` CLI (several free models, and seats that build files), or go to
+**Conexiones → API keys** and load a key — stored encrypted under a passphrase you choose, see
+the vault below. The **Conexiones** screen shows the ladder and what each step unlocks.
 
 <details>
 <summary><b>Build the portable pendrive (Linux + Windows in one folder)</b></summary>
@@ -238,13 +235,10 @@ pip install -r requirements-portable.txt
 python manage.py serve        # migra + worker + web + navegador, un proceso
 ```
 
-`serve` abre **http://127.0.0.1:8799** — y la mesa ya charla: **Chispa**, la silla gratis,
-responde sin configurar nada (tier anónimo de Pollinations: sin cuenta, un modelo chico,
-1 mensaje cada 15 s; lo que escribís viaja a ese servicio público — lo sensible, con tus
-propias keys). De ahí es una **escalera**: instalá y logueá el CLI gratuito `opencode` para
-~6 modelos free y fabricar archivos, o andá a **Conexiones → API keys** y cargá una key
-(se guarda cifrada con una passphrase que elegís vos — ver la bóveda abajo) para todo lo
-demás. La pantalla **Conexiones** muestra la escalera y qué desbloquea cada escalón.
+`serve` abre **http://127.0.0.1:8799**. De ahí es una **escalera** de dos escalones: instalá y
+logueá el CLI gratuito `opencode` (varios modelos free, y sillas que fabrican archivos), o andá a
+**Conexiones → API keys** y cargá una key — se guarda cifrada con una passphrase que elegís vos,
+ver la bóveda abajo. La pantalla **Conexiones** muestra la escalera y qué desbloquea cada escalón.
 
 <details>
 <summary><b>Armar el pendrive portátil (Linux + Windows en la misma carpeta)</b></summary>

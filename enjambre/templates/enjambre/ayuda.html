@@ -264,10 +264,21 @@
                 <strong>API key</strong> porque se les pasa la ruta de esa carpeta. En los dos casos, lo que
                 queda se commitea y la mesa ve el diff.{% endblocktrans %}
             </p>
+            <p style="margin:.5rem 0 0;">
+                {% blocktrans %}<strong>Sin nombrar una ruta, el trabajo aterriza en la carpeta de la mesa</strong>
+                — también fuera de <strong>/armar</strong>: así queda junto, versionado y lo bajás con 📁. Si tu
+                pedido nombra una ruta absoluta (<span class="ay-code">arreglá /etc/nginx/nginx.conf</span>) o
+                escribís <span class="ay-code">/libre</span>, ese turno trabajan ahí. Se apaga por mesa en la ⚙.
+                Es prolijidad, no una jaula: <strong>diagnosticar el equipo nunca queda limitado</strong>, y una
+                silla de CLI tiene su propia shell y alcanza toda la máquina igual.{% endblocktrans %}
+            </p>
             <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">
                 {% blocktrans %}Viene <strong>apagado</strong>; se enciende en <a href="/conexiones/">Conexiones</a>.
                 Todo queda registrado en la <a href="/bitacora/">Bitácora</a> de la mesa: las acciones de las sillas
-                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo.{% endblocktrans %}
+                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo. Lo que el toolbelt
+                <strong>nunca</strong> toca: la bóveda de keys y las credenciales del sistema
+                (<span class="ay-code">.ssh</span>, <span class="ay-code">.gnupg</span>,
+                <span class="ay-code">.aws</span>, <span class="ay-code">/etc/shadow</span>…).{% endblocktrans %}
             </p>
         </div>
         <div class="enj-card">
