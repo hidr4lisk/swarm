@@ -1277,6 +1277,15 @@ class PlantillasTests(TestCase):
                         self.assertIsNone(re.search(patron, limpio),
                                           f"[{lang}] {url}: se filtró sintaxis de plantilla")
 
+    def test_la_mesa_ofrece_bajar_la_charla_y_el_switch_de_orden(self):
+        """Los dos controles nuevos de la cabecera/config tienen que estar en el HTML: si un
+        refactor del template se los come, no se nota hasta que alguien los busca."""
+        sesion = Sesion.objects.create(nombre='prueba')
+        cuerpo = self.client.get(f'/sesion/{sesion.pk}/').content.decode()
+        self.assertIn('id="enj-descargar"', cuerpo)   # charla en .txt
+        self.assertIn('id="enj-pdf"', cuerpo)         # charla en PDF
+        self.assertIn('name="confinar"', cuerpo)      # trabajar en la carpeta de la mesa
+
     def test_ningun_trans_en_js_trae_comillas_en_su_traduccion(self):
         """Una traducción con apóstrofo interpolada en un string JS de comilla simple CIERRA el
         string y rompe el `<script>` ENTERO — mueren todos los botones de esa página, en ese
