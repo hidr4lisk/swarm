@@ -141,7 +141,39 @@ CACHE="$BASE/$VER"
 MODE_FILE="$BASE/mode"          # elección recordada POR ESTA PC (no en el pendrive) → cada PC nueva pregunta
 mkdir -p "$BASE" "$DIR/data"
 
-extract() { echo "▶ Descomprimiendo el runtime (una vez)…"; mkdir -p "$1"; tar -xzf "$ARCHIVE" -C "$1"; }
+# El `.ver` no es solo el nombre del cache: es el sha256 (12) del tar.gz que viaja al lado. Se
+# verifica ANTES de extraer porque un pendrive puede devolver un archivo del tamaño exacto y con el
+# contenido podrido (pasó, 2026-07-28): sin esto el usuario ve un `gzip: invalid compressed
+# data--crc error` crudo, que no le dice ni qué archivo es ni qué hacer.
+verificar_runtime() {
+  [ "$VER" != "dev" ] || return 0            # bundle sin sellar (clone de dev) → no hay con qué comparar
+  local real=""
+  if command -v sha256sum >/dev/null 2>&1; then real="$(sha256sum "$ARCHIVE" | cut -c1-12)"
+  elif command -v shasum >/dev/null 2>&1; then real="$(shasum -a 256 "$ARCHIVE" | cut -c1-12)"
+  else return 0; fi                          # sin herramienta de hash → seguimos (tar avisará si rompe)
+  [ "$real" != "$VER" ] || return 0
+  echo
+  echo "  ✗ El runtime llegó DAÑADO: no coincide con su sello."
+  echo "      archivo:  $ARCHIVE"
+  echo "      esperado: $VER   ·   encontrado: $real"
+  echo
+  echo "  Suele pasar copiando a un pendrive (copia interrumpida o unidad con errores), o con una"
+  echo "  descarga a medias. Volvé a copiar runtime-linux.tar.gz, o bajá de nuevo el zip:"
+  echo "      https://github.com/hidr4lisk/swarm/releases/latest"
+  echo "  Tus datos NO se tocan: mesas, sillas y bóveda viven en data/, aparte del runtime."
+  echo
+  exit 1
+}
+
+extract() {
+  verificar_runtime
+  echo "▶ Descomprimiendo el runtime (una vez)…"
+  mkdir -p "$1"
+  if ! tar -xzf "$ARCHIVE" -C "$1"; then
+    echo "  ✗ No se pudo descomprimir el runtime (¿disco lleno, o sin permisos en $1?)."
+    exit 1
+  fi
+}
 
 RUNTIME=""; EPHEMERAL=""
 if [ -f "$CACHE/.ok" ]; then
@@ -258,19 +290,23 @@ goto ephemeral
 :persistent
 set "RUNTIME=%CACHE%"
 if exist "%CACHE%\.ok" goto run
+call :verificar_runtime
+if errorlevel 1 goto fin_error
 echo Descomprimiendo el runtime (una vez)...
 if not exist "%CACHE%" mkdir "%CACHE%"
-tar -xzf "%DIR%runtime-win.tar.gz" -C "%CACHE%"
+tar -xzf "%DIR%runtime-win.tar.gz" -C "%CACHE%" || goto tar_roto
 "%CACHE%\python\python.exe" -m compileall -q "%CACHE%" >nul 2>&1
 type nul > "%CACHE%\.ok"
 goto run
 
 :ephemeral
+call :verificar_runtime
+if errorlevel 1 goto fin_error
 set "RUNTIME=%TEMP%\swarm-%RANDOM%%RANDOM%"
 set "CLEANUP=%RUNTIME%"
 mkdir "%RUNTIME%"
 echo Descomprimiendo el runtime (modo sin rastro)...
-tar -xzf "%DIR%runtime-win.tar.gz" -C "%RUNTIME%"
+tar -xzf "%DIR%runtime-win.tar.gz" -C "%RUNTIME%" || goto tar_roto
 
 :run
 set "PYTHONPATH=%DIR%app;%RUNTIME%\site-packages"
@@ -290,6 +326,45 @@ rem set "SWARM_TOOLBELT=1"
 
 if defined CLEANUP if exist "%CLEANUP%" rmdir /S /Q "%CLEANUP%"
 endlocal
+goto :eof
+
+rem El .ver que viaja al lado del tar.gz es su sha256 (12). Se verifica ANTES de extraer: un
+rem pendrive puede devolver un archivo del tamano exacto y con el contenido podrido, y sin esto
+rem el usuario ve un error crudo de tar que no dice ni que archivo es ni que hacer.
+:verificar_runtime
+if "%VER%"=="dev" goto :eof
+set "REAL="
+for /f "skip=1 tokens=* delims=" %%H in ('certutil -hashfile "%DIR%runtime-win.tar.gz" SHA256 2^>nul') do (
+  if not defined REAL set "REAL=%%H"
+)
+if not defined REAL goto :eof
+set "REAL=%REAL: =%"
+set "REAL=%REAL:~0,12%"
+if /I "%REAL%"=="%VER%" goto :eof
+echo.
+echo   X El runtime llego DANADO: no coincide con su sello.
+echo       archivo:  %DIR%runtime-win.tar.gz
+echo       esperado: %VER%   -   encontrado: %REAL%
+echo.
+echo   Suele pasar copiando a un pendrive (copia interrumpida o unidad con errores), o con una
+echo   descarga a medias. Volve a copiar runtime-win.tar.gz, o baja de nuevo el zip:
+echo       https://github.com/hidr4lisk/swarm/releases/latest
+echo   Tus datos NO se tocan: mesas, sillas y boveda viven en data\, aparte del runtime.
+echo.
+rem `exit /b 1` dentro de un `call` NO termina el .bat, solo la subrutina: el que corta es el
+rem `if errorlevel 1 goto fin_error` de cada punto de llamada.
+exit /b 1
+
+:tar_roto
+echo.
+echo   X No se pudo descomprimir el runtime (disco lleno, o sin permisos en la carpeta destino).
+goto fin_error
+
+:fin_error
+echo.
+pause
+endlocal
+exit /b 1
 BAT
 
 cat > "$OUT/LEEME.txt" <<'TXT'
