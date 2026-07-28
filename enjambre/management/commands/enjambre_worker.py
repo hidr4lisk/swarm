@@ -92,7 +92,9 @@ class Command(BaseCommand):
         #    para siempre. Ahora: el ÚLTIMO mensaje humano (participante nulo, no-sistema) con
         #    id > watermark dispara un turno. El watermark se sube ANTES de responder, así un
         #    mensaje posteado durante el turno tiene id mayor y lo agarra el próximo tick (no se
-        #    pierde, no se re-procesa el mismo).
+        #    pierde, no se re-procesa el mismo). Si el turno falla, el watermark NO se revierte
+        #    (sería un reintento infinito de un pedido que rompe): `_responder` atrapa el error y
+        #    lo postea en la mesa para que el humano lo vea y decida.
         atendidas = set()
         for sesion in Sesion.objects.filter(activa=True):
             ultimo_humano = (sesion.mensajes
@@ -123,6 +125,23 @@ class Command(BaseCommand):
         return n
 
     def _responder(self, sesion, texto):
+        """Turno completo sobre un mensaje humano. Nunca propaga: si explota, el humano tiene que
+        VERLO en la mesa. Antes la excepción subía al tick con el watermark ya avanzado → el
+        mensaje quedaba marcado como respondido y la mesa muda, sin una sola pista (mesa 4)."""
+        try:
+            self._turno(sesion, texto)
+        except Exception as e:  # noqa: BLE001
+            self.stderr.write(f"    turno error #{sesion.pk}: {e}")
+            try:
+                enj = Enjambre(sesion)
+                enj.guardar("Enjambre", f"(❌ el turno se cortó por un error: {e}). "
+                                        f"El mensaje quedó sin responder — volvé a pedirlo.",
+                            sistema=True)
+                enj.log(f"✗ turno abortado: {e}", nivel='error')
+            except Exception:  # noqa: BLE001 — si ni eso se puede guardar, ya está en stderr
+                pass
+
+    def _turno(self, sesion, texto):
         enj = Enjambre(sesion)
         # Turno fresco: limpiar cualquier /alto viejo (de cuando la mesa estaba quieta) para que no
         # aborte este turno antes de empezar. Si el humano tira /alto DURANTE el turno, la web prende

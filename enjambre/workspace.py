@@ -21,11 +21,37 @@ from .models import Mensaje, Tarea, Workspace
 # Identidad para los commits del enjambre (no depende del git config del repo).
 GIT_AUTOR = ['-c', 'user.name=Enjambre', '-c', 'user.email=enjambre@local']
 
+# .gitignore de toda mesa nueva: temporales, dependencias y credenciales. Deliberadamente corto —
+# lo que la mesa produce (informes, código, notas) TIENE que quedar versionado.
+GITIGNORE_MESA = """# Temporales y basura de herramientas
+*.tmp
+*.swp
+*.pyc
+__pycache__/
+.DS_Store
+# Dependencias (pesan y se reinstalan)
+node_modules/
+.venv/
+venv/
+# Credenciales: nunca en el historial de la mesa
+.env
+*.key
+*.pem
+"""
+
+
+GIT_TIMEOUT = 120  # un `add -A` sobre una carpeta enorme no puede colgar el worker para siempre
+
 
 def _git(repo, *args, check=True):
     """Corre git -C <repo> <args> y devuelve stdout (strip)."""
-    r = subprocess.run(['git', '-C', str(repo), *args],
-                       capture_output=True, text=True)
+    try:
+        r = subprocess.run(['git', '-C', str(repo), *args],
+                           capture_output=True, text=True, timeout=GIT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        if check:
+            raise RuntimeError(f"git {' '.join(args)} no terminó en {GIT_TIMEOUT}s")
+        return ''
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} falló: {r.stderr.strip()}")
     return r.stdout.strip()
@@ -80,6 +106,11 @@ def mesa_workspace(sesion):
     dest.mkdir(parents=True, exist_ok=True)
     if not (dest / '.git').exists():
         _git(dest, 'init')
+        # `comitear()` hace `git add -A`: sin esto, la basura que genere una silla (venv,
+        # node_modules, un .env) queda versionada en la mesa y viaja en el zip de descarga.
+        gitignore = dest / '.gitignore'
+        if not gitignore.exists():
+            gitignore.write_text(GITIGNORE_MESA, encoding='utf-8')
         # NOTAS.md = memoria compartida de la mesa: las sillas la leen/actualizan entre turnos.
         notas = dest / 'NOTAS.md'
         if not notas.exists():
@@ -213,17 +244,24 @@ def _ejecutar_persistente(tarea, timeout):
             participante=tarea.participante, texto=salida, es_ruido=ruido,
         )
 
-    if ruido:
-        tarea.estado = Tarea.Estado.ERROR
-    else:
-        sha = comitear(dest, f"Enjambre · tarea {tarea.pk}: {tarea.titulo}")
-        if sha:
-            ws.commit_sha = sha
-            ws.estado = Workspace.Estado.COMITEADO
-            tarea.estado = Tarea.Estado.HECHA
+    # try/finally como en la ruta no-persistente: si comitear() explota (git colgado, permisos),
+    # sin esto la Tarea quedaba clavada en EN_CURSO para siempre y el Workspace sin guardar.
+    try:
+        if ruido:
+            tarea.estado = Tarea.Estado.ERROR
         else:
-            tarea.estado = Tarea.Estado.SIN_CAMBIOS
-    # Persistente: NO se desmonta la carpeta (se acumula para la próxima tarea).
-    ws.save()
-    tarea.save(update_fields=['estado', 'salida', 'actualizado_at'])
+            sha = comitear(dest, f"Enjambre · tarea {tarea.pk}: {tarea.titulo}")
+            if sha:
+                ws.commit_sha = sha
+                ws.estado = Workspace.Estado.COMITEADO
+                tarea.estado = Tarea.Estado.HECHA
+            else:
+                tarea.estado = Tarea.Estado.SIN_CAMBIOS
+    except Exception as e:  # noqa: BLE001
+        tarea.estado = Tarea.Estado.ERROR
+        tarea.salida = f"{tarea.salida}\n\n(❌ no se pudo commitear la mesa: {e})"
+    finally:
+        # Persistente: NO se desmonta la carpeta (se acumula para la próxima tarea).
+        ws.save()
+        tarea.save(update_fields=['estado', 'salida', 'actualizado_at'])
     return tarea

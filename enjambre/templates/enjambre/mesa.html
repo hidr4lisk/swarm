@@ -183,6 +183,37 @@
     .enj-head .mod-back { font-size:11px; }
     .enj-head .mod-sep { font-size:13px; }
 }
+
+/* ── Exportar la charla a PDF (print-to-PDF, forzado a tema claro) ───────────── */
+/* #enj-print es una hoja limpia que se arma al vuelo clonando los mensajes YA renderizados
+   (con avatares). Vive oculta y solo aparece en @media print. Lleva class="enj" +
+   data-theme="inverse" → hereda los tokens del tema claro sin importar el tema activo de la
+   app, así la charla sale en fondo blanco y se puede leer impresa. */
+#enj-print { display:none; }
+@media print {
+    /* El margen por defecto del body (8px) + el alto del contenido tipaban una 2da hoja
+       fantasma cuando la charla entraba justa: lo anulamos y dejamos que @page ponga el margen. */
+    html, body { margin:0 !important; padding:0 !important; height:auto !important; }
+    /* Solo la hoja de la charla; el resto de la página se oculta al imprimir. */
+    body > *:not(#enj-print) { display:none !important; }
+    #enj-print { display:block !important; }
+    /* Forzar impresión de colores, fondos y avatares (los navegadores los omiten por defecto). */
+    #enj-print, #enj-print * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    /* display:block (NO flex): Firefox mete una hoja fantasma con contenedores flex al imprimir.
+       Espaciamos los mensajes con margin en vez de gap; el margin-left:auto del humano sigue
+       alineándolo a la derecha igual (bloque angosto con margen izq. automático). */
+    #enj-print.enj { display:block !important; min-height:0; max-width:none; margin:0; padding:0;
+        background:#fff; color:var(--text-main); }
+    .enj-print-head { margin:0 0 1rem; padding-bottom:.6rem; border-bottom:2px solid var(--accent-color);
+        font-weight:800; color:var(--accent-color); }
+    .enj-print-head small { display:block; font-weight:400; color:var(--text-muted); font-size:.8rem; margin-top:.2rem; }
+    .enj-print-list { display:block !important; }
+    /* Un mensaje no se parte entre páginas si entra en una; sin animación de entrada en papel. */
+    #enj-print .msg { break-inside:avoid; page-break-inside:avoid; animation:none !important; margin-bottom:.55rem; }
+    /* Sin margen sobrante al final → no empuja una hoja en blanco de más. */
+    #enj-print .msg:last-child, .enj-print-list > :last-child { margin-bottom:0 !important; }
+    @page { margin:1.4cm; }
+}
 </style>
 {% endblock %}
 
@@ -202,7 +233,9 @@
             <button type="button" class="enj-del enj-ghost" data-modal="cfg-mesa" title="{% trans 'Sillas de la mesa' %}"
                     aria-label="{% trans 'Sillas de la mesa' %}"><i class="fas fa-gear"></i></button>
             <button type="button" class="enj-del enj-ghost" id="enj-descargar" title="{% trans 'Descargar la charla (.txt)' %}"
-                    aria-label="{% trans 'Descargar la charla' %}"><i class="fas fa-copy"></i></button>
+                    aria-label="{% trans 'Descargar la charla' %}"><i class="fas fa-download"></i></button>
+            <button type="button" class="enj-del enj-ghost" id="enj-pdf" title="{% trans 'Descargar la charla en PDF (tema claro, lista para imprimir)' %}"
+                    aria-label="{% trans 'Charla en PDF' %}"><i class="fas fa-file-pdf"></i></button>
             <button type="button" class="enj-del enj-ghost" data-modal="ayuda" title="{% trans 'Ayuda / comandos' %}"
                     aria-label="{% trans 'Ayuda' %}"><i class="fas fa-circle-question"></i></button>
             <a href="{% url 'enjambre:bitacora' sesion.pk %}" class="enj-del enj-ghost" title="{% trans 'Bitácora del toolbelt (acciones sobre el sistema)' %}"
@@ -373,6 +406,16 @@
                             {% blocktrans %}En modo continuo, si el gasto estimado acumulado supera el tope, la mesa no
                             corre la próxima iteración. <strong>0 = sin tope.</strong>{% endblocktrans %}
                         </p>
+                        <label class="enj-topo-row">
+                            <span>📁 {% trans 'Trabajar en la carpeta de la mesa' %}</span>
+                            <input type="checkbox" name="confinar" value="1"
+                                   {% if sesion.confinar %}checked{% endif %}>
+                        </label>
+                        <p class="enj-muted" style="margin:.1rem 0 .2rem;font-size:.78rem;">
+                            {% blocktrans %}Las sillas dejan lo que producen en la carpeta de esta mesa, así queda junto,
+                            versionado y descargable. Si nombrás una ruta en tu pedido (o escribís <code>/libre</code>),
+                            ese turno trabajan donde vos digas. Diagnosticar la máquina no se ve afectado.{% endblocktrans %}
+                        </p>
                     </div>
                     <div class="enj-panel-h" style="font-size:.85rem;opacity:.8;">{% trans 'Sillas de la mesa' %}</div>
                     {% for silla in sillas_activas %}
@@ -402,7 +445,8 @@
                 <p style="margin:0 0 .25rem;"><strong>{% trans 'Botones' %}</strong></p>
                 <p style="margin:0 0 .75rem;">
                     <i class="fas fa-gear"></i> {% trans 'Sillas de la mesa (quién participa).' %}<br>
-                    <i class="fas fa-copy"></i> {% trans 'Descargar la charla en un .txt.' %}<br>
+                    <i class="fas fa-download"></i> {% trans 'Descargar la charla en un .txt.' %}<br>
+                    <i class="fas fa-file-pdf"></i> {% trans 'Descargar la charla en PDF (se abre el diálogo de impresión → «Guardar como PDF»).' %}<br>
                     {% if puede_log %}<i class="fas fa-folder-open"></i> {% trans 'Carpeta de la mesa: ver/descargar archivos y copiar la ruta en el host.' %}<br>
                     <i class="fas fa-list-check"></i> {% trans 'Flujo de trabajo en vivo (qué hace cada silla, diffs).' %}<br>{% endif %}
                     <i class="fas fa-circle-question"></i> {% trans 'Esta ayuda.' %}
@@ -617,6 +661,38 @@
         a.remove();
         URL.revokeObjectURL(url);
     });
+})();
+
+// Exportar la charla a PDF: arma una hoja limpia (tema claro) clonando los mensajes ya
+// renderizados —con avatares— y dispara el diálogo de impresión → "Guardar como PDF".
+(function () {
+    const btn = document.getElementById('enj-pdf');
+    const mensajes = document.getElementById('mensajes');
+    if (!btn || !mensajes) return;
+    const nombre = "{{ sesion.nombre|escapejs }}";
+    let host = null;
+    function limpiar() { if (host) { host.remove(); host = null; } }
+    btn.addEventListener('click', function () {
+        limpiar();
+        host = document.createElement('div');
+        host.id = 'enj-print';
+        host.className = 'enj';
+        host.setAttribute('data-theme', 'inverse');
+        const cab = document.createElement('div');
+        cab.className = 'enj-print-head';
+        cab.textContent = nombre + ' — Swarm';
+        const sub = document.createElement('small');
+        sub.textContent = '{% trans "Exportado" %} ' + new Date().toLocaleString();
+        cab.appendChild(sub);
+        const lista = document.createElement('div');
+        lista.className = 'enj-print-list';
+        lista.innerHTML = mensajes.innerHTML;   // mensajes ya renderizados (markdown + avatares)
+        host.appendChild(cab); host.appendChild(lista);
+        document.body.appendChild(host);
+        window.print();
+    });
+    // Al cerrar el diálogo de impresión, retirar la hoja para no dejar IDs duplicados en el DOM.
+    window.addEventListener('afterprint', limpiar);
 })();
 
 // Selector de coordinación: el dropdown de líder solo tiene sentido en modo Líder; además, en

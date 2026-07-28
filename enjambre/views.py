@@ -342,6 +342,11 @@ def guardar_config(request, pk):
             if sesion.topologia == Topologia.LIDER and lider is None:
                 sesion.topologia = Topologia.PLANA  # líder sin silla válida → no dejar la mesa muda
             sesion.save(update_fields=['topologia', 'lider'])
+        # Orden de la mesa (checkbox: no viaja cuando está destildado, por eso se decide junto
+        # con 'topologia', que el modal SIEMPRE manda; el auto-save del listado no toca nada).
+        if 'topologia' in request.POST:
+            sesion.confinar = bool(request.POST.get('confinar'))
+            sesion.save(update_fields=['confinar'])
         # Tope de costo del modo continuo. Solo si el POST lo trae (modal de la mesa).
         if 'costo_tope' in request.POST:
             from decimal import Decimal, InvalidOperation

@@ -54,6 +54,12 @@ class EsRuidoTests(TestCase):
         self.assertTrue(es_ruido("Rate limit exceeded. Try again later."))
         self.assertTrue(es_ruido("API error: Overloaded"))
 
+    def test_error_de_provider_de_opencode_es_ruido(self):
+        # Regresión mesa 4 (pendrive): «Error: No provider available» se guardaba como si fuera
+        # la respuesta de la silla y entraba al contexto de las demás.
+        self.assertTrue(es_ruido("Error: No provider available"))
+        self.assertTrue(es_ruido("no model available for opencode/big-pickle"))
+
     def test_marcador_de_proveedor_en_texto_largo_no_es_ruido(self):
         # Regresión mesa 127: una respuesta larga puede MENCIONAR "rate limit" sin ser un error.
         texto = ("El endpoint aplica rate limiting agresivo, así que conviene cachear. " * 10)
@@ -254,6 +260,80 @@ class ParseAsignacionesTests(TestCase):
     def test_plan_sin_asignaciones(self):
         self.assertEqual(self.enj._parse_asignaciones("charla sin arrobas", [self.w1]), [])
 
+    def test_cabecera_titulo_con_subtarea_debajo(self):
+        """El líder reparte como títulos markdown y pone la subtarea en la línea de abajo. Eso no
+        es «no repartió»: es el mismo contrato maquillado, y antes dejaba la mesa muda."""
+        plan = ("Equipo, esto es lo que necesito:\n\n"
+                "### **@opencito**:\n"
+                "Investigá los datos y guardalos en `DATOS.md`\n\n"
+                "### **@mutalisco**:\n"
+                "Creá el `ANALISIS.md`\n\n"
+                "---\n\n"
+                "## Conclusión\n"
+                "Mi pronóstico es que sale bien.")
+        asign = self.enj._parse_asignaciones(plan, [self.w1, self.w2])
+        self.assertEqual([s.key for s, _ in asign], ['w-oc', 'w-muta'])
+        self.assertIn('DATOS.md', asign[0][1])
+        # el cierre del líder NO se le pega a la última silla (corta en el `---`)
+        self.assertNotIn('pronóstico', asign[1][1])
+
+    def test_cabecera_vacia_sin_cuerpo_no_asigna(self):
+        # «@opencito:» y nada más no es una subtarea → no mandamos un encargo vacío
+        self.assertEqual(self.enj._parse_asignaciones("@opencito:\n\n---", [self.w1]), [])
+
+    def test_lenguaje_natural_rescatado(self):
+        """Pase tolerante: el líder delega hablando («Opencito, investigá…», sin @ ni dos puntos)
+        y la mesa se quedaba con el plan escrito y nadie ejecutando."""
+        plan = ("Opencito, investigá el trámite y los costos\n"
+                "1. Trámite exacto\n"
+                "2. Costos aproximados")
+        asign = self.enj._parse_asignaciones(plan, [self.w1, self.w2])
+        self.assertEqual(len(asign), 1)
+        silla, subtarea = asign[0]
+        self.assertEqual(silla.key, 'w-oc')
+        self.assertIn('investigá el trámite', subtarea)
+        self.assertIn('Trámite exacto', subtarea)   # el detalle numerado se anexó
+
+    def test_estricto_gana_sobre_tolerante(self):
+        # con «@alias:» presente, el tolerante NO corre → un nombre suelto no se cuela
+        asign = self.enj._parse_asignaciones(
+            "@mutalisco: hacé X\nOpencito ya sabe de esto, no le pidas nada", [self.w1, self.w2])
+        self.assertEqual([s.key for s, _ in asign], ['w-muta'])
+
+    def test_nombre_sin_separador_no_es_asignacion(self):
+        # «Opencito dijo que…» no es un reparto (falta separador , : -)
+        self.assertEqual(
+            self.enj._parse_asignaciones("Opencito dijo que ya está listo", [self.w1]), [])
+
+
+class SalidaLimpiaTests(TestCase):
+    """Dos ruidos que se veían crudos en la mesa: el <think> de los modelos de razonamiento y el
+    auto-prefijo con el propio nombre que las sillas copian del transcripto."""
+
+    def test_quita_bloque_think(self):
+        from .engine import quitar_think
+        self.assertEqual(quitar_think('<think>me pregunto…</think>\nLa respuesta es 4.'),
+                         'La respuesta es 4.')
+
+    def test_think_sin_cerrar_no_deja_cocina(self):
+        # cortado por timeout: después del <think> abierto no hay respuesta útil
+        from .engine import quitar_think
+        self.assertEqual(quitar_think('Voy a pensarlo.\n<think>a ver, si el usuario…'),
+                         'Voy a pensarlo.')
+
+    def test_quita_autoprefijo_propio(self):
+        from .engine import quitar_autoprefijo
+        p = Participante.objects.create(key='arq', nombre='Arquimedes', comando=['opencode', 'run'])
+        for crudo in ('Arquimedes: listo', '[Arquimedes]: listo', '**Arquimedes:** listo'):
+            self.assertEqual(quitar_autoprefijo(crudo, p), 'listo', crudo)
+        # el nombre de OTRA silla no se toca (es una respuesta dirigida, no un prefijo)
+        self.assertEqual(quitar_autoprefijo('Neo: ojo con eso', p), 'Neo: ojo con eso')
+
+    def test_autoprefijo_solo_no_vacia_el_mensaje(self):
+        from .engine import quitar_autoprefijo
+        p = Participante.objects.create(key='neo2', nombre='Neo', comando=['opencode', 'run'])
+        self.assertEqual(quitar_autoprefijo('Neo:', p), 'Neo:')
+
 
 class DegradacionSillasTests(TestCase):
     """Cualquier fallo de una silla es un marcador de ruido, nunca una excepción que rompa la mesa."""
@@ -443,6 +523,16 @@ class WorkspaceTests(TestCase):
                 self.assertEqual(mesa_workspace(sesion), dest)
                 self.assertEqual(Path(dest, 'NOTAS.md').read_text()[:7], '# NOTAS')
 
+    def test_mesa_nueva_trae_gitignore(self):
+        """`comitear()` hace `git add -A`: sin .gitignore, un venv o un .env que deje una silla
+        queda versionado en la mesa y viaja en el zip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                dest = mesa_workspace(Sesion.objects.create(nombre='ig'))
+                texto = Path(dest, '.gitignore').read_text()
+                for regla in ('__pycache__/', 'node_modules/', '.env', '*.pem'):
+                    self.assertIn(regla, texto)
+
 
 class ToolbeltTests(TestCase):
     """Los frenos del toolbelt: la bóveda no se lee, y las banderas escritoras de find no pasan."""
@@ -522,6 +612,108 @@ class ToolbeltTests(TestCase):
         self.assertNotEqual(acc.estado, Accion.Estado.PENDIENTE)
         # Sin gate previo, el aviso en la mesa es la red que queda: el humano lo ve pasar.
         self.assertTrue(Mensaje.objects.filter(sesion=sesion, es_sistema=True).exists())
+
+
+class RutasVedadasTests(TestCase):
+    """Credenciales del SISTEMA, no solo la bóveda de Swarm. Antes el chequeo era por NOMBRE de
+    archivo: `~/.ssh/id_rsa` pasaba libre y su contenido podía terminar en el chat de la mesa."""
+
+    def test_ssh_y_shadow_no_se_leen(self):
+        from .toolbelt import _es_ruta_vedada
+        self.assertTrue(_es_ruta_vedada(str(Path.home() / '.ssh' / 'id_rsa')))
+        self.assertTrue(_es_ruta_vedada(str(Path.home() / '.gnupg' / 'secring.gpg')))
+        self.assertTrue(_es_ruta_vedada('/etc/shadow'))
+        self.assertFalse(_es_ruta_vedada(str(Path.home() / 'notas.md')))
+
+    def test_list_dir_tampoco_lista_credenciales(self):
+        """Inconsistencia vieja: read_file frenaba y list_dir no, así que los nombres de las
+        claves (y su existencia) se filtraban igual."""
+        from .toolbelt import _list_dir
+        out = _list_dir(str(Path.home() / '.ssh'))
+        self.assertIn('⛔', out)
+
+
+class ReadFilePaginadoTests(TestCase):
+    """Mesa 7: un README de 87 KB dejó a la silla a mitad de camino, sin forma de pedir el resto."""
+
+    def test_archivo_grande_dice_como_seguir(self):
+        from .toolbelt import MAX_FILE, _read_file
+        with tempfile.TemporaryDirectory() as tmp:
+            grande = Path(tmp) / 'largo.txt'
+            grande.write_text('A' * (MAX_FILE + 500))
+            out = _read_file(str(grande))
+            self.assertIn('desde=', out)
+            self.assertIn(str(MAX_FILE), out)
+            cola = _read_file(str(grande), desde=MAX_FILE)
+            self.assertIn('A' * 100, cola)
+            self.assertIn('fin del archivo', cola)
+
+    def test_archivo_chico_no_agrega_ruido(self):
+        from .toolbelt import _read_file
+        with tempfile.TemporaryDirectory() as tmp:
+            chico = Path(tmp) / 'chico.txt'
+            chico.write_text('hola')
+            self.assertEqual(_read_file(str(chico)), 'hola')
+
+
+class CarpetaDeLaMesaTests(TestCase):
+    """Orden por default: sin ruta pedida, lo que las sillas producen aterriza en la mesa."""
+
+    def test_write_file_fuera_de_la_carpeta_avisa_y_no_escribe(self):
+        from .toolbelt import _write_file, usar_carpeta
+        with tempfile.TemporaryDirectory() as tmp:
+            mesa = Path(tmp) / 'mesa-1'
+            mesa.mkdir()
+            afuera = Path(tmp) / 'suelto.md'
+            with usar_carpeta(str(mesa)):
+                out, ok = _write_file(str(afuera), 'informe')
+                self.assertFalse(ok)
+                self.assertIn(str(mesa), out)
+                self.assertFalse(afuera.exists())
+                out, ok = _write_file(str(mesa / 'informe.md'), 'informe')
+                self.assertTrue(ok, out)
+            # Fuera del turno ordenado, la escritura libre sigue funcionando igual que siempre.
+            out, ok = _write_file(str(afuera), 'informe')
+            self.assertTrue(ok, out)
+
+    def test_apply_fix_corre_en_la_carpeta_de_la_mesa(self):
+        """Las rutas RELATIVAS del comando caen en la mesa (antes caían en el cwd del proceso)."""
+        from .toolbelt import ejecutar_tool, usar_carpeta
+        sesion = Sesion.objects.create(nombre='cwd')
+        with tempfile.TemporaryDirectory() as tmp:
+            with usar_carpeta(tmp):
+                ejecutar_tool('apply_fix', {'comando': 'echo hecho > relativo.txt',
+                                            'motivo': 'test'}, sesion, None)
+            self.assertTrue((Path(tmp) / 'relativo.txt').exists())
+
+    def test_turno_ordenado_salvo_que_el_humano_pida_otra_ruta(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                sesion = Sesion.objects.create(nombre='orden')
+                enj = Enjambre(sesion)
+                self.assertFalse(enj._turno_libre('/armar hacé un informe'))
+                # ruta absoluta nombrada por el humano → ese turno trabaja donde él dijo
+                self.assertTrue(enj._turno_libre('/armar revisá /home/fede/repos/algo y arreglalo'))
+                self.assertTrue(enj._turno_libre('mirá ~/.config/app/config.toml'))
+                # marcador explícito
+                self.assertTrue(enj._turno_libre('/libre tocá lo que necesites'))
+                # la propia carpeta de la mesa NO cuenta como "otra ruta"
+                mesa = str(mesa_workspace(sesion))
+                self.assertFalse(enj._turno_libre(f'/armar dejalo en {mesa}/informe.md'))
+                # y el switch de la mesa lo apaga entero
+                sesion.confinar = False
+                self.assertTrue(enj._turno_libre('/armar hacé un informe'))
+
+    def test_ruta_libre_mira_el_ultimo_mensaje_humano(self):
+        """Con líder, la silla recibe un encargo reescrito: la ruta original solo está en el
+        mensaje del humano. Si no se mirara, el turno se ordenaría contra lo que él pidió."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                sesion = Sesion.objects.create(nombre='orden2')
+                Mensaje.objects.create(sesion=sesion, emisor='Humano',
+                                       texto='/armar arreglá /etc/hosts de esta máquina')
+                enj = Enjambre(sesion)
+                self.assertTrue(enj._turno_libre('[Encargo del líder]: revisá el archivo'))
 
 
 class ParamTokensTests(TestCase):
@@ -1130,6 +1322,14 @@ class ModoMaquinaCliTests(TestCase):
             key='neo', nombre='Neo', comando=['opencode', 'run'],
             comando_trabajo=['opencode', 'run', '--agent', 'build'], activo=True)
         self.sesion.participantes.add(self.cli)
+        # Las mesas de estos turnos van a un tmpdir: sin esto se crean en el HOME real del que
+        # corre la suite (los turnos de modo máquina ahora aterrizan en la carpeta de la mesa).
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        settings_patch = override_settings(ENJAMBRE_MESAS_DIR=tmp.name)
+        settings_patch.enable()
+        self.addCleanup(settings_patch.disable)
+        self.mesas_dir = tmp.name
 
     @staticmethod
     def _parche_cli(salida):
@@ -1144,22 +1344,30 @@ class ModoMaquinaCliTests(TestCase):
             return mock.Mock(stdout=salida, stderr='', returncode=0)
         return mock.patch('enjambre.engine.subprocess.run', side_effect=dispatch)
 
-    def _correr(self, salida='listo: miré /etc/fstab y no toqué nada'):
-        """Corre un turno interceptando el CLI. Devuelve la llamada con que se invocó."""
+    def _correr(self, salida='listo: miré /etc/fstab y no toqué nada', pedido='revisá el disco'):
+        """Corre un turno interceptando el CLI. Devuelve la llamada del CLI (no la de git: el
+        turno ordenado commitea al final, así que la última llamada es del commit)."""
         with self._parche_cli(salida) as run:
-            Enjambre(self.sesion).enviar(self.cli, 'revisá el disco')
-        return run.call_args
+            Enjambre(self.sesion).enviar(self.cli, pedido)
+        return [c for c in run.call_args_list if 'git' not in str(c.args[0][0])][0]
 
     @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
     def test_con_toolbelt_on_la_silla_cli_corre_sobre_la_maquina(self, _h):
         args = self._correr()
-        # cwd = la máquina (home), NO la carpeta de la mesa
-        self.assertEqual(args.kwargs['cwd'], toolbelt_mod.cwd_maquina())
-        self.assertNotIn('mesas', args.kwargs['cwd'])
         # usa el comando AGÉNTICO (puede leer/editar/ejecutar), no el de charla
         self.assertIn('--agent', args.args[0])
         # y el prompt le dice que está sobre la máquina real
         self.assertIn('TOOLBELT está ENCENDIDO', args.args[0][-1])
+        # Aterriza en la carpeta de la mesa (prolijidad por default): sigue alcanzando toda la
+        # máquina, pero lo que produce queda junto y versionado.
+        self.assertIn('mesa-', args.kwargs['cwd'])
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_si_el_humano_nombra_una_ruta_el_turno_arranca_en_la_maquina(self, _h):
+        """El orden es una preferencia, no una jaula: pedir algo sobre una ruta concreta manda."""
+        args = self._correr(pedido='mirá /var/log/syslog y decime qué pasó')
+        self.assertEqual(args.kwargs['cwd'], toolbelt_mod.cwd_maquina())
+        self.assertNotIn('mesa-', args.kwargs['cwd'])
 
     @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
     def test_el_turno_queda_en_la_bitacora(self, _h):
@@ -1215,7 +1423,9 @@ class ModoMaquinaCliTests(TestCase):
             Enjambre(self.sesion).enviar(self.cli, 'integrá lo que hicieron', editar=False)
         cli = [c for c in run.call_args_list if 'git' not in str(c.args[0][0])][0]
         self.assertIn('--agent', cli.args[0])                       # comando agéntico, no charla
-        self.assertEqual(cli.kwargs['cwd'], toolbelt_mod.cwd_maquina())  # sobre la máquina real
+        # Y aterriza en la mesa: la fuga de la mesa 4 del pendrive fue justo acá — el líder
+        # coordinaba desde $HOME y su informe quedaba fuera de la mesa, sin commit.
+        self.assertIn('mesa-', cli.kwargs['cwd'])
         acc = Accion.objects.get(sesion=self.sesion)                # y el turno queda auditado
         self.assertEqual(acc.herramienta, 'cli_maquina')
 

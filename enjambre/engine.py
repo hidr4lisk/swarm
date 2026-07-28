@@ -42,8 +42,12 @@ RUIDO_PROPIO = ("(❌", "(⏰", "(sin respuesta)")
 # pueden aparecer como substring dentro de una respuesta legítima y larga — p.ej. una mesa de
 # pentesting explicando "el endpoint tiene rate limiting". Por eso solo cuentan como ruido si la
 # salida es CORTA (un error real es breve; un párrafo que los menciona, no). Ver mesa 127.
+# «no provider available» / «no model available» los tira opencode cuando el modelo de la silla
+# no está disponible (visto en la mesa 4 del pendrive): sin esto se guardaban como RESPUESTA de la
+# silla y entraban al contexto de las demás como si fueran un aporte válido.
 ERROR_MARKERS = ("session limit", "hit your", "unknownerror", "unexpected server error",
-                 "internal server error", "rate limit", "overloaded", "bad request")
+                 "internal server error", "rate limit", "overloaded", "bad request",
+                 "no provider available", "no model available", "provider error")
 # Tope de largo para que un marker de proveedor cuente como ruido (errores reales son breves).
 RUIDO_MAX_LEN = 300
 
@@ -61,10 +65,42 @@ PREAMBULOS_CLI = (
 )
 
 
+# Bloque de razonamiento de los modelos «thinking» (deepseek, qwen y varios de los free): no es la
+# respuesta, es su cocina — en la mesa se ve como un chorro de texto en primera persona antes de lo
+# que la silla quiso decir.
+THINK_RE = re.compile(r'<think\b[^>]*>.*?</think>', re.DOTALL | re.IGNORECASE)
+
+
+def quitar_think(texto):
+    """Saca los bloques <think>…</think>. Si quedó uno ABIERTO sin cerrar (corte por timeout),
+    tira todo desde el <think> (no hay respuesta útil después)."""
+    t = THINK_RE.sub('', texto or '')
+    idx = t.lower().find('<think>')
+    if idx != -1:
+        t = t[:idx]
+    return t.strip()
+
+
+def quitar_autoprefijo(texto, participante):
+    """Saca el auto-prefijo con el propio nombre que algunas sillas anteponen por mimetismo del
+    transcripto (que ven como '[Nombre]: texto'). Solo AL INICIO y solo si es el nombre de ESA
+    silla; el cuerpo no se toca. Cubre 'Nombre:', '[Nombre]:', '**Nombre:**'. La UI ya muestra el
+    nombre en su etiqueta → sin esto queda duplicado."""
+    if not participante or not texto:
+        return texto
+    nombre = re.escape((participante.nombre or '').strip())
+    if not nombre:
+        return texto
+    # El '\**' final cubre el negrita que cierra DESPUÉS del ':' (ej. '**Arquimedes:**').
+    patron = r'^\s*\**\s*\[?\s*' + nombre + r'\s*\]?\s*\**\s*:\s*\**\s*'
+    nuevo = re.sub(patron, '', texto, count=1, flags=re.IGNORECASE)
+    return nuevo if nuevo.strip() else texto
+
+
 def limpiar_salida(texto):
-    """Saca los códigos ANSI y el preámbulo de arranque del CLI (líneas conocidas, solo
-    AL INICIO de la salida). El cuerpo de la respuesta no se toca."""
-    t = ANSI_RE.sub('', texto or '')
+    """Saca los códigos ANSI, el bloque <think> de los reasoning models y el preámbulo de
+    arranque del CLI (líneas conocidas, solo AL INICIO de la salida). El cuerpo no se toca."""
+    t = quitar_think(ANSI_RE.sub('', texto or ''))
     lineas = t.splitlines()
     i = 0
     while i < len(lineas):
@@ -96,6 +132,12 @@ TRIGGER_CONTINUO = '/continuo'               # arranca el modo continuo con un o
 TRIGGERS_SEGUI = ('/seguí', '/segui')        # corre la próxima iteración hacia el objetivo
 TRIGGER_AUTO = '/auto'                        # pasa un continuo en curso a automático
 TRIGGER_CERRAR = '/cerrar'                     # cierra la mesa con un resumen (qué se hizo + costo)
+TRIGGER_LIBRE = '/libre'                       # este turno NO se ordena en la carpeta de la mesa
+
+# Rutas absolutas que el humano puede nombrar en su pedido (POSIX, `~/…` y Windows). Piden al
+# menos DOS tramos para no confundir un comando de mesa («/armar») con una ruta.
+RUTA_RE = re.compile(r'(?:~|(?:[A-Za-z]:[\\/]))[\w .\-]+[\\/][\w .\-]+'
+                     r'|/[\w.\-]+(?:/[\w .\-]+)+')
 
 # Centinela de _comando_control: "este texto NO era un comando de control, seguí con build/charla".
 # Se distingue de {} (resultado vacío legítimo de un comando ya manejado, ej. /alto).
@@ -166,6 +208,23 @@ def _prompt_integracion(pedido, resumen):
     )
 
 
+# Decoración markdown al inicio de línea: título (`###`), cita (`>`), viñeta, numeración y los
+# marcadores de negrita/código que envuelven al alias. Se saca SOLO para reconocer la cabecera del
+# reparto: el líder escribe «### **@sabueso**:» y eso es un reparto igual.
+_RX_DECORACION = re.compile(r'^\s*(?:[#>]+\s*)*(?:[-*+•]\s+|\d+[.)]\s+)?[*_`]*\s*')
+# Corte de bloque: separador horizontal o título que NO es una cabecera de silla → lo que sigue ya
+# no es detalle de la subtarea anterior (si no, la conclusión del líder se le pega a la última silla).
+_RX_CORTE = re.compile(r'^\s*(?:[-*_=]{3,}\s*$|#{1,6}\s+\S)')
+
+
+def _sin_decoracion(linea):
+    return _RX_DECORACION.sub('', linea).strip()
+
+
+def _corta_bloque(linea):
+    return bool(_RX_CORTE.match(linea))
+
+
 def ejecutar_http(participante, prompt, timeout):
     """Silla de MODELO LOCAL: POST a la API Ollama del endpoint. Devuelve (salida, ruido).
 
@@ -185,7 +244,7 @@ def ejecutar_http(participante, prompt, timeout):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
-        salida = (data.get('response') or '').strip() or '(sin respuesta)'
+        salida = quitar_think(data.get('response') or '') or '(sin respuesta)'
     except urllib.error.URLError as e:
         # apagado / fuera de red / timeout del socket → degradar, no romper la mesa
         salida = f"(❌ {participante.nombre} no responde: {getattr(e, 'reason', e)})"
@@ -282,6 +341,10 @@ class Enjambre:
 
     def guardar(self, emisor, texto, participante=None, ruido=False, sistema=False,
                 tokens=0, costo=0):
+        # Sacar el auto-prefijo del nombre (solo respuestas de silla, no mensajes de sistema/UI):
+        # la etiqueta de la UI ya muestra el nombre → sin esto queda 'Nombre: Nombre: …'.
+        if participante is not None and not sistema:
+            texto = quitar_autoprefijo(texto, participante)
         return Mensaje.objects.create(
             sesion=self.sesion, emisor=emisor, participante=participante,
             texto=texto, es_ruido=ruido, es_sistema=sistema,
@@ -342,6 +405,32 @@ class Enjambre:
         rol = resolver(self.sesion.creador) if callable(resolver) else 'control'
         return rol == 'consulta'
 
+    def _turno_libre(self, texto=''):
+        """True si ESTE turno NO se ordena en la carpeta de la mesa.
+
+        Prolijidad por default: si nadie dijo dónde, lo que las sillas produzcan aterriza en la
+        carpeta de la mesa (queda junto, versionado y descargable). El turno queda LIBRE si:
+          · la mesa tiene el orden apagado (`sesion.confinar = False`), o
+          · el humano escribió `/libre`, o
+          · el humano nombró una ruta absoluta que NO está bajo la carpeta de la mesa (pidió
+            trabajar en otro lado: soporte sobre la máquina, editar un repo suyo, etc.).
+        Mira el pedido del turno y el último mensaje humano — con líder, la silla recibe un
+        encargo reescrito y la ruta original queda solo en el mensaje del humano."""
+        if not self.sesion.confinar:
+            return True
+        ultimo = (self.sesion.mensajes.filter(participante__isnull=True, es_sistema=False)
+                  .order_by('-id').first())
+        pedido = f"{texto or ''}\n{ultimo.texto if ultimo else ''}"
+        if TRIGGER_LIBRE in pedido.lower():
+            return True
+        from .workspace import mesas_dir
+        base = os.path.abspath(mesas_dir())
+        for m in RUTA_RE.findall(pedido):
+            p = os.path.abspath(os.path.expanduser(m.rstrip('.,;:)')))
+            if not p.startswith(base):
+                return True
+        return False
+
     def construir_prompt(self, participante, texto, editar=False, maquina=False,
                          cli=True, carpeta=None):
         ctx = self.contexto()
@@ -365,7 +454,7 @@ class Enjambre:
             # así que acá solo se agrega lo que el system NO puede saber — si este turno es un
             # `/armar`, en qué carpeta de la mesa tiene que dejar el trabajo.
             if cli:
-                encuadre = toolbelt.encuadre_cli()
+                encuadre = toolbelt.encuadre_cli(carpeta)
             elif carpeta:
                 encuadre = toolbelt.encuadre_api_mesa(carpeta)
             else:
@@ -418,20 +507,27 @@ class Enjambre:
         # API a la que se le pidió `/armar`: opera la máquina, pero apuntada a la carpeta de la mesa.
         fabrica_api = maquina and not cli and editar and not self._es_consulta()
         workdir = comando = base = None
-        cwd_maq = carpeta = None
+        cwd_maq = carpeta = commit_dir = None
         timeout = self.sesion.timeout
         if maquina:
-            cwd_maq = toolbelt.cwd_maquina()
+            # Prolijidad por default: salvo que el turno sea libre (ver _turno_libre), la silla
+            # ATERRIZA en la carpeta de la mesa — es su cwd y es lo que se le nombra en el prompt.
+            # Sigue alcanzando toda la máquina (el toolbelt es el permiso); lo que cambia es dónde
+            # deja lo que produce. Antes el líder en modo máquina arrancaba en $HOME y su entrega
+            # quedaba fuera de la mesa, sin commit y sin que nadie la viera (mesa 4 del pendrive).
+            from .workspace import mesa_workspace, _git
+            raiz = None if self._turno_libre(texto) else str(mesa_workspace(self.sesion))
+            cwd_maq = raiz or toolbelt.cwd_maquina()
             comando = participante.cmd_trabajo() if cli else None  # agéntico: lee, edita y ejecuta
             timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
-            if fabrica_api:
-                from .workspace import mesa_workspace, _git
+            if fabrica_api or raiz:
                 workdir = str(mesa_workspace(self.sesion))
-                carpeta = workdir           # va al prompt: la silla escribe ahí con write_file
+                carpeta = raiz or workdir   # va al prompt: dónde dejar el trabajo
+                commit_dir = workdir if (fabrica_api or raiz) else None
                 base = _git(workdir, 'rev-parse', 'HEAD', check=False)
         elif puede:
             from .workspace import mesa_workspace, _git
-            workdir = str(mesa_workspace(self.sesion))
+            workdir = commit_dir = str(mesa_workspace(self.sesion))
             comando = participante.cmd_trabajo()
             base = _git(workdir, 'rev-parse', 'HEAD', check=False)
             # Fabricar tarda más que charlar: subir el techo para no matar el turno a mitad.
@@ -441,11 +537,16 @@ class Enjambre:
         modo = ('fabrica en la mesa (API)' if fabrica_api else
                 'opera la máquina' if maquina else
                 'fabrica' if puede else 'charla')
+        if maquina and carpeta:
+            modo += ' · ordenado en la mesa'
         self.log(f"▶ {participante.nombre} · {modo} (timeout {timeout}s)", nivel='paso')
         t0 = time.monotonic()
-        salida, ruido = ejecutar_cli(participante, prompt, timeout,
-                                     workdir=workdir, comando=comando,
-                                     sesion=self.sesion, cwd_maquina=cwd_maq)
+        # `usar_carpeta` es lo que ve el toolbelt de las sillas por API key: con carpeta, sus
+        # write_file/apply_fix se ordenan ahí (fuera avisa y pide confirmación en la mesa).
+        with toolbelt.usar_carpeta(carpeta if maquina else None):
+            salida, ruido = ejecutar_cli(participante, prompt, timeout,
+                                         workdir=workdir, comando=comando,
+                                         sesion=self.sesion, cwd_maquina=cwd_maq)
         dt = time.monotonic() - t0
         # Velocímetro: estimación uniforme tokens ≈ len/4; costo notional por tarifa de la
         # silla (local = $0). No es la factura real, es referencia para ver y topear el gasto.
@@ -468,8 +569,10 @@ class Enjambre:
         # comitear() no hace nada si no hubo cambios, así que es seguro llamarlo igual.
         # `fabrica_api` también commitea: la silla API escribió en la carpeta con write_file (por
         # ruta absoluta), así que el resultado hay que versionarlo igual que el de una silla CLI.
-        if puede or fabrica_api:
-            self._comitear_y_postear(participante, workdir, base, parcial=ruido)
+        # También commitea el turno de modo máquina ORDENADO (líder incluido): si aterrizó en la
+        # carpeta de la mesa, lo que dejó ahí se versiona igual que lo de una silla que fabrica.
+        if commit_dir:
+            self._comitear_y_postear(participante, commit_dir, base, parcial=ruido)
         # Modo máquina CLI: el turno entero queda en la Bitácora — es donde el equipo ve trabajar a
         # la silla (qué CLI corrió, en qué carpeta y qué contó que hizo). Nunca rompe el turno.
         # Las sillas API NO pasan por acá: el toolbelt ya anotó cada herramienta una por una.
@@ -888,26 +991,67 @@ class Enjambre:
 
     # ── Topología LÍDER ───────────────────────────────────────────────────────
     def _parse_asignaciones(self, plan, workers):
-        """Extrae las líneas «@alias: subtarea» del plan del líder. Devuelve [(silla, subtarea)]
-        en orden de aparición; junta varias subtareas de la misma silla. Solo matchea workers."""
+        """Extrae el reparto del plan del líder. Devuelve [(silla, subtarea)] en orden de
+        aparición; junta varias subtareas de la misma silla. Solo matchea workers.
+
+        DOS PASES. Primero el ESTRICTO, el contrato que se le pide («@alias: subtarea»). Si no
+        encontró NADA (el modelo delegó en lenguaje natural — «Sabueso, investigá …», sin @ ni
+        dos puntos → la mesa quedaba muda con el plan sin ejecutar), un pase TOLERANTE que
+        reconoce el nombre de una silla conocida al inicio de línea + separador (`, : -`); las
+        líneas siguientes sin cabecera se pegan como detalle de esa subtarea (listas numeradas).
+        El tolerante SOLO corre si el estricto vino vacío → cero cambio para lo que ya andaba.
+
+        Las cabeceras se buscan sobre la línea SIN decoración markdown (`_sin_decoracion`): el
+        líder suele escribir el reparto como títulos («### **@neo**:» y la subtarea abajo) y eso
+        no es «no repartió», es el mismo contrato maquillado."""
         by_alias = {}
         for w in workers:
-            by_alias.setdefault(w.alias, w)
+            by_alias.setdefault(w.alias.lower(), w)
             by_alias.setdefault(w.key.lower(), w)
-        orden, agrupado = [], {}
-        for linea in (plan or '').splitlines():
-            m = re.match(r'\s*[-*\d.)\]]*\s*@(\S+?)\s*[:：\-–]\s*(.+)', linea)
-            if not m:
-                continue
-            alias = m.group(1).lower().rstrip('.,:;!?')
-            silla = by_alias.get(alias)
-            if not silla:
-                continue
-            if silla.key not in agrupado:
-                agrupado[silla.key] = (silla, [])
-                orden.append(silla.key)
-            agrupado[silla.key][1].append(m.group(2).strip())
-        return [(agrupado[k][0], "\n".join(agrupado[k][1])) for k in orden]
+        lineas = (plan or '').splitlines()
+
+        estricto = re.compile(r'@(\S+?)[*_`]*\s*[:：\-–—]\s*(.*)$')
+        asig = self._asignaciones_por_regex(lineas, by_alias, estricto, continuar=False)
+        if asig or not by_alias:
+            return asig
+
+        alias_alt = '|'.join(re.escape(a) for a in sorted(by_alias, key=len, reverse=True))
+        tolerante = re.compile(rf'({alias_alt})\b[*_`]*\s*[,:：\-–—]\s*(.*)$', re.IGNORECASE)
+        return self._asignaciones_por_regex(lineas, by_alias, tolerante, continuar=True)
+
+    def _asignaciones_por_regex(self, lineas, by_alias, rx, continuar):
+        """Recorre las líneas con `rx` (grupo1=alias, grupo2=subtarea) y agrupa por silla.
+
+        La cabecera se matchea contra la línea limpia de decoración markdown. Dos formas de dar el
+        detalle: en la MISMA línea («@neo: hacé X») o DEBAJO (cabecera sin texto, estilo título) —
+        en ese caso las líneas siguientes se anexan hasta que corta un separador/título (`---`,
+        `## …`) o la cabecera de otra silla. Con continuar=True (pase tolerante) también se anexan
+        las líneas de detalle de una cabecera que SÍ traía texto (listas numeradas debajo). Se
+        anexa la línea original, no la limpia: el detalle conserva su formato."""
+        orden, agrupado, actual, anexar = [], {}, None, False
+        for linea in lineas:
+            limpia = _sin_decoracion(linea)
+            m = rx.match(limpia)
+            if m:
+                alias = m.group(1).lower().rstrip('.,:;!?*_`')
+                silla = by_alias.get(alias)
+                if not silla:
+                    actual, anexar = None, False
+                    continue
+                if silla.key not in agrupado:
+                    agrupado[silla.key] = (silla, [])
+                    orden.append(silla.key)
+                cuerpo = m.group(2).strip()
+                if cuerpo:
+                    agrupado[silla.key][1].append(cuerpo)
+                # cabecera sin texto = la subtarea viene abajo → hay que anexar sí o sí
+                actual, anexar = silla.key, (continuar or not cuerpo)
+            elif _corta_bloque(linea):
+                actual, anexar = None, False
+            elif anexar and actual and linea.strip():
+                agrupado[actual][1].append(linea.strip())
+        return [(agrupado[k][0], "\n".join(agrupado[k][1]))
+                for k in orden if agrupado[k][1]]
 
     def _comando_control(self, comando, limpio, texto, on_respuesta=None):
         """Comandos de mesa comunes a las DOS topologías (líder y plana): undo/volver/alto/cerrar/

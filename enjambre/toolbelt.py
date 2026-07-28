@@ -23,11 +23,13 @@ un gate por comando: prenderlo ES el permiso.
 Opt-in: apagado salvo `SWARM_TOOLBELT` (setting/env). Un tool de mucho poder → arranca off.
 OS-aware por `platform.system()`. Ver el "Threat model" ampliado del README.
 """
+import contextvars
 import os
 import platform
 import shlex
 import shutil
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 from django.conf import settings
@@ -70,17 +72,84 @@ _DENY_OPS_WIN = ('&', '|', '>', '<', '^')
 # No es un sandbox (mismo usuario), pero cierra el escape accidental y el vector barato.
 _SECRETOS_VAULT = ('secrets.enc', '.secrets.runtime.json')
 
+# Credenciales del SISTEMA (no de Swarm): la bóveda no es el único secreto de la máquina. Una
+# silla que lee `~/.ssh/id_rsa` o `/etc/shadow` lo vuelca al transcript de la mesa igual que
+# volcaría una API key. Se chequea por CONTENCIÓN de path (no por nombre): los que arrancan con
+# `/` son rutas absolutas; el resto son carpetas que pueden estar en cualquier HOME.
+_RUTAS_VEDADAS = ('.ssh', '.gnupg', '.aws', '.docker', '.kube',
+                  '/etc/shadow', '/etc/gshadow', '/etc/sudoers')
+
 
 def _es_ruta_vedada(path):
-    """True si `path` (resuelto) es un archivo de la bóveda."""
+    """True si `path` (resuelto) es un archivo de la bóveda o cae dentro de una ruta vedada
+    del sistema. Antes comparaba SOLO el basename: `~/.ssh/id_rsa` pasaba libre y cualquier
+    archivo llamado `secrets.enc` quedaba bloqueado sin importar dónde estuviera."""
     try:
-        return Path(path).resolve().name in _SECRETOS_VAULT
-    except OSError:
+        p = Path(os.path.expanduser(str(path))).resolve()
+    except (OSError, ValueError):
         return False
+    if p.name in _SECRETOS_VAULT:
+        return True
+    partes = p.parts
+    for vedada in _RUTAS_VEDADAS:
+        if vedada.startswith('/'):
+            try:
+                if p == Path(vedada) or p.is_relative_to(Path(vedada)):
+                    return True
+            except (OSError, ValueError):
+                continue
+        elif vedada in partes:
+            return True
+    return False
 
 
 def _menciona_secreto(texto):
     return any(s in (texto or '').lower() for s in _SECRETOS_VAULT)
+
+
+# ── Carpeta de trabajo del turno (prolijidad por default, no jaula) ───────────────
+# Regla de la casa: si el humano NO nombró una carpeta, lo que las sillas produzcan aterriza en la
+# carpeta de la mesa — así el trabajo queda junto, versionado y descargable. Si nombró una ruta,
+# ese turno corre libre (`carpeta_turno` queda en None) y las sillas escriben donde les pidieron.
+#
+# NO es contención dura: una silla CLI trae su propia shell y puede escribir en cualquier lado (ver
+# el README, §Threat model). Acá se acota lo que SÍ pasa por nuestras manos — las herramientas de
+# las sillas por API key — y se les dice a las CLI dónde dejar el trabajo.
+_carpeta_turno = contextvars.ContextVar('swarm_carpeta_turno', default=None)
+
+
+def carpeta_turno():
+    """Carpeta de trabajo del turno en curso, o None si el turno corre libre."""
+    return _carpeta_turno.get()
+
+
+@contextmanager
+def usar_carpeta(ruta):
+    """Fija la carpeta de trabajo mientras dura el turno (la lee `ejecutar_tool`). `ruta` None
+    = turno libre. ContextVar: no se pisa entre hilos (worker vs requests de la web)."""
+    token = _carpeta_turno.set(str(ruta) if ruta else None)
+    try:
+        yield
+    finally:
+        _carpeta_turno.reset(token)
+
+
+def _dentro_de(path, raiz):
+    """True si `path` cae dentro de `raiz` (ambos resueltos)."""
+    try:
+        return Path(os.path.expanduser(str(path))).resolve().is_relative_to(Path(raiz).resolve())
+    except (OSError, ValueError):
+        return False
+
+
+def _fuera_de_la_mesa(ruta):
+    """Mensaje de rechazo si hay carpeta de turno y `ruta` queda afuera; '' si está todo bien."""
+    raiz = carpeta_turno()
+    if not raiz or _dentro_de(ruta, raiz):
+        return ''
+    return (f'(⚠️ fuera de la carpeta de esta mesa. Escribí bajo {raiz} para que el trabajo quede '
+            f'junto y versionado. Si el humano te pidió EXPRESAMENTE esa otra ruta, decíselo y '
+            f'esperá que te lo confirme en la mesa.)')
 
 
 # ── Estado ──────────────────────────────────────────────────────────────────────
@@ -136,9 +205,14 @@ def tools_anthropic():
              'comando': {'type': 'string', 'description': 'Ej: "ps aux", "df -h", "journalctl -u nginx -n 50".'}},
              'required': ['comando']}},
         {'name': 'read_file', 'description':
-         'Lee el contenido de un archivo del sistema (acotado por tamaño). Read-only, auto.',
+         f'Lee el contenido de un archivo del sistema, hasta {MAX_FILE} bytes por llamada. '
+         'Read-only, auto. Si el archivo es más grande, la salida termina diciéndote en qué byte '
+         'cortó: volvé a llamar con «desde» en ese número para seguir leyendo (y repetí hasta el '
+         'final antes de sacar conclusiones sobre un archivo largo).',
          'input_schema': {'type': 'object', 'properties': {
-             'ruta': {'type': 'string', 'description': 'Ruta absoluta o ~ del archivo.'}},
+             'ruta': {'type': 'string', 'description': 'Ruta absoluta o ~ del archivo.'},
+             'desde': {'type': 'integer', 'description':
+                       'Byte desde el que empezar a leer (default 0). Para continuar una lectura cortada.'}},
              'required': ['ruta']}},
         {'name': 'list_dir', 'description':
          'Lista el contenido de un directorio del sistema. Read-only, auto.',
@@ -296,27 +370,45 @@ def _system_report():
     return '\n'.join(L)
 
 
-def _read_file(ruta):
+def _read_file(ruta, desde=0):
+    """Lee el archivo desde el byte `desde`, hasta MAX_FILE bytes. Si queda cola, la cierra
+    diciendo con qué `desde` seguir: sin eso una silla que abre un archivo grande se queda con la
+    primera tajada y no tiene forma de pedir el resto (mesa 7: README de 87 KB, informe sin hacer)."""
     p = os.path.abspath(os.path.expanduser((ruta or '').strip()))
     if _es_ruta_vedada(p):
-        return '(⛔ los archivos de la bóveda de API keys no se leen con el toolbelt)'
+        return '(⛔ archivo de credenciales — no se lee con el toolbelt)'
     if not os.path.exists(p):
         return f'(❌ no existe: {p})'
     if os.path.isdir(p):
         return f'(❌ {p} es un directorio — usá list_dir)'
     try:
+        desde = max(0, int(desde or 0))
+    except (TypeError, ValueError):
+        desde = 0
+    try:
+        total = os.path.getsize(p)
         with open(p, 'rb') as f:
-            data = f.read(MAX_FILE + 1)
+            if desde:
+                f.seek(desde)
+            data = f.read(MAX_FILE)
     except Exception as e:  # noqa: BLE001
         return f'(❌ no se pudo leer: {e})'
-    text = data[:MAX_FILE].decode('utf-8', errors='replace')
-    if len(data) > MAX_FILE:
-        text += f'\n…[truncado a {MAX_FILE} bytes]'
+    if desde >= total and total:
+        return f'(fin del archivo: son {total} bytes y pediste desde {desde})'
+    text = data.decode('utf-8', errors='replace')
+    fin = desde + len(data)
+    if fin < total:
+        text += (f'\n…[cortado en el byte {fin} de {total}. Seguí leyendo con '
+                 f'read_file(ruta="{p}", desde={fin})]')
+    elif desde:
+        text += f'\n…[fin del archivo ({total} bytes)]'
     return text or '(archivo vacío)'
 
 
 def _list_dir(ruta):
     p = os.path.abspath(os.path.expanduser((ruta or '.').strip()))
+    if _es_ruta_vedada(p):
+        return '(⛔ carpeta de credenciales — no se lista con el toolbelt)'
     if not os.path.isdir(p):
         return f'(❌ no es un directorio: {p})'
     try:
@@ -335,12 +427,16 @@ def _list_dir(ruta):
     return f"{p}:\n" + '\n'.join(filas) + extra if filas else f"{p}: (vacío)"
 
 
-def _correr_mutacion(comando, timeout=APPLY_TIMEOUT):
+def _correr_mutacion(comando, timeout=APPLY_TIMEOUT, cwd=None):
     """Corre un comando que MUTA el sistema, con shell (el agente escribe pipes/redirecciones).
     Devuelve (salida, rc). Sin allowlist: con el toolbelt encendido el permiso ya está dado —
-    el freno es el switch, y el registro es la Bitácora. Ver el bloque de arriba."""
+    el freno es el switch, y el registro es la Bitácora. Ver el bloque de arriba.
+
+    `cwd` (la carpeta de la mesa, si el turno la tiene): las rutas RELATIVAS del comando caen ahí
+    en vez de en el cwd del proceso. No encierra nada — una ruta absoluta sigue yendo donde diga."""
     try:
-        r = subprocess.run(comando, capture_output=True, text=True, timeout=timeout, shell=True)
+        r = subprocess.run(comando, capture_output=True, text=True, timeout=timeout, shell=True,
+                           cwd=(str(cwd) if cwd and os.path.isdir(str(cwd)) else None))
         out = (r.stdout or '')
         if (r.stderr or '').strip():
             out += ('\n[stderr]\n' + r.stderr)
@@ -361,7 +457,10 @@ def _write_file(ruta, contenido):
         return f'(❌ ruta inválida para escribir: {p})', False
     # La bóveda no se escribe (igual que no se lee): sobrescribir secrets.enc borra las API keys.
     if _es_ruta_vedada(p) or _menciona_secreto(p):
-        return '(⛔ los archivos de la bóveda de API keys no se tocan con el toolbelt)', False
+        return '(⛔ archivo de credenciales — no se toca con el toolbelt)', False
+    afuera = _fuera_de_la_mesa(p)
+    if afuera:
+        return afuera, False
     existia = os.path.exists(p)
     try:
         os.makedirs(os.path.dirname(p) or '.', exist_ok=True)
@@ -393,8 +492,10 @@ def ejecutar_tool(name, args, sesion, participante):
         return out
     if name == 'read_file':
         ruta = (args.get('ruta') or '').strip()
-        out = _read_file(ruta)
-        _log(sesion, participante, 'read_file', ruta, out, Accion.Estado.EJECUTADA)
+        desde = args.get('desde') or 0
+        out = _read_file(ruta, desde)
+        etiqueta = f'{ruta} (desde {desde})' if desde else ruta
+        _log(sesion, participante, 'read_file', etiqueta, out, Accion.Estado.EJECUTADA)
         return out
     if name == 'list_dir':
         ruta = (args.get('ruta') or '').strip()
@@ -410,7 +511,7 @@ def ejecutar_tool(name, args, sesion, participante):
         motivo = (args.get('motivo') or '').strip()
         if not comando:
             return '(❌ apply_fix necesita un comando)'
-        out, rc = _correr_mutacion(comando)
+        out, rc = _correr_mutacion(comando, cwd=carpeta_turno())
         estado = Accion.Estado.EJECUTADA if rc == 0 else Accion.Estado.ERROR
         _log(sesion, participante, 'apply_fix', comando, out, estado,
              es_mutacion=True, motivo=motivo)
@@ -511,15 +612,30 @@ def cwd_maquina():
     return str(p) if p.is_dir() else str(Path.home())
 
 
-def encuadre_cli():
+def encuadre_cli(carpeta=None):
     """Encuadre para una silla CLI que opera la máquina real. Paralelo al de las sillas API,
     con la diferencia clave: acá las herramientas son las del propio CLI, así que los cambios
-    NO pasan por aprobación previa — se le avisa para que sea prudente y explícita."""
+    NO pasan por aprobación previa — se le avisa para que sea prudente y explícita.
+
+    `carpeta`: la carpeta de la mesa cuando el turno es prolijo (el humano no pidió otra ruta).
+    La silla sigue alcanzando toda la máquina — lo que cambia es dónde DEJA lo que produce.
+    Sin esto, un líder en modo máquina escribía su entrega en cualquier lado (mesa 4)."""
+    lugar = (
+        f"Tu carpeta de trabajo es:\n\n    {carpeta}\n\n"
+        "Ahí es tu directorio actual y ahí va TODO lo que produzcas (informes, código, notas), "
+        "salvo que el humano te haya pedido EXPRESAMENTE otra ruta: en ese caso hacelo donde "
+        "te dijo. Lo que quede en esa carpeta se commitea solo y el equipo lo ve; lo que dejes "
+        "afuera no lo ve nadie. Ahí vive `NOTAS.md`, la MEMORIA COMPARTIDA de la mesa: leélo "
+        "antes de trabajar y dejá ahí decisiones/TODOs para los próximos turnos.\n"
+        "Para DIAGNOSTICAR o arreglar el equipo sí tenés acceso a todo el sistema.\n"
+    ) if carpeta else (
+        f"Tu directorio inicial es {cwd_maquina()}, pero tenés acceso a todo el equipo.\n"
+    )
     return (
         f"IMPORTANTE: el TOOLBELT está ENCENDIDO y estás operando DIRECTAMENTE la máquina real "
-        f"de la persona que te pregunta — no un sandbox, no la carpeta de la mesa. "
+        f"de la persona que te pregunta — no un sandbox. "
         f"Sistema: {platform.platform()} · shell: {SHELL_NAME} · host: {platform.node()}. "
-        f"Tu directorio inicial es {cwd_maquina()}, pero tenés acceso a todo el equipo.\n"
+        f"{lugar}"
         "Usá tus propias herramientas (leer, editar, ejecutar) sobre este sistema. Lo que hacés "
         "NO espera aprobación: se aplica en el momento. Por eso: mirá ANTES de tocar, un cambio "
         "por vez, y NO toques nada que no te hayan pedido. Nunca borres ni sobrescribas de forma "
@@ -545,19 +661,22 @@ def encuadre_api():
 
 
 def encuadre_api_mesa(carpeta):
-    """Encuadre de una silla API a la que se le pidió `/armar`. La diferencia con una silla CLI es
-    que la API no tiene cwd: sus herramientas escriben por RUTA ABSOLUTA, así que la carpeta de la
-    mesa no la deduce sola — hay que dársela. Sin esto la silla escribe en cualquier lado (o en
-    ningún lado) y el commit de la mesa sale vacío."""
+    """Encuadre de una silla API en un turno ORDENADO (la mesa tiene carpeta). La diferencia con
+    una silla CLI es que la API no tiene cwd: sus herramientas escriben por RUTA ABSOLUTA, así que
+    la carpeta de la mesa no la deduce sola — hay que dársela. Sin esto la silla escribe en
+    cualquier lado (o en ningún lado) y el commit de la mesa sale vacío."""
     return (
-        f"IMPORTANTE: el TOOLBELT está ENCENDIDO y este turno es de CONSTRUIR. La CARPETA DE "
-        f"TRABAJO de esta mesa es:\n\n    {carpeta}\n\n"
-        "Dejá ahí lo que fabriques, SIEMPRE con rutas absolutas bajo esa carpeta (tus herramientas "
-        "no tienen directorio actual: una ruta relativa no cae ahí). Usá list_dir/read_file para "
-        "ver qué hay antes de escribir, y write_file para crear o reescribir. Ahí vive `NOTAS.md`, "
-        "la MEMORIA COMPARTIDA de la mesa: leélo antes de trabajar y dejá ahí decisiones/TODOs para "
-        "los próximos turnos. Al terminar contá CONCRETAMENTE qué archivos tocaste. No afirmes "
-        "cambios que no hiciste: lo que quede en la carpeta se commitea y el equipo ve el diff."
+        f"IMPORTANTE: el TOOLBELT está ENCENDIDO y tenés herramientas REALES sobre esta máquina. "
+        f"La CARPETA DE TRABAJO de esta mesa es:\n\n    {carpeta}\n\n"
+        "Dejá ahí lo que produzcas, SIEMPRE con rutas absolutas bajo esa carpeta (tus herramientas "
+        "no tienen directorio actual: una ruta relativa no cae ahí). Para DIAGNOSTICAR el equipo "
+        "leé lo que necesites de todo el sistema; lo que cambia es dónde dejás el resultado — si el "
+        "humano te pidió tocar otra ruta, decíselo en la mesa y esperá que te lo confirme. "
+        "Usá list_dir/read_file para ver qué hay antes de escribir, y write_file para crear o "
+        "reescribir. Ahí vive `NOTAS.md`, la MEMORIA COMPARTIDA de la mesa: leélo antes de trabajar "
+        "y dejá ahí decisiones/TODOs para los próximos turnos. Al terminar contá CONCRETAMENTE qué "
+        "archivos tocaste. No afirmes cambios que no hiciste: lo que quede en la carpeta se "
+        "commitea y el equipo ve el diff."
     )
 
 

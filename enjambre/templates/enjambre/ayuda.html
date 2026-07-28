@@ -198,7 +198,12 @@
                 <tr><td><code>/auto</code></td><td>{% trans 'itera sola hacia el objetivo (frena por tope de costo, máximo de iteraciones o /alto)' %}</td></tr>
                 <tr><td><code>/alto</code></td><td>{% trans 'freno de mano: corta el turno y apaga el modo continuo' %}</td></tr>
                 <tr><td><code>/cerrar</code></td><td>{% trans 'cierra la mesa con un resumen (qué se hizo + costo)' %}</td></tr>
+                <tr><td><code>/libre &lt;pedido&gt;</code></td><td>{% trans 'este turno las sillas trabajan donde haga falta, sin ordenarse en la carpeta de la mesa' %}</td></tr>
             </table>
+            <p class="ay-muted" style="margin:.6rem 0 0;font-size:.8rem;">{% blocktrans %}Con el toolbelt encendido,
+            si no nombrás una ruta las sillas dejan lo que producen <strong>en la carpeta de esta mesa</strong>
+            (queda junto y se baja con 📁). Si nombrás una ruta absoluta en tu pedido, ese turno trabajan ahí —
+            <code>/libre</code> es el atajo para cuando no querés nombrar ninguna. Se apaga por mesa en la ⚙.{% endblocktrans %}</p>
         </div>
     </div>
 

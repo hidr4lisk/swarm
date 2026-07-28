@@ -288,9 +288,10 @@ footer a{color:var(--text-dim);}
       <a class="btn btn-secondary" href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener" data-i18n="go_repo">▸ REPO &amp; README</a>
       <a class="btn btn-secondary" href="#apoya" data-i18n="go_donate">☕️ APOYAR</a>
     </div>
-    <!-- Versión del zip que sirve el botón. La reescribe scripts/actualizar_version_web.py
+    <!-- Versión del zip que sirve el botón + CUÁNDO se actualizó (dato clave: el que llega a la
+         web quiere saber si el proyecto está vivo). La reescribe scripts/actualizar_version.py
          desde el workflow al publicar cada release: no se toca a mano. -->
-    <p class="dl-ver" id="dl-ver">v0.6.5 · Windows + Linux · ~100 MB</p>
+    <p class="dl-ver" id="dl-ver">v1.0.0 · <span data-i18n="dl_upd">última actualización</span> 28/07/2026 · Windows + Linux · ~100 MB</p>
     <p class="relnote" data-i18n="relnote">una carpeta que se basta sola · Linux &amp; Windows · sin instalar, sin cuenta</p>
   </div>
 </header>
@@ -451,6 +452,7 @@ const I18N = {
     badges: 'multi-agent · API keys or CLIs · portable · open source (MIT)',
     cta_go: '▸ GET STARTED', cta_download: '⬇ DOWNLOAD · READY TO USE',
     relnote: 'one self-contained folder · Linux &amp; Windows · nothing to install, no account',
+    dl_upd: 'last updated',
     s1_eyebrow: '// 01 · ONE TABLE, MANY MINDS', s1_h: 'Several AIs, one table.',
     s1_body: 'Each <b>seat</b> is an AI with its own voice and job. You drop a request; they discuss it flat or under a <b>leader</b>, and the leader closes — with an answer, or by <b>acting</b>. Your browser, your machine, your accounts.',
     s1_l1: 'split: Arch checks the disk, Red looks at the service…',

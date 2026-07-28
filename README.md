@@ -179,10 +179,22 @@ the record. Two honest notes:
   API silla has no `cwd`, so it is **told the folder's absolute path** and writes into it with
   `write_file` — either way the result is committed and the mesa sees the diff.
 
-Known limitation: containers run as root, so the files tables build under `~/.enjambre`
-end up root-owned on your host (git even complains about *dubious ownership* if you
-touch them as your user). It doesn't affect the app; to work on them from your
-terminal: `sudo chown -R $USER ~/.enjambre`.
+**Tidy by default: work lands in the mesa's folder.** With the toolbelt on, if your request
+**doesn't name a path**, sillas leave what they produce inside that mesa's folder: it stays
+together, versioned, and downloadable via 📁 → "Download everything (.zip)". If you do name an
+absolute path (`fix /etc/nginx/nginx.conf`, `review ~/repos/app`) or type **`/libre`**, that turn
+works wherever you said. Per-mesa switch in the gear menu ("Work in the mesa's folder").
+
+How strong this is, plainly: for an **API-key** silla it's a real stop (its `write_file`/`apply_fix`
+go through Swarm and are refused outside the folder, with a note in the mesa); for a **CLI** silla
+it's the `cwd` plus the prompt framing — its own shell still reaches the whole machine. **It's
+tidiness, not a jail**: what it prevents is work scattering across the disk unseen. Diagnosing the
+machine (reading logs, `inspect`) is never restricted.
+
+**System credentials are off-limits.** Beyond the vault, the toolbelt won't read or list
+`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.docker`, `~/.kube`, `/etc/shadow` or `/etc/sudoers` — checked by
+path containment, not by filename. This covers Swarm's own tools (API sillas); a CLI silla carries
+its own tools and that limit doesn't reach it.
 
 ## License
 
@@ -354,10 +366,22 @@ entero. Mismo permiso, distinta granularidad del registro. Dos aclaraciones hone
   `cwd`; una silla API no tiene `cwd`, así que **se le pasa la ruta absoluta** de la carpeta y
   escribe con `write_file` — en los dos casos el resultado se commitea y la mesa ve el diff.
 
-Limitación conocida: los contenedores corren como root, así que los archivos que las
-mesas fabrican en `~/.enjambre` quedan de root en tu host (git incluso se queja de
-*dubious ownership* si los tocás desde tu usuario). Dentro de la app no afecta; para
-trabajarlos desde tu terminal: `sudo chown -R $USER ~/.enjambre`.
+**Orden por default: el trabajo aterriza en la carpeta de la mesa.** Con el toolbelt encendido, si
+en tu pedido **no nombrás una ruta**, las sillas dejan lo que producen en la carpeta de esa mesa:
+queda junto, versionado y se baja con 📁 → «Descargar todo (.zip)». Si nombrás una ruta absoluta
+(`arreglá /etc/nginx/nginx.conf`, `revisá ~/repos/app`) o escribís **`/libre`**, ese turno trabaja
+donde vos dijiste. Se apaga por mesa en la tuerquita («Trabajar en la carpeta de la mesa»).
+
+Sin vueltas sobre qué tan fuerte es: para una silla **por API key** es un freno real (sus
+`write_file`/`apply_fix` pasan por Swarm y se rechazan fuera de la carpeta, avisando en la mesa);
+para una silla **CLI** es el `cwd` más el encuadre del prompt — su shell alcanza toda la máquina
+igual. **No es una jaula, es prolijidad**: lo que evita es que el trabajo se disperse por el disco
+sin que nadie lo vea. Diagnosticar el equipo (leer logs, `inspect`) nunca queda limitado.
+
+**Credenciales del sistema fuera de alcance.** Además de la bóveda, el toolbelt no lee ni lista
+`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.docker`, `~/.kube`, `/etc/shadow` ni `/etc/sudoers` — se chequea
+por contención de ruta, no por nombre de archivo. Vale para las herramientas de Swarm (sillas API);
+una silla CLI tiene sus propias herramientas y ese límite no la alcanza.
 
 ## Licencia
 

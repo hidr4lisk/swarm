@@ -161,6 +161,14 @@ class Sesion(models.Model):
     # (en vez de mirar solo el tail, que se pierde si el humano escribe DURANTE un turno largo:
     # al terminar, el tail es de una silla y su mensaje quedaba enterrado para siempre).
     ultimo_humano_respondido = models.PositiveIntegerField(default=0)
+    # Orden de la mesa: con el toolbelt encendido, las sillas ATERRIZAN en la carpeta de la mesa
+    # salvo que el humano nombre otra ruta (o escriba /libre). No es una jaula — una silla CLI
+    # tiene shell propia y alcanza toda la máquina igual; es dónde deja lo que produce, para que
+    # el trabajo quede junto, versionado y descargable. Apagado = comportamiento libre.
+    confinar = models.BooleanField(
+        default=True,
+        help_text='Las sillas trabajan en la carpeta de la mesa salvo que se pida otra ruta.',
+    )
     workspace_dir = models.CharField(
         max_length=500, blank=True,
         help_text='Carpeta de trabajo PERSISTENTE de la mesa (host abs path). La setea el worker '

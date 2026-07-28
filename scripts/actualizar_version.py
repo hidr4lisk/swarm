@@ -3,7 +3,9 @@
 scripts/actualizar_version.py — deja la versión publicada en los dos lugares que la muestran.
 
   1. `swarm/version.py`  → el footer de la app ("Hidr4lisk_Swarm v0.5.1").
-  2. `index.html`        → la línea debajo del botón de descarga de la landing.
+  2. `index.html`        → la línea debajo del botón de descarga de la landing: versión + LA FECHA
+     de la actualización ("última actualización 28/07/2026"). La fecha es la del día que corre el
+     release; el que llega a la web quiere saber si el proyecto está vivo, no solo qué número tiene.
 
 Lo corre el workflow de release. **El orden importa**: esto va ANTES de `build_bundle.sh`, así
 el zip que se descarga lleva su versión adentro; el push de los dos archivos va al final, cuando
@@ -18,10 +20,16 @@ Idempotente: si ya está en esa versión no toca nada (y el workflow no commitea
 """
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 VERSION_PY = re.compile(r"^__version__ = '[^']*'$", re.M)
-DL_VER = re.compile(r'(<p class="dl-ver" id="dl-ver">)v[\d.]+(\s*·)')
+# La fecha es opcional en el patrón para que también sirva sobre un index viejo (sin fecha). El
+# rótulo va en un <span data-i18n="dl_upd"> para que la landing en inglés lo traduzca sin pisar
+# la versión ni la fecha (el i18n reemplaza textContent del span, no del párrafo entero).
+ETIQUETA_UPD = '<span data-i18n="dl_upd">última actualización</span>'
+DL_VER = re.compile(r'(<p class="dl-ver" id="dl-ver">)v[\d.]+'
+                    r'(?:\s*·\s*(?:<span[^>]*>)?última actualización(?:</span>)?\s*[\d/]+)?(\s*·)')
 
 
 def main():
@@ -41,10 +49,11 @@ def main():
         ruta.write_text(despues, encoding='utf-8')
         tocados.append('swarm/version.py')
 
-    # 2) la versión debajo del botón de descarga de la landing
+    # 2) la versión + la fecha, debajo del botón de descarga de la landing
+    fecha = date.today().strftime('%d/%m/%Y')
     ruta = raiz / 'index.html'
     antes = ruta.read_text(encoding='utf-8')
-    despues, n = DL_VER.subn(rf'\g<1>{tag}\g<2>', antes)
+    despues, n = DL_VER.subn(rf'\g<1>{tag} · {ETIQUETA_UPD} {fecha}\g<2>', antes)
     if not n:
         sys.exit('no encontré la línea <p class="dl-ver" id="dl-ver"> en index.html')
     if despues != antes:
