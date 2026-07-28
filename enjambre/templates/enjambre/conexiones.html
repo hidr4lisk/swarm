@@ -106,9 +106,9 @@
     <div class="cx-panel" data-panel="clis">
         <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
             {% blocktrans %}El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el
-            archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta
-            solo-lectura en contenedores descartables.{% endblocktrans %}
-            {% trans 'Logueá el CLI en el host y encendé su silla en' %}
+            archivo de credenciales <strong>existe</strong> — nunca lo lee, nunca lo copia y nunca lo muestra.
+            La silla corre como un proceso más de tu sesión, con la cuenta que ya tenés abierta.{% endblocktrans %}
+            {% trans 'Logueá el CLI en esta máquina y encendé su silla en' %}
             <a href="{% url 'enjambre:gestionar_sillas' %}">{% trans 'Sillas' %}</a>.
         </p>
 

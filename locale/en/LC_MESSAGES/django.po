@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-28 10:05-0300\n"
+"POT-Creation-Date: 2026-07-28 11:11-0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -655,11 +655,6 @@ msgstr ""
 "                seat carries its own shell and reaches the whole machine anyway."
 
 #: enjambre/templates/enjambre/ayuda.html:276
-#| msgid ""
-#| "Viene <strong>apagado</strong>; se enciende en <a href=\"/conexiones/\">Conexiones</a>.\n"
-#| "                Todo queda registrado en la <a href=\"/bitacora/\">Bitácora</a> de la mesa: las acciones de las sillas\n"
-#| "                API y, de las CLI, cada turno con el comando, la carpeta y lo que hizo.\n"
-#| "                La silla gratis solo conversa: no usa el toolbelt."
 msgid ""
 "Viene <strong>apagado</strong>; se enciende en <a href=\"/conexiones/\">Conexiones</a>.\n"
 "                Todo queda registrado en la <a href=\"/bitacora/\">Bitácora</a> de la mesa: las acciones de las sillas\n"
@@ -747,7 +742,6 @@ msgid "Desarrollado por"
 msgstr "Built by"
 
 #: enjambre/templates/enjambre/base_swarm.html:120
-#| msgid "lista en vivo del proveedor"
 msgid "Sitio del proyecto"
 msgstr "Project site"
 
@@ -884,19 +878,23 @@ msgid "Toolbelt"
 msgstr "Toolbelt"
 
 #: enjambre/templates/enjambre/conexiones.html:108
+#| msgid ""
+#| "El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el\n"
+#| "            archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta\n"
+#| "            solo-lectura en contenedores descartables."
 msgid ""
 "El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el\n"
-"            archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta\n"
-"            solo-lectura en contenedores descartables."
+"            archivo de credenciales <strong>existe</strong> — nunca lo lee, nunca lo copia y nunca lo muestra.\n"
+"            La silla corre como un proceso más de tu sesión, con la cuenta que ya tenés abierta."
 msgstr ""
-"Each CLI’s login lives in <strong>your terminal</strong>, not here: Swarm "
-"only detects whether the credentials file <strong>exists</strong> (it never "
-"reads nor shows it) and the runner mounts it read-only in throwaway "
-"containers."
+"Each CLI's login lives in <strong>your terminal</strong>, not here: Swarm only detects whether the\n"
+"            credential file <strong>exists</strong> — it never reads it, never copies it and never shows it.\n"
+"            The seat runs as one more process of your own session, with the account you already have open."
 
 #: enjambre/templates/enjambre/conexiones.html:111
-msgid "Logueá el CLI en el host y encendé su silla en"
-msgstr "Log the CLI in on the host and turn on its seat in"
+#| msgid "Logueá el CLI en el host y encendé su silla en"
+msgid "Logueá el CLI en esta máquina y encendé su silla en"
+msgstr "Log into the CLI on this machine and turn on its seat in"
 
 #: enjambre/templates/enjambre/conexiones.html:122
 msgid "Detectado"
@@ -1618,7 +1616,6 @@ msgstr ""
 "table will not run the next iteration. <strong>0 = no cap.</strong>"
 
 #: enjambre/templates/enjambre/mesa.html:410
-#| msgid "Construir/editar en la carpeta de la mesa"
 msgid "Trabajar en la carpeta de la mesa"
 msgstr "Work in the table's folder"
 
@@ -1857,7 +1854,6 @@ msgid "Exportado:"
 msgstr "Exported:"
 
 #: enjambre/templates/enjambre/mesa.html:685
-#| msgid "Exportado:"
 msgid "Exportado"
 msgstr "Exported"
 
