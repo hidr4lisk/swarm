@@ -523,6 +523,43 @@ class WorkspaceTests(TestCase):
                 self.assertEqual(mesa_workspace(sesion), dest)
                 self.assertEqual(Path(dest, 'NOTAS.md').read_text()[:7], '# NOTAS')
 
+    def test_commit_roto_deja_la_tarea_en_error_y_no_tumba_el_worker(self):
+        """Si `comitear()` explota, la Tarea queda en ERROR con el motivo a la vista.
+
+        Sin esto pasaban dos cosas: quedaba clavada en EN_CURSO para siempre (nadie la reintenta
+        ni la marca) y la excepción subía al worker —que no envuelve esta llamada— llevándose el
+        tick entero, así que las tareas de atrás tampoco corrían. Las DOS rutas (worktree y mesa
+        persistente) tienen que fallar igual: divergir es cómo se cuela un zombi en una sola."""
+        from .models import Tarea
+        from . import workspace as ws_mod
+        p = Participante.objects.create(key='w-neo', nombre='Neo', comando=['opencode', 'run'])
+
+        # 1) ruta persistente (la carpeta de la mesa)
+        with tempfile.TemporaryDirectory() as tmp, override_settings(ENJAMBRE_MESAS_DIR=tmp):
+            s = Sesion.objects.create(nombre='m')
+            t = Tarea.objects.create(sesion=s, participante=p, titulo='t', ordenes='hacelo',
+                                     persistente=True)
+            with mock.patch.object(ws_mod, 'ejecutar_cli', return_value=('lo hice', False)), \
+                    mock.patch.object(ws_mod, 'comitear', side_effect=RuntimeError('git roto')):
+                ws_mod.ejecutar_tarea(t, timeout=1)     # NO propaga
+            t.refresh_from_db()
+            self.assertEqual(t.estado, Tarea.Estado.ERROR)
+            self.assertTrue(t.salida.startswith('lo hice'))   # el trabajo no se pierde
+            self.assertIn('git roto', t.salida)               # y se ve POR QUÉ falló
+
+        # 2) ruta de worktree (modo repo)
+        with tempfile.TemporaryDirectory() as repo:
+            t2 = Tarea.objects.create(participante=p, titulo='t2', ordenes='hacelo',
+                                      repo_path=repo)
+            with mock.patch.object(ws_mod, 'crear_worktree', return_value='abc123'), \
+                    mock.patch.object(ws_mod, 'ejecutar_cli', return_value=('lo hice', False)), \
+                    mock.patch.object(ws_mod, 'comitear', side_effect=RuntimeError('git roto')), \
+                    mock.patch.object(ws_mod, 'remover_worktree'):
+                ws_mod.ejecutar_tarea(t2, timeout=1)
+        t2.refresh_from_db()
+        self.assertEqual(t2.estado, Tarea.Estado.ERROR)
+        self.assertIn('git roto', t2.salida)
+
     def test_mesa_nueva_trae_gitignore(self):
         """`comitear()` hace `git add -A`: sin .gitignore, un venv o un .env que deje una silla
         queda versionado en la mesa y viaja en el zip."""

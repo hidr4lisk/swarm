@@ -212,6 +212,9 @@ def ejecutar_tarea(tarea, timeout=None):
                 tarea.estado = Tarea.Estado.HECHA
             else:
                 tarea.estado = Tarea.Estado.SIN_CAMBIOS
+    except Exception as e:  # noqa: BLE001 — ver el bloque gemelo de _ejecutar_persistente
+        tarea.estado = Tarea.Estado.ERROR
+        tarea.salida = f"{tarea.salida}\n\n(❌ no se pudo commitear: {e})"
     finally:
         remover_worktree(tarea.repo_path, dest)
         if ws.estado != Workspace.Estado.COMITEADO:
@@ -244,8 +247,11 @@ def _ejecutar_persistente(tarea, timeout):
             participante=tarea.participante, texto=salida, es_ruido=ruido,
         )
 
-    # try/finally como en la ruta no-persistente: si comitear() explota (git colgado, permisos),
-    # sin esto la Tarea quedaba clavada en EN_CURSO para siempre y el Workspace sin guardar.
+    # try/except/finally, igual que la ruta no-persistente. Si `comitear()` explota (git colgado,
+    # permisos, repo roto) pasan dos cosas malas sin esto: la Tarea queda clavada en EN_CURSO para
+    # siempre —nadie la reintenta ni la marca— y la excepción sube al worker, que no envuelve esta
+    # llamada: se lleva puesto el tick entero y las tareas que venían atrás no corren. Marcarla
+    # ERROR con el motivo en la salida deja el fallo VISIBLE en la mesa y el worker sigue vivo.
     try:
         if ruido:
             tarea.estado = Tarea.Estado.ERROR
@@ -259,7 +265,7 @@ def _ejecutar_persistente(tarea, timeout):
                 tarea.estado = Tarea.Estado.SIN_CAMBIOS
     except Exception as e:  # noqa: BLE001
         tarea.estado = Tarea.Estado.ERROR
-        tarea.salida = f"{tarea.salida}\n\n(❌ no se pudo commitear la mesa: {e})"
+        tarea.salida = f"{tarea.salida}\n\n(❌ no se pudo commitear: {e})"
     finally:
         # Persistente: NO se desmonta la carpeta (se acumula para la próxima tarea).
         ws.save()
