@@ -8,6 +8,12 @@ hace push ni PR).
 
 Las funciones de git son puras (operan sobre rutas/params, sin ORM) para poder testearlas
 en aislamiento; `ejecutar_tarea()` las orquesta sobre los modelos.
+
+Invariante de las DOS rutas de ejecución (worktree y carpeta persistente de la mesa): **ninguna
+deja una Tarea a medio camino ni deja escapar la excepción**. Pase lo que pase con git, la Tarea
+termina en un estado final (HECHA / SIN_CAMBIOS / ERROR con el motivo en `salida`) y el worker
+sigue vivo — no envuelve estas llamadas, así que una excepción que suba se lleva puesto el tick
+entero. Las dos rutas se tocan JUNTAS: divergir es como se cuela un estado zombi en una sola.
 """
 import os
 import subprocess
