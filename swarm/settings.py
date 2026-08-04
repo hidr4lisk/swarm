@@ -103,6 +103,18 @@ if DATABASES['default']['ENGINE'].endswith('sqlite3'):
     DATABASES['default'].setdefault('OPTIONS', {}).update({
         'timeout': 20,
         'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=20000;',
+        # ⚠️ IMMEDIATE no es redundante con busy_timeout: cubre el caso que el timeout NO puede
+        # cubrir. Por default Django abre la transacción como DEFERRED, así que una vista que LEE
+        # y después ESCRIBE (patrón `participantes.set()`: SELECT y luego DELETE) arranca leyendo
+        # y recién al escribir intenta subir a escritora. Si otro hilo escribió en el medio,
+        # SQLite devuelve SQLITE_BUSY **al instante y sin llamar al busy handler** — está
+        # documentado, y por eso el `busy_timeout=20000` de arriba no lo salva: no es contención
+        # que se resuelva esperando, es un upgrade imposible. Con IMMEDIATE la transacción nace
+        # escritora, así que cualquier espera SÍ pasa por el busy_timeout.
+        # Encontrado el 2026-08-04 con Swarm corriendo del pendrive en nave: guardar la config de
+        # una mesa tiraba 500 «database is locked» mientras el worker posteaba en otra.
+        # (Se descartó que fuera el pendrive: mide 1 ms por commit contra 9 ms del disco interno.)
+        'transaction_mode': 'IMMEDIATE',
     })
 
 LANGUAGE_CODE = 'es'
