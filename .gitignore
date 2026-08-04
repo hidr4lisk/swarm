@@ -5,7 +5,7 @@ __pycache__/
 venv/
 
 # Django
-db.sqlite3
+db.sqlite3*
 staticfiles/
 
 # Bundle portátil (lo arma scripts/build_bundle.sh; no va al repo)
