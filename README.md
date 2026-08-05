@@ -63,7 +63,8 @@ tiny files of an unpacked Python, so the copy is a fast sequential write instead
 overnight crawl. On any bare PC (no Python, no Docker): double-click **`enjambre.sh`**
 (Linux, "Run in terminal") or **`Enjambre.bat`** (Windows). The **first run asks once**
 whether to install Swarm on that PC for a fast next boot (unpacks the runtime to the local
-disk, ~280 MB) or to run **trace-free** (unpacked to a temp dir, wiped on exit, re-unpacked
+disk, ~280 MB — and a new release replaces that copy instead of piling up next to it) or to
+run **trace-free** (unpacked to a temp dir, wiped on exit, re-unpacked
 each time). No file to edit — you choose once **per machine** (remembered in that PC's local
 cache, not on the stick, so every new PC asks again). Chose trace-free and changed your mind?
 The next launch on that PC offers to install it (or to stop asking). Your DB, tables, seats and encrypted
