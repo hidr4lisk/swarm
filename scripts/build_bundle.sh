@@ -206,6 +206,16 @@ else
     extract "$CACHE"
     "$CACHE/python/bin/python3" -m compileall -q "$CACHE" >/dev/null 2>&1 || true
     touch "$CACHE/.ok"; RUNTIME="$CACHE"
+    # Barrer los runtimes de releases anteriores. El cache es `$BASE/$VER` y cada release estrena
+    # carpeta, así que sin esto se apilan ~310 MB por versión en TODA PC donde elegiste instalar
+    # (medido: 3,0 GB en una máquina que venía usándolo desde julio). Va DESPUÉS del `.ok`, nunca
+    # antes: si la extracción falla, la copia vieja sigue sirviendo. El glob `*/` solo matchea
+    # directorios, así que `mode` y `noask` —que son archivos— quedan afuera.
+    for viejo in "$BASE"/*/; do
+      viejo="${viejo%/}"
+      [ -d "$viejo" ] || continue
+      [ "$viejo" = "$CACHE" ] || rm -rf "$viejo"
+    done
   else
     RUNTIME="$(mktemp -d)"; EPHEMERAL=1
     trap 'rm -rf "$RUNTIME"' EXIT INT TERM
@@ -297,6 +307,11 @@ if not exist "%CACHE%" mkdir "%CACHE%"
 tar -xzf "%DIR%runtime-win.tar.gz" -C "%CACHE%" || goto tar_roto
 "%CACHE%\python\python.exe" -m compileall -q "%CACHE%" >nul 2>&1
 type nul > "%CACHE%\.ok"
+rem Barrer los runtimes de releases anteriores (mismo motivo que en enjambre.sh: cada release
+rem estrena carpeta y sin esto se apilan ~310 MB por version). Va DESPUES del .ok: si la
+rem extraccion falla, la copia vieja sigue sirviendo. Se compara por NOMBRE de carpeta contra
+rem %VER%, no por ruta completa, para no depender de como quede formateada la ruta.
+for /d %%D in ("%BASE%\*") do if /I not "%%~nxD"=="%VER%" rd /s /q "%%~fD"
 goto run
 
 :ephemeral
