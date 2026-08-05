@@ -314,6 +314,13 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
         result = subprocess.run(
             argv + [prompt],
             capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd,
+            # stdin explícito: `capture_output` solo cubre stdout/stderr, así que sin esto el CLI
+            # HEREDA el stdin del server. Rompe de dos maneras reales: si el server arrancó con el
+            # fd 0 abierto de solo-escritura (pasa con `nohup … >log 2>&1 &`), `opencode run --auto`
+            # muere al leerlo con "EBADF: bad file descriptor, read" y /armar no fabrica nada; y si
+            # arrancó desde una terminal, la silla se come las teclas del humano. Un subprocess de
+            # silla nunca tiene nada que leer de ahí.
+            stdin=subprocess.DEVNULL,
         )
         salida = (limpiar_salida(result.stdout) or limpiar_salida(result.stderr)
                   or "(sin respuesta)")
