@@ -225,6 +225,21 @@
         </div>
         <div class="cx-msg" data-beltmsg role="status"></div>
 
+        {% comment %}git: no es un escalón (charlar no lo usa) pero /armar no arranca sin él.
+        Se avisa acá, antes de que el humano se coma el error a mitad de un turno.{% endcomment %}
+        <div class="cx-belt {% if git_ok %}on{% endif %}" style="margin-top:.6rem;">
+            <span class="cx-belticon"><i class="fab fa-git-alt"></i></span>
+            <div class="cx-belttxt">
+                <strong>{% if git_ok %}{% trans 'git disponible' %}{% else %}{% trans 'git no está instalado' %}{% endif %}</strong>
+                <span class="cx-note">
+                    {% if git_ok %}{% blocktrans %}<code>/armar</code> puede versionar la carpeta de cada mesa.{% endblocktrans %}
+                    {% else %}{% blocktrans %}Charlar funciona igual, pero <code>/armar</code> lo necesita para versionar la
+                    carpeta de la mesa. Instalalo y reiniciá Swarm:{% endblocktrans %}
+                    <code>{{ git_instalar }}</code>{% endif %}
+                </span>
+            </div>
+        </div>
+
         <p class="cx-note" style="margin:.2rem 0 .5rem;">
             <strong>{% trans 'Este switch es el permiso — vale para todas las sillas' %}</strong></p>
         <ul class="cx-safety">

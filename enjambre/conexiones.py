@@ -71,6 +71,8 @@ _DIRS_BIN = [
     '~/.npm-global/bin',
     '/usr/local/bin',
     '/opt/homebrew/bin',
+    'C:/Program Files/Git/cmd',        # Git for Windows (winget/instalador oficial)
+    'C:/Program Files (x86)/Git/cmd',
 ]
 
 
@@ -82,6 +84,33 @@ def resolver_bin(cli):
         return hit
     extra = os.pathsep.join(str(Path(d).expanduser()) for d in _DIRS_BIN)
     return shutil.which(cli, path=extra)
+
+
+# ── git: lo necesita /armar, NO la charla ────────────────────────────────────────
+# La carpeta de cada mesa es un repo git (init + commit por turno), así que sin git `/armar`
+# no arranca. Es la única dependencia externa de Swarm que no viene en el bundle, y en una
+# Windows recién instalada NO está: el turno moría con `[WinError 2] El sistema no puede
+# encontrar el archivo especificado`, que no dice ni qué falta (bug real, 2026-08-07).
+# Charlar y las sillas por API key no lo tocan — por eso git no es un escalón de la escalera:
+# no se pide para arrancar, se avisa donde importa (el panel Toolbelt) y al fallar.
+INSTALAR_GIT = {
+    'Windows': 'winget install --id Git.Git -e',
+    'Darwin': 'brew install git',
+}
+INSTALAR_GIT_DEFAULT = 'sudo apt install git   (o el gestor de paquetes de tu distro)'
+
+
+def como_instalar_git():
+    """Comando de instalación de git para ESTE sistema. Va en la UI y en el error de la mesa:
+    un error que no dice cómo salir del paso obliga a googlear."""
+    import platform
+    return INSTALAR_GIT.get(platform.system(), INSTALAR_GIT_DEFAULT)
+
+
+def hay_git():
+    """Ruta de git, o None. Mismo resolver que los CLIs: el doble-clic no trae el PATH de la
+    shell, y en Windows el instalador deja git en `Program Files\\Git\\cmd`."""
+    return resolver_bin('git')
 
 
 def archivo_estado():

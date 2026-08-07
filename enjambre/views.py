@@ -1086,10 +1086,17 @@ def conexiones(request):
     desbloqueada, existe = vault.is_unlocked(), vault.has_vault()
     vault_state = 'abierta' if desbloqueada else ('cerrada' if existe else 'nueva')
     from . import onboarding, toolbelt
+    from .conexiones import como_instalar_git, hay_git
     escalera = onboarding.escalones()
+    git_bin = hay_git()
     return render(request, 'enjambre/conexiones.html', {
         'escalera': escalera,
         'escalera_listos': onboarding.listos(escalera),
+        # git no es un escalón (charlar no lo usa), pero /armar sin git no arranca → se avisa
+        # en el panel del Toolbelt, que es donde vive /armar.
+        'git_ok': bool(git_bin),
+        'git_ruta': ruta_corta(git_bin) if git_bin else '',
+        'git_instalar': como_instalar_git(),
         'filas': filas,
         'chequeado_at': chequeado_at,
         'puede_controlar': _puede_controlar(request),

@@ -58,6 +58,18 @@ def _git(repo, *args, check=True):
                            # decodificaría con la del SO (cp1252 en Windows) y rompería los
                            # acentos de nombres de archivo y mensajes de commit.
                            encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        # git NO está instalado. Pasa en cualquier Windows recién instalada, que es justo el
+        # caso de uso del pendrive. Sin esto subía el `FileNotFoundError` crudo y la mesa
+        # mostraba «[WinError 2] El sistema no puede encontrar el archivo especificado», que
+        # no nombra a git ni dice qué hacer. `check=False` NO exime: sin git no hay repo, así
+        # que todos los caminos tienen que cortar acá con el mismo mensaje.
+        from .conexiones import como_instalar_git
+        raise RuntimeError(
+            f"git no está instalado en esta máquina y /armar lo necesita para versionar la "
+            f"carpeta de la mesa. Instalalo con:  {como_instalar_git()}   "
+            f"(después reiniciá Swarm para que tome el PATH nuevo). "
+            f"Charlar con las sillas funciona igual sin git.")
     except subprocess.TimeoutExpired:
         if check:
             raise RuntimeError(f"git {' '.join(args)} no terminó en {GIT_TIMEOUT}s")

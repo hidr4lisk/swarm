@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-28 11:11-0300\n"
+"POT-Creation-Date: 2026-08-07 17:31+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -878,10 +878,6 @@ msgid "Toolbelt"
 msgstr "Toolbelt"
 
 #: enjambre/templates/enjambre/conexiones.html:108
-#| msgid ""
-#| "El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el\n"
-#| "            archivo de credenciales <strong>existe</strong> (nunca lo lee ni lo muestra) y el runner lo monta\n"
-#| "            solo-lectura en contenedores descartables."
 msgid ""
 "El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el\n"
 "            archivo de credenciales <strong>existe</strong> — nunca lo lee, nunca lo copia y nunca lo muestra.\n"
@@ -892,7 +888,6 @@ msgstr ""
 "            The seat runs as one more process of your own session, with the account you already have open."
 
 #: enjambre/templates/enjambre/conexiones.html:111
-#| msgid "Logueá el CLI en el host y encendé su silla en"
 msgid "Logueá el CLI en esta máquina y encendé su silla en"
 msgstr "Log into the CLI on this machine and turn on its seat in"
 
@@ -951,7 +946,7 @@ msgstr ""
 "single step."
 
 #: enjambre/templates/enjambre/conexiones.html:181
-#: enjambre/templates/enjambre/conexiones.html:333
+#: enjambre/templates/enjambre/conexiones.html:349
 msgid "Configurada"
 msgstr "Configured"
 
@@ -960,7 +955,7 @@ msgid "Anda sin key"
 msgstr "Works without a key"
 
 #: enjambre/templates/enjambre/conexiones.html:181
-#: enjambre/templates/enjambre/conexiones.html:333
+#: enjambre/templates/enjambre/conexiones.html:349
 msgid "Sin key"
 msgstr "No key"
 
@@ -1004,12 +999,12 @@ msgstr ""
 "with an important difference in how each is controlled — see below."
 
 #: enjambre/templates/enjambre/conexiones.html:214
-#: enjambre/templates/enjambre/conexiones.html:399
+#: enjambre/templates/enjambre/conexiones.html:415
 msgid "Toolbelt encendido"
 msgstr "Toolbelt on"
 
 #: enjambre/templates/enjambre/conexiones.html:214
-#: enjambre/templates/enjambre/conexiones.html:399
+#: enjambre/templates/enjambre/conexiones.html:415
 msgid "Toolbelt apagado"
 msgstr "Toolbelt off"
 
@@ -1032,11 +1027,32 @@ msgstr "Seats only chat; they can't see the machine."
 msgid "Encender / apagar el toolbelt"
 msgstr "Turn the toolbelt on / off"
 
-#: enjambre/templates/enjambre/conexiones.html:229
+#: enjambre/templates/enjambre/conexiones.html:234
+#| msgid "No hay sillas disponibles."
+msgid "git disponible"
+msgstr "git available"
+
+#: enjambre/templates/enjambre/conexiones.html:234
+msgid "git no está instalado"
+msgstr "git is not installed"
+
+#: enjambre/templates/enjambre/conexiones.html:236
+msgid "<code>/armar</code> puede versionar la carpeta de cada mesa."
+msgstr "<code>/armar</code> can version each table’s folder."
+
+#: enjambre/templates/enjambre/conexiones.html:237
+msgid ""
+"Charlar funciona igual, pero <code>/armar</code> lo necesita para versionar la\n"
+"                    carpeta de la mesa. Instalalo y reiniciá Swarm:"
+msgstr ""
+"Chatting works fine, but <code>/armar</code> needs it to version the table’s"
+" folder. Install it and restart Swarm:"
+
+#: enjambre/templates/enjambre/conexiones.html:245
 msgid "Este switch es el permiso — vale para todas las sillas"
 msgstr "This switch is the permission — it covers every seat"
 
-#: enjambre/templates/enjambre/conexiones.html:232
+#: enjambre/templates/enjambre/conexiones.html:248
 msgid ""
 "<strong>Lectura automática:</strong> ver el SO, procesos, disco, archivos y comandos de\n"
 "                <strong>solo lectura</strong> (allowlist por sistema) — para diagnosticar rápido."
@@ -1044,7 +1060,7 @@ msgstr ""
 "<strong>Automatic reads:</strong> see the OS, processes, disk, files and <strong>read-only</strong>\n"
 "                commands (per-system allowlist) — to diagnose fast."
 
-#: enjambre/templates/enjambre/conexiones.html:235
+#: enjambre/templates/enjambre/conexiones.html:251
 msgid ""
 "<strong>Los cambios se aplican en el momento.</strong> Con el switch encendido, las sillas\n"
 "                (por API key <em>y</em> por CLI) editan archivos, tocan configuración, instalan y construyen\n"
@@ -1055,7 +1071,7 @@ msgstr ""
 "                edit files, change configuration, install and build <strong>without asking you command by\n"
 "                command</strong>. There is no undo: turning this on <strong>is</strong> the permission."
 
-#: enjambre/templates/enjambre/conexiones.html:240
+#: enjambre/templates/enjambre/conexiones.html:256
 msgid ""
 "<strong>Todo queda registrado y lo ves en vivo:</strong> cada lectura y cada cambio va a la\n"
 "                Bitácora de la mesa, y además se avisa en la conversación mientras pasa. Es la red que te queda."
@@ -1063,7 +1079,7 @@ msgstr ""
 "<strong>Everything is logged and you see it live:</strong> every read and every change lands in the\n"
 "                mesa's log, and is also posted in the conversation as it happens. That is the net you have."
 
-#: enjambre/templates/enjambre/conexiones.html:243
+#: enjambre/templates/enjambre/conexiones.html:259
 msgid ""
 "<strong>La bóveda de keys queda afuera:</strong> las sillas no pueden leer ni sobrescribir\n"
 "                tus API keys guardadas."
@@ -1071,7 +1087,7 @@ msgstr ""
 "<strong>The key vault is off-limits:</strong> seats can neither read nor "
 "overwrite your stored API keys."
 
-#: enjambre/templates/enjambre/conexiones.html:246
+#: enjambre/templates/enjambre/conexiones.html:262
 msgid ""
 "<strong>Apagado, las sillas solo responden texto:</strong> no tocan un archivo ni corren\n"
 "                un comando. Prendelo solo en máquinas que estés autorizado a atender."
@@ -1079,7 +1095,7 @@ msgstr ""
 "<strong>Off, seats only answer text:</strong> they cannot touch a file or run a command.\n"
 "                Only turn it on for machines you are authorized to service."
 
-#: enjambre/templates/enjambre/conexiones.html:251
+#: enjambre/templates/enjambre/conexiones.html:267
 msgid ""
 "Apagado por defecto. Las sillas por API key necesitan un modelo que soporte\n"
 "            <strong>herramientas</strong> (function-calling); si no las soporta, la silla las ignora. Las de CLI\n"
@@ -1092,11 +1108,11 @@ msgstr ""
 "seat for <code>system_report</code>, or a CLI one «check how much free disk "
 "there is», to try it out."
 
-#: enjambre/templates/enjambre/conexiones.html:288
+#: enjambre/templates/enjambre/conexiones.html:304
 msgid "Creá tu bóveda"
 msgstr "Create your vault"
 
-#: enjambre/templates/enjambre/conexiones.html:289
+#: enjambre/templates/enjambre/conexiones.html:305
 msgid ""
 "Elegí una passphrase y guardá tu primera key: queda cifrada y activa en un "
 "paso."
@@ -1104,92 +1120,92 @@ msgstr ""
 "Choose a passphrase and save your first key: it’s encrypted and active in "
 "one step."
 
-#: enjambre/templates/enjambre/conexiones.html:290
+#: enjambre/templates/enjambre/conexiones.html:306
 msgid "Elegí una passphrase (mín. 8)"
 msgstr "Choose a passphrase (min. 8)"
 
-#: enjambre/templates/enjambre/conexiones.html:291
+#: enjambre/templates/enjambre/conexiones.html:307
 msgid "Bóveda cerrada"
 msgstr "Vault closed"
 
-#: enjambre/templates/enjambre/conexiones.html:292
+#: enjambre/templates/enjambre/conexiones.html:308
 msgid "Ingresá tu passphrase para activar las keys en esta sesión."
 msgstr "Enter your passphrase to activate the keys for this session."
 
-#: enjambre/templates/enjambre/conexiones.html:293
-#: enjambre/templates/enjambre/conexiones.html:296
+#: enjambre/templates/enjambre/conexiones.html:309
+#: enjambre/templates/enjambre/conexiones.html:312
 msgid "Tu passphrase"
 msgstr "Your passphrase"
 
-#: enjambre/templates/enjambre/conexiones.html:294
+#: enjambre/templates/enjambre/conexiones.html:310
 msgid "Bóveda abierta"
 msgstr "Vault open"
 
-#: enjambre/templates/enjambre/conexiones.html:295
+#: enjambre/templates/enjambre/conexiones.html:311
 msgid "Las sillas API ya pueden usar sus keys."
 msgstr "API seats can now use their keys."
 
-#: enjambre/templates/enjambre/conexiones.html:319
+#: enjambre/templates/enjambre/conexiones.html:335
 msgid "key(s) guardada(s)."
 msgstr "key(s) stored."
 
-#: enjambre/templates/enjambre/conexiones.html:344
+#: enjambre/templates/enjambre/conexiones.html:360
 msgid "Escribí tu passphrase."
 msgstr "Type your passphrase."
 
-#: enjambre/templates/enjambre/conexiones.html:347
+#: enjambre/templates/enjambre/conexiones.html:363
 msgid "Bóveda desbloqueada — las sillas API ya pueden usar sus keys."
 msgstr "Vault unlocked — API seats can now use their keys."
 
-#: enjambre/templates/enjambre/conexiones.html:349
-#: enjambre/templates/enjambre/conexiones.html:355
-#: enjambre/templates/enjambre/conexiones.html:372
-#: enjambre/templates/enjambre/conexiones.html:381
-#: enjambre/templates/enjambre/conexiones.html:418
+#: enjambre/templates/enjambre/conexiones.html:365
+#: enjambre/templates/enjambre/conexiones.html:371
+#: enjambre/templates/enjambre/conexiones.html:388
+#: enjambre/templates/enjambre/conexiones.html:397
+#: enjambre/templates/enjambre/conexiones.html:434
 msgid "Error de red"
 msgstr "Network error"
 
-#: enjambre/templates/enjambre/conexiones.html:354
+#: enjambre/templates/enjambre/conexiones.html:370
 msgid "Bóveda bloqueada."
 msgstr "Vault locked."
 
-#: enjambre/templates/enjambre/conexiones.html:363
+#: enjambre/templates/enjambre/conexiones.html:379
 msgid "Pegá la API key primero."
 msgstr "Paste the API key first."
 
-#: enjambre/templates/enjambre/conexiones.html:364
+#: enjambre/templates/enjambre/conexiones.html:380
 msgid "Elegí una passphrase arriba para cifrar la key."
 msgstr "Choose a passphrase above to encrypt the key."
 
-#: enjambre/templates/enjambre/conexiones.html:366
+#: enjambre/templates/enjambre/conexiones.html:382
 msgid "La passphrase tiene que tener al menos 8 caracteres."
 msgstr "The passphrase must be at least 8 characters."
 
-#: enjambre/templates/enjambre/conexiones.html:370
+#: enjambre/templates/enjambre/conexiones.html:386
 msgid "Key guardada, cifrada y activada."
 msgstr "Key saved, encrypted and activated."
 
-#: enjambre/templates/enjambre/conexiones.html:377
+#: enjambre/templates/enjambre/conexiones.html:393
 msgid "Escribí tu passphrase para quitar la key."
 msgstr "Type your passphrase to remove the key."
 
-#: enjambre/templates/enjambre/conexiones.html:379
+#: enjambre/templates/enjambre/conexiones.html:395
 msgid "Key quitada."
 msgstr "Key removed."
 
-#: enjambre/templates/enjambre/conexiones.html:400
+#: enjambre/templates/enjambre/conexiones.html:416
 msgid "Las sillas API pueden operar esta máquina."
 msgstr "API seats can operate this machine."
 
-#: enjambre/templates/enjambre/conexiones.html:401
+#: enjambre/templates/enjambre/conexiones.html:417
 msgid "Las sillas API solo conversan; no ven la máquina."
 msgstr "API seats only chat; they can’t see the machine."
 
-#: enjambre/templates/enjambre/conexiones.html:413
+#: enjambre/templates/enjambre/conexiones.html:429
 msgid "Toolbelt encendido — pedile a una silla API «corré system_report»."
 msgstr "Toolbelt on — ask an API seat to “run system_report”."
 
-#: enjambre/templates/enjambre/conexiones.html:414
+#: enjambre/templates/enjambre/conexiones.html:430
 msgid "Toolbelt apagado."
 msgstr "Toolbelt off."
 

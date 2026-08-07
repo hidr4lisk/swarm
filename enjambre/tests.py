@@ -1534,3 +1534,55 @@ class LiderNecesitaToolbeltTests(TestCase):
                 Enjambre(self.sesion).liderar('hola mesa')
         self.assertFalse(plana.called)  # no degradó
         self.assertTrue(env.called)     # el líder arrancó su turno
+
+
+class GitFaltanteTests(TestCase):
+    """git es la única dependencia externa que Swarm NO bundlea, y en una Windows recién
+    instalada no está. Sin esto el turno moría con `[WinError 2] El sistema no puede encontrar
+    el archivo especificado`, que no nombra a git ni dice cómo salir del paso (Oficina,
+    2026-08-07). Charlar no lo usa: el aviso va donde vive /armar, no en la escalera."""
+
+    def test_sin_git_el_error_nombra_a_git_y_como_instalarlo(self):
+        from .workspace import _git
+        with mock.patch('enjambre.workspace.subprocess.run', side_effect=FileNotFoundError()):
+            with self.assertRaises(RuntimeError) as cm:
+                _git('/tmp', 'init')
+        msg = str(cm.exception)
+        self.assertIn('git', msg)
+        self.assertIn('/armar', msg)
+        self.assertIn('install', msg)          # el comando concreto para este sistema
+        self.assertNotIn('WinError', msg)
+
+    def test_check_false_tampoco_se_traga_la_falta_de_git(self):
+        """`check=False` significa «no me importa el returncode», no «seguí sin repo»: si git
+        no existe no hay nada que versionar y todos los caminos tienen que cortar igual."""
+        from .workspace import _git
+        with mock.patch('enjambre.workspace.subprocess.run', side_effect=FileNotFoundError()):
+            with self.assertRaises(RuntimeError):
+                _git('/tmp', 'rev-parse', 'HEAD', check=False)
+
+    def test_el_comando_de_instalacion_es_el_del_sistema(self):
+        from .conexiones import como_instalar_git
+        with mock.patch('platform.system', return_value='Windows'):
+            self.assertIn('winget', como_instalar_git())
+        with mock.patch('platform.system', return_value='Linux'):
+            self.assertIn('apt', como_instalar_git())
+
+    def test_conexiones_avisa_cuando_falta_git(self):
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
+            r = self.client.get(reverse('enjambre:conexiones'))
+        self.assertFalse(r.context['git_ok'])
+        self.assertContains(r, 'git no está instalado')
+
+    def test_conexiones_no_molesta_cuando_git_esta(self):
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/git'):
+            r = self.client.get(reverse('enjambre:conexiones'))
+        self.assertTrue(r.context['git_ok'])
+        self.assertNotContains(r, 'git no está instalado')
+
+    def test_git_no_es_un_escalon_de_la_escalera(self):
+        """La escalera es para ARRANCAR (charlar). Si git contara, quedaría siempre incompleta
+        para quien solo conversa — y el banner de home no se iría nunca."""
+        from . import onboarding
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
+            self.assertEqual(len(onboarding.escalones()), 2)
