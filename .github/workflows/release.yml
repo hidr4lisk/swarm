@@ -55,6 +55,12 @@ jobs:
           Tus mesas, sillas y bóveda viven en `data/`, al lado del launcher, y se mueven con la
           carpeta entre PCs. ¿Ya tenías tus sillas armadas? **Sillas → Importar** te las repone
           desde un JSON.
+
+          Para **charlar y debatir** no necesitás nada más. Para `/armar` —que las sillas
+          fabriquen archivos— hacen falta dos cosas: prender el **toolbelt** (Conexiones →
+          Toolbelt) y tener **git** instalado, que es lo único que el bundle no trae. En una PC
+          recién instalada no viene: `winget install --id Git.Git -e` en Windows,
+          `sudo apt install git` en Linux. Si falta, Swarm te avisa al arrancar.
           EOF
           gh release create "$GITHUB_REF_NAME" swarm-portable.zip \
             --title "Swarm $GITHUB_REF_NAME — portátil" --notes-file notes.md \

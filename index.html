@@ -411,6 +411,7 @@ footer a{color:var(--text-dim);}
         <code class="cmd"><span class="pr">⬇</span> <a href="https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip" style="color:inherit">swarm-portable.zip</a>  <span class="dim"># Windows + Linux, ~100 MB</span></code>
         <p data-i18n-html="go0_p">Descomprimilo en <b>una carpeta del disco o en un pendrive</b> y doble-clic a <code>Enjambre.bat</code> (Windows) o <code>enjambre.sh</code> (Linux). Sin Python, sin Docker, sin clonar. La primera vez cada PC pregunta si instalarlo ahí o correr sin dejar rastro.</p>
         <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_note">¿Windows avisa «Windows protegió su PC»? Es normal (el código no tiene firma paga, es público en GitHub) — «Más información» → «Ejecutar de todos modos». Guía paso a paso: botón <b>Ayuda</b> dentro de la app.</p>
+        <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_git">Para <b>charlar</b> no instalás nada. Para <code>/armar</code> —que las sillas fabriquen archivos— hace falta <b>git</b>, lo único que el bundle no trae: <code>winget install --id Git.Git -e</code> en Windows, <code>sudo apt install git</code> en Linux. Si falta, Swarm te lo avisa al arrancar.</p>
       </div></div>
       <div class="step" data-opt="B"><div>
         <div class="st-t" data-i18n="go1_t">Desde el código (Python 3.12)</div>
@@ -498,6 +499,7 @@ const I18N = {
     go0_t: 'Download Swarm · ready to use',
     go0_p: 'Unzip it into <b>a folder on the disk or onto a pendrive</b> and double-click <code>Enjambre.bat</code> (Windows) or <code>enjambre.sh</code> (Linux). No Python, no Docker, no cloning. First run asks each PC whether to install it there or run trace-free.',
     go0_note: 'Windows warns "Windows protected your PC"? That\'s normal (no paid signing cert, code is public on GitHub) — "More info" → "Run anyway". Step-by-step guide: the <b>Help</b> button inside the app.',
+    go0_git: 'To <b>chat</b> you install nothing. For <code>/armar</code> — seats building real files — you need <b>git</b>, the one thing the bundle does not ship: <code>winget install --id Git.Git -e</code> on Windows, <code>sudo apt install git</code> on Linux. If it is missing, Swarm tells you at startup.',
     go1_t: 'From source (Python 3.12)',
     go1_p: 'Opens <code>127.0.0.1:8799</code>. Go to <b>Connections → API keys</b>, load a key (stored encrypted) and start a table.',
     go2_t: 'Build the portable folder (Linux + Windows)',

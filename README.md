@@ -39,6 +39,12 @@ for running from source or building the stick yourself.
 The lightest way from source, and the one that runs off a pendrive. Only needs Python 3.12
 (or the bundled runtime); seats run on **API keys** — no CLI binaries required.
 
+> **`/armar` needs `git`.** Chatting and debating need nothing else, but each table's folder is a
+> git repo (one commit per turn), so building files requires git on the machine — the one thing
+> the bundle does not ship, and it is absent on a freshly installed Windows:
+> `winget install --id Git.Git -e` (Windows) · `brew install git` (macOS) ·
+> `sudo apt install git` (Linux). Swarm tells you at startup if it is missing.
+
 ```bash
 git clone https://github.com/hidr4lisk/swarm.git && cd swarm
 pip install -r requirements-portable.txt
@@ -229,6 +235,12 @@ Sin Python, sin Docker, sin instalar nada.
 
 La más liviana, y la que corre desde un pendrive. Solo necesita Python 3.12 (o el runtime
 bundleado); las sillas corren sobre **API keys** — sin binarios de CLI.
+
+> **`/armar` necesita `git`.** Charlar y debatir no necesitan nada más, pero la carpeta de cada
+> mesa es un repo git (un commit por turno), así que fabricar archivos pide git instalado en la
+> máquina — lo único que el bundle no trae, y en una Windows recién instalada no está:
+> `winget install --id Git.Git -e` (Windows) · `brew install git` (macOS) ·
+> `sudo apt install git` (Linux). Si falta, Swarm te lo avisa al arrancar.
 
 ```bash
 git clone https://github.com/hidr4lisk/swarm.git && cd swarm

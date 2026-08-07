@@ -1587,6 +1587,44 @@ class GitFaltanteTests(TestCase):
         with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
             self.assertEqual(len(onboarding.escalones()), 2)
 
+    def test_serve_avisa_en_la_consola_cuando_falta_git(self):
+        """La consola del launcher es lo unico que el humano de una maquina pelada mira si o si:
+        Conexiones solo la ve el que ya sabe que tiene que ir, y el error de la mesa llega con el
+        turno ya perdido."""
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
+            with mock.patch('enjambre.management.commands.serve.call_command'), \
+                 mock.patch('django.core.management.commands.runserver.Command.handle'), \
+                 mock.patch('threading.Thread'), mock.patch('threading.Timer'):
+                call_command('serve', '--no-browser', '--no-worker', stdout=out)
+        texto = out.getvalue()
+        self.assertIn('git', texto)
+        self.assertIn('/armar', texto)
+        self.assertIn('install', texto)
+
+    def test_serve_no_dice_nada_si_git_esta(self):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/git'):
+            with mock.patch('enjambre.management.commands.serve.call_command'), \
+                 mock.patch('django.core.management.commands.runserver.Command.handle'), \
+                 mock.patch('threading.Thread'), mock.patch('threading.Timer'):
+                call_command('serve', '--no-browser', '--no-worker', stdout=out)
+        self.assertNotIn('git no esta', out.getvalue())
+
+    def test_el_leeme_no_promete_que_no_hay_que_instalar_nada(self):
+        """El LEEME abria con «No hace falta instalar nada»: cierto para charlar, FALSO para
+        /armar. Que la promesa quede acotada es el arreglo, no un detalle de redaccion."""
+        build = (Path(__file__).resolve().parent.parent / 'scripts' / 'build_bundle.sh')
+        txt = build.read_text(encoding='utf-8')
+        leeme = txt.split("cat > \"$OUT/LEEME.txt\"")[1].split("\nTXT\n")[0]
+        self.assertNotIn('No hace falta instalar nada (ni Python ni Docker).', leeme)
+        self.assertIn('git', leeme)
+        self.assertIn('winget install', leeme)
+
 
 class GitDubiousOwnershipTests(TestCase):
     """exFAT/FAT32 no registra dueño → git ve el repo como ajeno y se planta con «detected

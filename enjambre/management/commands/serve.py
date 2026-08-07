@@ -53,7 +53,20 @@ class Command(BaseCommand):
             threading.Thread(target=_worker, daemon=True, name='enjambre-worker').start()
             self.stdout.write('· Worker del Enjambre arrancado (hilo).')
 
-        # 3) Abrir el navegador cuando el server ya esté por levantar.
+        # 3) git es la ÚNICA dependencia externa que el bundle no trae, y en una Windows recién
+        #    instalada no está. Charlar anda igual; `/armar` no, porque la carpeta de cada mesa
+        #    es un repo. Se avisa acá porque esta consola —la ventana del .bat en Windows— es lo
+        #    único que el humano de una máquina pelada mira sí o sí: la fila de Conexiones solo
+        #    la ve el que ya sabe que tiene que ir a buscarla, y el error de la mesa llega
+        #    cuando el turno ya se perdió.
+        from ...conexiones import como_instalar_git, hay_git
+        if not hay_git():
+            self.stdout.write(self.style.WARNING(
+                f'· git no está instalado — vas a poder charlar, pero /armar no.\n'
+                f'    Instalalo con:  {como_instalar_git()}\n'
+                f'    Después reiniciá Swarm para que tome el PATH nuevo.'))
+
+        # 4) Abrir el navegador cuando el server ya esté por levantar.
         if not o['no_browser']:
             threading.Timer(1.5, lambda: webbrowser.open(url)).start()
 

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-07 17:31+0000\n"
+"POT-Creation-Date: 2026-08-07 17:53+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -191,11 +191,30 @@ msgstr ""
 "&lt;request&gt;</span> — the seats edit files in the table’s git folder and "
 "every turn gets committed (📁 to browse and download)."
 
-#: enjambre/templates/enjambre/ayuda.html:95
+#: enjambre/templates/enjambre/ayuda.html:93
+msgid ""
+"<strong>Para <span class=\"ay-code\">/armar</span> hacen falta dos cosas más</strong>, y\n"
+"            son las únicas de todo Swarm: el <strong>toolbelt encendido</strong>\n"
+"            (<a href=\"/conexiones/\">Conexiones → Toolbelt</a>, el switch es el permiso) y <strong>git\n"
+"            instalado</strong> en esta máquina — la carpeta de cada mesa es un repo, y git es lo único\n"
+"            que el bundle no trae. En una PC recién instalada no está: la pantalla Conexiones te avisa\n"
+"            si falta, con el comando para tu sistema. Charlar y debatir no necesitan ninguna de las\n"
+"            dos."
+msgstr ""
+"<strong>Two more things are needed for <span class=\"ay-"
+"code\">/armar</span></strong>, and they are the only ones in all of Swarm: "
+"the <strong>toolbelt on</strong> (<a href=\"/conexiones/\">Connections → "
+"Toolbelt</a>, the switch is the permission) and <strong>git "
+"installed</strong> on this machine — each table’s folder is a repo, and git "
+"is the one thing the bundle does not ship. On a freshly installed PC it is "
+"missing: the Connections screen tells you, with the command for your system."
+" Chatting and debating need neither of them."
+
+#: enjambre/templates/enjambre/ayuda.html:104
 msgid "Guía paso a paso — instalar y subir la escalera"
 msgstr "Step-by-step guide — installing and climbing the ladder"
 
-#: enjambre/templates/enjambre/ayuda.html:97
+#: enjambre/templates/enjambre/ayuda.html:106
 msgid ""
 "Para cuando algo no queda claro, o si vas a instalar Swarm en la PC de otra "
 "persona."
@@ -203,11 +222,11 @@ msgstr ""
 "For when something isn't clear, or if you're installing Swarm on someone "
 "else's PC."
 
-#: enjambre/templates/enjambre/ayuda.html:101
+#: enjambre/templates/enjambre/ayuda.html:110
 msgid "Instalar el pendrive — Windows"
 msgstr "Installing the USB drive — Windows"
 
-#: enjambre/templates/enjambre/ayuda.html:104
+#: enjambre/templates/enjambre/ayuda.html:113
 msgid ""
 "Bajá <code class=\"ay-code\">swarm-portable.zip</code> desde la\n"
 "                        <a href=\"https://hidr4lisk.github.io/swarm/\" target=\"_blank\" rel=\"noopener\">página del proyecto</a>\n"
@@ -217,7 +236,7 @@ msgstr ""
 "                        <a href=\"https://hidr4lisk.github.io/swarm/\" target=\"_blank\" rel=\"noopener\">project page</a>\n"
 "                        (the \"⬇ Download · ready to use\" button)."
 
-#: enjambre/templates/enjambre/ayuda.html:107
+#: enjambre/templates/enjambre/ayuda.html:116
 msgid ""
 "Clic derecho sobre el zip → «Extraer todo…» → elegí la carpeta (podés "
 "hacerlo directo en el pendrive)."
@@ -225,7 +244,7 @@ msgstr ""
 "Right-click the zip → \"Extract All…\" → pick the folder (you can extract "
 "straight onto the USB drive)."
 
-#: enjambre/templates/enjambre/ayuda.html:108
+#: enjambre/templates/enjambre/ayuda.html:117
 msgid ""
 "Abrí la carpeta que se creó y buscá <code class=\"ay-"
 "code\">Enjambre.bat</code>."
@@ -233,7 +252,7 @@ msgstr ""
 "Open the folder that was created and look for <code class=\"ay-"
 "code\">Enjambre.bat</code>."
 
-#: enjambre/templates/enjambre/ayuda.html:109
+#: enjambre/templates/enjambre/ayuda.html:118
 msgid ""
 "Doble-clic en <code class=\"ay-code\">Enjambre.bat</code>. La primera vez Windows\n"
 "                        puede avisar <strong>«Windows protegió su PC»</strong> (SmartScreen) — es normal en programas sin\n"
@@ -247,7 +266,7 @@ msgstr ""
 "                        <strong>\"Run anyway\"</strong>. The code is public on GitHub, anyone can\n"
 "                        review it."
 
-#: enjambre/templates/enjambre/ayuda.html:114
+#: enjambre/templates/enjambre/ayuda.html:123
 msgid ""
 "Se abre una ventana negra un momento (está preparando todo) y después el "
 "navegador. Sentá tu primera silla desde Conexiones (opencode con login "
@@ -257,7 +276,7 @@ msgstr ""
 "the browser. Seat your first seat from Conexiones (opencode with a free "
 "login, or an API key) and create a mesa."
 
-#: enjambre/templates/enjambre/ayuda.html:115
+#: enjambre/templates/enjambre/ayuda.html:124
 msgid ""
 "La primera vez en cada PC te pregunta si instalar ahí (arranca más rápido "
 "después) o correr sin dejar rastro — elegí lo que prefieras."
@@ -265,15 +284,15 @@ msgstr ""
 "The first time on each PC it asks whether to install there (faster startup "
 "afterwards) or run leaving no trace — pick whichever you prefer."
 
-#: enjambre/templates/enjambre/ayuda.html:121
+#: enjambre/templates/enjambre/ayuda.html:130
 msgid "Instalar el pendrive — Linux"
 msgstr "Installing the USB drive — Linux"
 
-#: enjambre/templates/enjambre/ayuda.html:124
+#: enjambre/templates/enjambre/ayuda.html:133
 msgid "Bajá el mismo swarm-portable.zip desde la página del proyecto."
 msgstr "Download the same swarm-portable.zip from the project page."
 
-#: enjambre/templates/enjambre/ayuda.html:125
+#: enjambre/templates/enjambre/ayuda.html:134
 msgid ""
 "Extraelo (clic derecho → «Extraer», o <code class=\"ay-code\">unzip swarm-portable.zip</code>\n"
 "                        en una terminal)."
@@ -281,7 +300,7 @@ msgstr ""
 "Extract it (right-click → \"Extract\", or <code class=\"ay-code\">unzip swarm-portable.zip</code>\n"
 "                        in a terminal)."
 
-#: enjambre/templates/enjambre/ayuda.html:127
+#: enjambre/templates/enjambre/ayuda.html:136
 msgid ""
 "Doble-clic en <code class=\"ay-code\">enjambre.sh</code>: si tu explorador de archivos\n"
 "                        pregunta «¿Ejecutar o Ver?», elegí <strong>«Ejecutar en terminal»</strong>. Si preferís, abrí una\n"
@@ -291,7 +310,7 @@ msgstr ""
 "                        asks \"Run or View?\", choose <strong>\"Run in Terminal\"</strong>. If you'd rather, open a\n"
 "                        terminal in that folder and run <code class=\"ay-code\">./enjambre.sh</code>."
 
-#: enjambre/templates/enjambre/ayuda.html:130
+#: enjambre/templates/enjambre/ayuda.html:139
 msgid ""
 "Igual que en Windows: la primera vez pregunta instalar-ahí o sin-rastro, y "
 "después abre el navegador solo."
@@ -299,11 +318,11 @@ msgstr ""
 "Same as Windows: the first time it asks install-here or no-trace, then the "
 "browser opens on its own."
 
-#: enjambre/templates/enjambre/ayuda.html:136
+#: enjambre/templates/enjambre/ayuda.html:145
 msgid "Escalón 1 — instalar y loguear opencode"
 msgstr "Step 1 — install and log into opencode"
 
-#: enjambre/templates/enjambre/ayuda.html:139
+#: enjambre/templates/enjambre/ayuda.html:148
 msgid ""
 "En <strong>Linux/Mac</strong> es un solo comando en una terminal:\n"
 "                    <code class=\"ay-code\">curl -fsSL https://opencode.ai/install | bash</code> y después\n"
@@ -313,7 +332,7 @@ msgstr ""
 "                    <code class=\"ay-code\">curl -fsSL https://opencode.ai/install | bash</code> and then\n"
 "                    <code class=\"ay-code\">opencode auth login</code>."
 
-#: enjambre/templates/enjambre/ayuda.html:144
+#: enjambre/templates/enjambre/ayuda.html:153
 msgid ""
 "En <strong>Windows nativo no hay un instalador de un solo paso</strong> — la propia\n"
 "                    documentación de opencode recomienda usar WSL para la mejor experiencia. Las alternativas nativas\n"
@@ -327,7 +346,7 @@ msgstr ""
 "                    or <code class=\"ay-code\">npm install -g opencode-ai</code> if you have Node.js) all require\n"
 "                    Chocolatey, Scoop, or Node already installed."
 
-#: enjambre/templates/enjambre/ayuda.html:151
+#: enjambre/templates/enjambre/ayuda.html:160
 msgid ""
 "Si no sos técnico y estás en Windows, este escalón puede ser el más difícil "
 "— no hace falta subirlo: podés saltar directo al escalón 2 (tu propia API "
@@ -337,11 +356,11 @@ msgstr ""
 "one — you don't have to climb it: you can skip straight to step 2 (your own "
 "API key), which works the same on any OS."
 
-#: enjambre/templates/enjambre/ayuda.html:157
+#: enjambre/templates/enjambre/ayuda.html:166
 msgid "Escalón 2 — cargar tu propia API key"
 msgstr "Step 2 — loading your own API key"
 
-#: enjambre/templates/enjambre/ayuda.html:160
+#: enjambre/templates/enjambre/ayuda.html:169
 msgid ""
 "Conseguí una key de un proveedor: Anthropic, OpenRouter, Google AI Studio "
 "(Gemini), o cualquier compatible con OpenAI."
@@ -349,11 +368,11 @@ msgstr ""
 "Get a key from a provider: Anthropic, OpenRouter, Google AI Studio (Gemini),"
 " or any OpenAI-compatible one."
 
-#: enjambre/templates/enjambre/ayuda.html:161
+#: enjambre/templates/enjambre/ayuda.html:170
 msgid "Andá a <a href=\"/conexiones/\">Conexiones → API keys</a>."
 msgstr "Go to <a href=\"/conexiones/\">Connections → API keys</a>."
 
-#: enjambre/templates/enjambre/ayuda.html:162
+#: enjambre/templates/enjambre/ayuda.html:171
 msgid ""
 "Si es la primera vez, elegí una passphrase para la bóveda (no se guarda en "
 "ningún lado — si la olvidás, hay que recargar las keys)."
@@ -361,11 +380,11 @@ msgstr ""
 "If it's the first time, choose a passphrase for the vault (it isn't stored "
 "anywhere — if you forget it, you'll need to reload the keys)."
 
-#: enjambre/templates/enjambre/ayuda.html:163
+#: enjambre/templates/enjambre/ayuda.html:172
 msgid "Pegá la key del proveedor que quieras y guardá."
 msgstr "Paste the key from whichever provider and save."
 
-#: enjambre/templates/enjambre/ayuda.html:164
+#: enjambre/templates/enjambre/ayuda.html:173
 msgid ""
 "Volvé a <a href=\"/sillas/\">Sillas</a> y prendé (o creá) una silla que use ese\n"
 "                        proveedor."
@@ -373,27 +392,27 @@ msgstr ""
 "Go back to <a href=\"/sillas/\">Seats</a> and turn on (or create) a seat that uses that\n"
 "                        provider."
 
-#: enjambre/templates/enjambre/ayuda.html:173
+#: enjambre/templates/enjambre/ayuda.html:182
 msgid "Una mesa, por dentro"
 msgstr "A table, from the inside"
 
-#: enjambre/templates/enjambre/ayuda.html:175
+#: enjambre/templates/enjambre/ayuda.html:184
 msgid "HUMANO"
 msgstr "HUMAN"
 
-#: enjambre/templates/enjambre/ayuda.html:176
+#: enjambre/templates/enjambre/ayuda.html:185
 msgid ""
 "/armar un script python que lea un CSV de gastos y arme un resumen por mes"
 msgstr ""
 "/armar a python script that reads an expenses CSV and builds a monthly "
 "summary"
 
-#: enjambre/templates/enjambre/ayuda.html:177
-#: enjambre/templates/enjambre/ayuda.html:183
+#: enjambre/templates/enjambre/ayuda.html:186
+#: enjambre/templates/enjambre/ayuda.html:192
 msgid "líder"
 msgstr "leader"
 
-#: enjambre/templates/enjambre/ayuda.html:178
+#: enjambre/templates/enjambre/ayuda.html:187
 msgid ""
 "Plan: @opencode escribe <code>gastos.py</code> (lectura CSV + agrupado);\n"
 "                    yo reviso bordes (CSV vacío, fechas inválidas) e integro."
@@ -401,18 +420,18 @@ msgstr ""
 "Plan: @opencode writes <code>gastos.py</code> (CSV reading + grouping); I "
 "review edge cases (empty CSV, invalid dates) and integrate."
 
-#: enjambre/templates/enjambre/ayuda.html:181
+#: enjambre/templates/enjambre/ayuda.html:190
 msgid ""
 "Hecho. <code>gastos.py</code> creado: pandas, agrupa por mes, imprime tabla."
 msgstr ""
 "Done. <code>gastos.py</code> created: pandas, groups by month, prints a "
 "table."
 
-#: enjambre/templates/enjambre/ayuda.html:182
+#: enjambre/templates/enjambre/ayuda.html:191
 msgid "Enjambre · mesa 7: OpenCode — 1 file changed (commit a1b2c3d)"
 msgstr "Enjambre · table 7: OpenCode — 1 file changed (commit a1b2c3d)"
 
-#: enjambre/templates/enjambre/ayuda.html:184
+#: enjambre/templates/enjambre/ayuda.html:193
 msgid ""
 "Integrado. Quedó <code>gastos.py</code> con manejo de CSV vacío; probalo con\n"
 "                    <code>python gastos.py gastos.csv</code>. Falta: soporte de monedas (si lo querés, /seguí)."
@@ -421,42 +440,42 @@ msgstr ""
 "<code>python gastos.py gastos.csv</code>. Missing: currency support (if you "
 "want it, /seguí)."
 
-#: enjambre/templates/enjambre/ayuda.html:189
+#: enjambre/templates/enjambre/ayuda.html:198
 msgid "Comandos de la mesa"
 msgstr "Table commands"
 
-#: enjambre/templates/enjambre/ayuda.html:191
+#: enjambre/templates/enjambre/ayuda.html:200
 msgid "le hablás a UNA silla (ej. <code>@claude</code>)"
 msgstr "you talk to ONE seat (e.g. <code>@claude</code>)"
 
-#: enjambre/templates/enjambre/ayuda.html:192
+#: enjambre/templates/enjambre/ayuda.html:201
 msgid ""
 "fabricar: las sillas editan archivos en la carpeta de la mesa (un commit por"
 " turno)"
 msgstr ""
 "build: the seats edit files in the table’s folder (one commit per turn)"
 
-#: enjambre/templates/enjambre/ayuda.html:193
+#: enjambre/templates/enjambre/ayuda.html:202
 msgid "revierte el último turno de /armar (git reset)"
 msgstr "reverts the last /armar turn (git reset)"
 
-#: enjambre/templates/enjambre/ayuda.html:194
+#: enjambre/templates/enjambre/ayuda.html:203
 msgid "rebobina la carpeta a un commit anterior"
 msgstr "rewinds the folder to a previous commit"
 
-#: enjambre/templates/enjambre/ayuda.html:195
+#: enjambre/templates/enjambre/ayuda.html:204
 msgid "rondas donde las sillas se refutan (solo texto)"
 msgstr "rounds where the seats rebut each other (text only)"
 
-#: enjambre/templates/enjambre/ayuda.html:196
+#: enjambre/templates/enjambre/ayuda.html:205
 msgid "fija un objetivo persistente y corre la 1ª iteración"
 msgstr "sets a persistent goal and runs the 1st iteration"
 
-#: enjambre/templates/enjambre/ayuda.html:197
+#: enjambre/templates/enjambre/ayuda.html:206
 msgid "una iteración más hacia el objetivo"
 msgstr "one more iteration toward the goal"
 
-#: enjambre/templates/enjambre/ayuda.html:198
+#: enjambre/templates/enjambre/ayuda.html:207
 msgid ""
 "itera sola hacia el objetivo (frena por tope de costo, máximo de iteraciones"
 " o /alto)"
@@ -464,15 +483,15 @@ msgstr ""
 "iterates on its own toward the goal (stops at the spend cap, max iterations "
 "or /alto)"
 
-#: enjambre/templates/enjambre/ayuda.html:199
+#: enjambre/templates/enjambre/ayuda.html:208
 msgid "freno de mano: corta el turno y apaga el modo continuo"
 msgstr "handbrake: cuts the turn and turns off continuous mode"
 
-#: enjambre/templates/enjambre/ayuda.html:200
+#: enjambre/templates/enjambre/ayuda.html:209
 msgid "cierra la mesa con un resumen (qué se hizo + costo)"
 msgstr "closes the table with a summary (what was done + cost)"
 
-#: enjambre/templates/enjambre/ayuda.html:201
+#: enjambre/templates/enjambre/ayuda.html:210
 msgid ""
 "este turno las sillas trabajan donde haga falta, sin ordenarse en la carpeta"
 " de la mesa"
@@ -480,7 +499,7 @@ msgstr ""
 "this turn the seats work wherever needed, instead of tidying into the "
 "table's folder"
 
-#: enjambre/templates/enjambre/ayuda.html:203
+#: enjambre/templates/enjambre/ayuda.html:212
 msgid ""
 "Con el toolbelt encendido,\n"
 "            si no nombrás una ruta las sillas dejan lo que producen <strong>en la carpeta de esta mesa</strong>\n"
@@ -492,11 +511,11 @@ msgstr ""
 "            (it stays together and downloads with 📁). If you do name an absolute path in your request, that turn\n"
 "            works there — <code>/libre</code> is the shortcut for when you'd rather not name one. Per-table switch in ⚙."
 
-#: enjambre/templates/enjambre/ayuda.html:212
+#: enjambre/templates/enjambre/ayuda.html:221
 msgid "Topologías"
 msgstr "Topologies"
 
-#: enjambre/templates/enjambre/ayuda.html:213
+#: enjambre/templates/enjambre/ayuda.html:222
 msgid ""
 "<strong>Plana</strong> — broadcast: todas las sillas ven tu\n"
 "            mensaje y responden a la vez. Ideal para charlar, comparar enfoques, debatir."
@@ -504,7 +523,7 @@ msgstr ""
 "<strong>Flat</strong> — broadcast: every seat sees your message and replies "
 "at once. Great for chatting, comparing approaches, debating."
 
-#: enjambre/templates/enjambre/ayuda.html:215
+#: enjambre/templates/enjambre/ayuda.html:224
 msgid ""
 "<strong>Líder</strong> — una silla coordina: descompone\n"
 "            tu pedido en subtareas (<span class=\"ay-code\">@alias: subtarea</span>), cada trabajador\n"
@@ -514,7 +533,7 @@ msgstr ""
 "subtasks (<span class=\"ay-code\">@alias: subtask</span>), each worker runs "
 "its own and the leader integrates the result. Great for building."
 
-#: enjambre/templates/enjambre/ayuda.html:218
+#: enjambre/templates/enjambre/ayuda.html:227
 msgid ""
 "Se elige por mesa, en su\n"
 "            configuración (⚙). El líder reparte mirando la <em>especialidad</em> de cada silla."
@@ -522,20 +541,20 @@ msgstr ""
 "Chosen per table, in its settings (⚙). The leader hands out work based on "
 "each seat’s <em>specialty</em>."
 
-#: enjambre/templates/enjambre/ayuda.html:222
+#: enjambre/templates/enjambre/ayuda.html:231
 msgid "Las sillas"
 msgstr "The seats"
 
-#: enjambre/templates/enjambre/ayuda.html:223
+#: enjambre/templates/enjambre/ayuda.html:232
 msgid "Cada silla es un CLI o un modelo local con personalidad propia:"
 msgstr "Each seat is a CLI or a local model with its own personality:"
 
-#: enjambre/templates/enjambre/ayuda.html:225
+#: enjambre/templates/enjambre/ayuda.html:234
 #: enjambre/templates/enjambre/sillas.html:197
 msgid "Cliente"
 msgstr "Client"
 
-#: enjambre/templates/enjambre/ayuda.html:225
+#: enjambre/templates/enjambre/ayuda.html:234
 msgid ""
 "<span class=\"ay-code\">claude</span> (Claude Code),\n"
 "                    <span class=\"ay-code\">opencode</span> (OpenCode, multi-modelo),\n"
@@ -549,31 +568,31 @@ msgstr ""
 "                    <span class=\"ay-code\">ollama</span> (a local model of yours, by URL),\n"
 "                    or a provider by <strong>API key</strong> (Anthropic, OpenRouter, Gemini, Pollinations, OpenAI-compatible)"
 
-#: enjambre/templates/enjambre/ayuda.html:230
+#: enjambre/templates/enjambre/ayuda.html:239
 msgid ""
 "la personalidad: quién es y cómo responde (↺ Reset vuelve al de fábrica)"
 msgstr ""
 "the personality: who it is and how it replies (↺ Reset restores the factory "
 "one)"
 
-#: enjambre/templates/enjambre/ayuda.html:231
+#: enjambre/templates/enjambre/ayuda.html:240
 msgid "Recordatorio"
 msgstr "Reminder"
 
-#: enjambre/templates/enjambre/ayuda.html:231
+#: enjambre/templates/enjambre/ayuda.html:240
 msgid "se repite al final de cada turno (lo que no debe olvidar)"
 msgstr "repeated at the end of every turn (what it must not forget)"
 
-#: enjambre/templates/enjambre/ayuda.html:232
+#: enjambre/templates/enjambre/ayuda.html:241
 #: enjambre/templates/enjambre/sillas.html:231
 msgid "Especialidad"
 msgstr "Specialty"
 
-#: enjambre/templates/enjambre/ayuda.html:232
+#: enjambre/templates/enjambre/ayuda.html:241
 msgid "pista corta para que el líder reparta mejor"
 msgstr "a short hint so the leader hands out work better"
 
-#: enjambre/templates/enjambre/ayuda.html:234
+#: enjambre/templates/enjambre/ayuda.html:243
 msgid ""
 "Cloná una silla para repetir\n"
 "            un cliente con otro modelo/prompt. El velocímetro de cada mesa estima tokens y costo\n"
@@ -582,7 +601,7 @@ msgstr ""
 "Clone a seat to repeat a client with another model/prompt. Each table’s "
 "speedometer estimates tokens and notional cost per turn."
 
-#: enjambre/templates/enjambre/ayuda.html:237
+#: enjambre/templates/enjambre/ayuda.html:246
 msgid ""
 "<strong>Exportar / Importar</strong>\n"
 "            (arriba, en Sillas): baja toda tu config —nombres, modelos, prompts, retratos, colores,\n"
@@ -600,11 +619,11 @@ msgstr ""
 "            The file carries <strong>no credentials</strong>: keys stay encrypted in the vault,\n"
 "            separately."
 
-#: enjambre/templates/enjambre/ayuda.html:249
+#: enjambre/templates/enjambre/ayuda.html:258
 msgid "El toolbelt"
 msgstr "The toolbelt"
 
-#: enjambre/templates/enjambre/ayuda.html:251
+#: enjambre/templates/enjambre/ayuda.html:260
 msgid ""
 "Con el toolbelt <strong>encendido</strong>, las sillas pueden\n"
 "                <strong>operar esta máquina</strong> para diagnosticar y arreglar, en vez de adivinar.\n"
@@ -614,7 +633,7 @@ msgstr ""
 "machine</strong> to diagnose and fix things instead of guessing. This covers"
 " both <strong>API key</strong> and <strong>CLI</strong> seats."
 
-#: enjambre/templates/enjambre/ayuda.html:256
+#: enjambre/templates/enjambre/ayuda.html:265
 msgid ""
 "<strong>El permiso es el switch</strong>, no cada comando: con el toolbelt\n"
 "                encendido las sillas leen, <strong>editan archivos, tocan configuración y construyen</strong>,\n"
@@ -626,7 +645,7 @@ msgstr ""
 "                <strong>applies immediately</strong>. Off, they only answer text. Only turn it on for\n"
 "                machines you are authorized to service."
 
-#: enjambre/templates/enjambre/ayuda.html:262
+#: enjambre/templates/enjambre/ayuda.html:271
 msgid ""
 "Con <strong>/armar</strong> fabrican en la carpeta de la mesa: las de\n"
 "                <strong>CLI</strong> (claude · opencode · agy) porque trabajan paradas ahí, y las de\n"
@@ -638,7 +657,7 @@ msgstr ""
 "                seats because they are handed that folder's path. Either way, what is left behind gets\n"
 "                committed and the mesa sees the diff."
 
-#: enjambre/templates/enjambre/ayuda.html:268
+#: enjambre/templates/enjambre/ayuda.html:277
 msgid ""
 "<strong>Sin nombrar una ruta, el trabajo aterriza en la carpeta de la mesa</strong>\n"
 "                — también fuera de <strong>/armar</strong>: así queda junto, versionado y lo bajás con 📁. Si tu\n"
@@ -654,7 +673,7 @@ msgstr ""
 "                It's tidiness, not a jail: <strong>diagnosing the machine is never restricted</strong>, and a CLI\n"
 "                seat carries its own shell and reaches the whole machine anyway."
 
-#: enjambre/templates/enjambre/ayuda.html:276
+#: enjambre/templates/enjambre/ayuda.html:285
 msgid ""
 "Viene <strong>apagado</strong>; se enciende en <a href=\"/conexiones/\">Conexiones</a>.\n"
 "                Todo queda registrado en la <a href=\"/bitacora/\">Bitácora</a> de la mesa: las acciones de las sillas\n"
@@ -670,11 +689,11 @@ msgstr ""
 "                (<span class=\"ay-code\">.ssh</span>, <span class=\"ay-code\">.gnupg</span>,\n"
 "                <span class=\"ay-code\">.aws</span>, <span class=\"ay-code\">/etc/shadow</span>…)."
 
-#: enjambre/templates/enjambre/ayuda.html:285
+#: enjambre/templates/enjambre/ayuda.html:294
 msgid "Tus credenciales"
 msgstr "Your credentials"
 
-#: enjambre/templates/enjambre/ayuda.html:287
+#: enjambre/templates/enjambre/ayuda.html:296
 msgid ""
 "<strong>CLIs</strong>: Swarm no guarda nada — usan el login que ya tenés\n"
 "                en <strong>tu terminal</strong> (el de <span class=\"ay-code\">claude</span>,\n"
@@ -686,7 +705,7 @@ msgstr ""
 "                <span class=\"ay-code\">opencode</span> or <span class=\"ay-code\">agy</span>). If you have not\n"
 "                signed in on this machine, the seat will not work."
 
-#: enjambre/templates/enjambre/ayuda.html:293
+#: enjambre/templates/enjambre/ayuda.html:302
 msgid ""
 "<strong>API keys</strong>: se guardan en la <strong>bóveda</strong>, cifradas con una\n"
 "                passphrase que elegís vos y que nadie más conoce. Mientras la bóveda está desbloqueada\n"
@@ -698,7 +717,7 @@ msgstr ""
 "vault is unlocked the keys live decrypted in a runtime file — <strong>lock "
 "it</strong> (Connections → API keys) when you’re done."
 
-#: enjambre/templates/enjambre/ayuda.html:299
+#: enjambre/templates/enjambre/ayuda.html:308
 msgid ""
 "El detalle completo y el modelo de amenaza están en el README del repo —\n"
 "                leelo antes de usar esto en serio."
@@ -706,7 +725,7 @@ msgstr ""
 "The full detail and the threat model live in the repo’s README — read it "
 "before using this seriously."
 
-#: enjambre/templates/enjambre/ayuda.html:307
+#: enjambre/templates/enjambre/ayuda.html:316
 msgid ""
 "¿Algo no cerró, o se te ocurrió una mejora? Contánoslo en\n"
 "            <a href=\"https://github.com/hidr4lisk/swarm/issues\" target=\"_blank\" rel=\"noopener\">GitHub</a>\n"
@@ -719,7 +738,7 @@ msgstr ""
 "href=\"mailto:hidralisk.online@gmail.com\">hidralisk.online@gmail.com</a> — "
 "your feedback is what makes Swarm grow."
 
-#: enjambre/templates/enjambre/ayuda.html:313
+#: enjambre/templates/enjambre/ayuda.html:322
 msgid ""
 "Y si te está resultando útil y querés dar una mano, en la\n"
 "            <a href=\"https://hidr4lisk.github.io/swarm/#apoya\" target=\"_blank\" rel=\"noopener\">página del proyecto</a>\n"
@@ -1028,7 +1047,6 @@ msgid "Encender / apagar el toolbelt"
 msgstr "Turn the toolbelt on / off"
 
 #: enjambre/templates/enjambre/conexiones.html:234
-#| msgid "No hay sillas disponibles."
 msgid "git disponible"
 msgstr "git available"
 

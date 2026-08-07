@@ -394,8 +394,9 @@ BAT
 cat > "$OUT/LEEME.txt" <<'TXT'
 SWARM — enjambre multi-agente PORTÁTIL
 ======================================
-No hace falta instalar nada (ni Python ni Docker). Esta carpeta se basta sola: podés dejarla
-en el disco de la PC o llevarla en un pendrive — funciona igual en los dos casos.
+No hace falta instalar nada para CHARLAR (ni Python ni Docker). Esta carpeta se basta sola:
+podés dejarla en el disco de la PC o llevarla en un pendrive — funciona igual en los dos casos.
+La única excepción es /armar (que las sillas fabriquen archivos): eso necesita git — mirá abajo.
 
   · Linux:   doble-clic en  enjambre.sh  → "Ejecutar en terminal"  (o  ./enjambre.sh  en una terminal)
   · Windows: doble-clic en  Enjambre.bat
@@ -439,6 +440,20 @@ y todo queda en la Bitácora. Prendelo SOLO en máquinas que estés autorizado a
 Salvo que tu pedido nombre una ruta (o escribas /libre), lo que las sillas produzcan queda en la
 CARPETA DE LA MESA: junto, versionado y descargable con 📁. Las credenciales del sistema (.ssh,
 .gnupg, .aws, /etc/shadow) y la bóveda de keys no las toca el toolbelt.
+
+GIT — lo único que Swarm NO trae adentro
+----------------------------------------
+La carpeta de cada mesa es un repo git (un commit por turno: así podés ver qué cambió y volver
+atrás con /deshacer). Por eso /armar necesita git instalado en la máquina. En una PC recién
+instalada NO viene, sobre todo en Windows:
+
+  · Windows:  winget install --id Git.Git -e
+  · macOS:    brew install git
+  · Linux:    sudo apt install git   (o el gestor de tu distro)
+
+Después reiniciá Swarm, para que tome el PATH nuevo. Si falta, te lo avisa la consola al
+arrancar y la pantalla "Conexiones → Toolbelt". CHARLAR Y DEBATIR ANDAN SIN GIT: es solo para
+que las sillas fabriquen.
 
 Para las sillas por API key hace falta un modelo que soporte herramientas (function-calling); las
 de CLI usan las suyas.
