@@ -314,6 +314,13 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
         result = subprocess.run(
             argv + [prompt],
             capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd,
+            # encoding EXPLÍCITO: sin esto `text=True` decodifica con la codificación del SO
+            # (`locale.getpreferredencoding`), que en Windows es cp1252 — y los CLIs de silla
+            # (opencode/claude/agy, todos Node/Bun) emiten UTF-8 en cualquier plataforma. El
+            # resultado era mojibake en la mesa: «Â¡Emanuel!», «arquitecto â€”», «sÃ³lidos»
+            # (bug real, Windows 11, 2026-08-07). `errors=replace` para que un byte suelto no
+            # tire el turno entero: mejor un «�» que perder la respuesta.
+            encoding='utf-8', errors='replace',
             # stdin explícito: `capture_output` solo cubre stdout/stderr, así que sin esto el CLI
             # HEREDA el stdin del server. Rompe de dos maneras reales: si el server arrancó con el
             # fd 0 abierto de solo-escritura (pasa con `nohup … >log 2>&1 &`), `opencode run --auto`

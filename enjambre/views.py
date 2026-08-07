@@ -1198,7 +1198,8 @@ def modelos_disponibles(request):
         try:
             oc = resolver_bin('opencode')
             if oc:
-                r = subprocess.run([oc, 'models'], capture_output=True, text=True, timeout=15)
+                r = subprocess.run([oc, 'models'], capture_output=True, text=True, timeout=15,
+                                   encoding='utf-8', errors='replace')
                 ids = [ln.strip() for ln in (r.stdout or '').splitlines() if ln.strip()]
                 if ids:
                     source = 'live'

@@ -53,7 +53,11 @@ def _git(repo, *args, check=True):
     """Corre git -C <repo> <args> y devuelve stdout (strip)."""
     try:
         r = subprocess.run(['git', '-C', str(repo), *args],
-                           capture_output=True, text=True, timeout=GIT_TIMEOUT)
+                           capture_output=True, text=True, timeout=GIT_TIMEOUT,
+                           # git habla UTF-8 en todas las plataformas; `text=True` a secas lo
+                           # decodificaría con la del SO (cp1252 en Windows) y rompería los
+                           # acentos de nombres de archivo y mensajes de commit.
+                           encoding='utf-8', errors='replace')
     except subprocess.TimeoutExpired:
         if check:
             raise RuntimeError(f"git {' '.join(args)} no terminó en {GIT_TIMEOUT}s")

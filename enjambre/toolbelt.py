@@ -44,6 +44,25 @@ MAX_ROUNDS = 8       # tope de rondas de tool-use por turno (safety anti-loop / 
 INSPECT_TIMEOUT = 30
 APPLY_TIMEOUT = 120
 
+
+def _decodificar(b):
+    """Bytes de un comando → texto. **UTF-8 primero**, y si no decodifica, la codificación de la
+    consola del SO.
+
+    Acá NO se puede fijar una sola: el toolbelt corre lo que la silla pida y en Windows conviven
+    las dos familias — un CLI moderno (git, node, python) escupe UTF-8, mientras que `dir` o
+    `ipconfig` salen en la codepage OEM. `text=True` a secas decodificaba SIEMPRE con la del SO
+    (cp1252 en Windows) y convertía en mojibake toda salida UTF-8 con acentos. El orden importa:
+    texto cp850/cp1252 con acentos casi nunca es UTF-8 válido, así que un decode estricto de
+    UTF-8 es un test confiable de cuál de las dos es."""
+    if not b:
+        return ''
+    try:
+        return b.decode('utf-8')
+    except UnicodeDecodeError:
+        import locale
+        return b.decode(locale.getpreferredencoding(False), errors='replace')
+
 # ── Allowlist read-only (gate principal de `inspect`): binarios que NO mutan el sistema ──
 _ALLOW_POSIX = {
     'ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'zgrep', 'find', 'stat', 'file',
@@ -324,16 +343,16 @@ def _correr_readonly(comando, timeout=INSPECT_TIMEOUT):
         if flag in low.split():
             return None, f'la bandera «{flag}» escribe/ejecuta — no va en inspect; usá apply_fix.'
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, shell=False)
+        r = subprocess.run(argv, capture_output=True, timeout=timeout, shell=False)
     except subprocess.TimeoutExpired:
         return None, f'timeout tras {timeout}s'
     except FileNotFoundError:
         return None, f'«{base}» no está instalado en esta máquina'
     except Exception as e:  # noqa: BLE001
         return None, f'error: {e}'
-    out = (r.stdout or '')
-    if (r.stderr or '').strip():
-        out += ('\n[stderr]\n' + r.stderr)
+    out, err = _decodificar(r.stdout), _decodificar(r.stderr)
+    if err.strip():
+        out += ('\n[stderr]\n' + err)
     out = out.strip() or '(sin salida)'
     if len(out) > MAX_OUT:
         out = out[:MAX_OUT] + '\n…[salida truncada]'
@@ -435,11 +454,11 @@ def _correr_mutacion(comando, timeout=APPLY_TIMEOUT, cwd=None):
     `cwd` (la carpeta de la mesa, si el turno la tiene): las rutas RELATIVAS del comando caen ahí
     en vez de en el cwd del proceso. No encierra nada — una ruta absoluta sigue yendo donde diga."""
     try:
-        r = subprocess.run(comando, capture_output=True, text=True, timeout=timeout, shell=True,
+        r = subprocess.run(comando, capture_output=True, timeout=timeout, shell=True,
                            cwd=(str(cwd) if cwd and os.path.isdir(str(cwd)) else None))
-        out = (r.stdout or '')
-        if (r.stderr or '').strip():
-            out += ('\n[stderr]\n' + r.stderr)
+        out, err = _decodificar(r.stdout), _decodificar(r.stderr)
+        if err.strip():
+            out += ('\n[stderr]\n' + err)
         out = out.strip() or '(sin salida)'
         if len(out) > MAX_OUT:
             out = out[:MAX_OUT] + '\n…[salida truncada]'
@@ -547,11 +566,11 @@ def ejecutar_pendiente(accion, aprobada_por):
     if accion.estado != Accion.Estado.PENDIENTE:
         return accion
     try:
-        r = subprocess.run(accion.comando, capture_output=True, text=True,
+        r = subprocess.run(accion.comando, capture_output=True,
                            timeout=APPLY_TIMEOUT, shell=True)
-        out = (r.stdout or '')
-        if (r.stderr or '').strip():
-            out += ('\n[stderr]\n' + r.stderr)
+        out, err = _decodificar(r.stdout), _decodificar(r.stderr)
+        if err.strip():
+            out += ('\n[stderr]\n' + err)
         out = out.strip() or '(sin salida)'
         if len(out) > MAX_OUT:
             out = out[:MAX_OUT] + '\n…[truncado]'
