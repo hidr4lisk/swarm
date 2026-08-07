@@ -27,6 +27,40 @@ from .models import Mensaje, Tarea, Workspace
 # Identidad para los commits del enjambre (no depende del git config del repo).
 GIT_AUTOR = ['-c', 'user.name=Enjambre', '-c', 'user.email=enjambre@local']
 
+# exFAT/FAT32 (o sea: TODO pendrive) no registra dueño de archivo, así que git considera el repo
+# de dueño ajeno y se planta con «detected dubious ownership» antes de hacer nada. Es el caso
+# normal de Swarm, no un borde: las mesas viven en `data/` del pendrive (Oficina, 2026-08-07).
+#
+# git manda hacer `git config --global --add safe.directory <ruta>`, y eso es justo lo que NO
+# podemos hacer: escribe en el ~/.gitconfig de la PC del cliente y deja rastro en la máquina que
+# el modo SIN RASTRO promete no tocar. La marca va por invocación.
+#
+# Va `*` y no la ruta exacta por dos motivos MEDIDOS (git 2.43): (1) el match es textual y
+# quisquilloso —una barra final de más y ya no aplica—, y en Windows nosotros pasamos
+# `D:\...\mesa-1` mientras git razona sobre `D:/.../mesa-1`; (2) NO existe comodín de subárbol:
+# `<carpeta-de-mesas>/*` no habilita nada, probado. Alcance real: solo los procesos que lanza
+# Swarm, y solo apaga un chequeo de DUEÑO sobre carpetas que Swarm mismo creó — no da acceso
+# que la silla no tuviera (el permiso sigue siendo el switch del toolbelt).
+GIT_SAFE = ['-c', 'safe.directory=*']
+
+
+def env_git_safe(env):
+    """Mete la misma excepción de `safe.directory` en un environment, para que la hereden los
+    procesos hijos. `GIT_SAFE` cubre el git que corremos NOSOTROS; esto cubre el que corre la
+    silla CLI por su cuenta dentro de la carpeta de la mesa (`git status`, `git diff`…), que si
+    no se planta con el mismo error y la silla lo reporta como si el trabajo hubiera fallado.
+
+    Respeta un `GIT_CONFIG_COUNT` que ya venga del entorno en vez de pisarlo: se agrega al final
+    y se incrementa el contador. Muta y devuelve el mismo dict."""
+    try:
+        n = int(env.get('GIT_CONFIG_COUNT', '0') or '0')
+    except ValueError:
+        n = 0
+    env[f'GIT_CONFIG_KEY_{n}'] = 'safe.directory'
+    env[f'GIT_CONFIG_VALUE_{n}'] = '*'
+    env['GIT_CONFIG_COUNT'] = str(n + 1)
+    return env
+
 # .gitignore de toda mesa nueva: temporales, dependencias y credenciales. Deliberadamente corto —
 # lo que la mesa produce (informes, código, notas) TIENE que quedar versionado.
 GITIGNORE_MESA = """# Temporales y basura de herramientas
@@ -52,7 +86,7 @@ GIT_TIMEOUT = 120  # un `add -A` sobre una carpeta enorme no puede colgar el wor
 def _git(repo, *args, check=True):
     """Corre git -C <repo> <args> y devuelve stdout (strip)."""
     try:
-        r = subprocess.run(['git', '-C', str(repo), *args],
+        r = subprocess.run(['git', *GIT_SAFE, '-C', str(repo), *args],
                            capture_output=True, text=True, timeout=GIT_TIMEOUT,
                            # git habla UTF-8 en todas las plataformas; `text=True` a secas lo
                            # decodificaría con la del SO (cp1252 en Windows) y rompería los

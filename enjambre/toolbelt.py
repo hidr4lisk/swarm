@@ -45,6 +45,14 @@ INSPECT_TIMEOUT = 30
 APPLY_TIMEOUT = 120
 
 
+def _env():
+    """Environment de los comandos del toolbelt. Igual que el de las sillas CLI: si la silla
+    corre `git` dentro de la carpeta de la mesa (que vive en el pendrive, exFAT, sin dueño), sin
+    esto se planta con «dubious ownership». Ver `workspace.env_git_safe`."""
+    from .workspace import env_git_safe
+    return env_git_safe(os.environ.copy())
+
+
 def _decodificar(b):
     """Bytes de un comando → texto. **UTF-8 primero**, y si no decodifica, la codificación de la
     consola del SO.
@@ -343,7 +351,8 @@ def _correr_readonly(comando, timeout=INSPECT_TIMEOUT):
         if flag in low.split():
             return None, f'la bandera «{flag}» escribe/ejecuta — no va en inspect; usá apply_fix.'
     try:
-        r = subprocess.run(argv, capture_output=True, timeout=timeout, shell=False)
+        r = subprocess.run(argv, capture_output=True, timeout=timeout, shell=False,
+                           env=_env())
     except subprocess.TimeoutExpired:
         return None, f'timeout tras {timeout}s'
     except FileNotFoundError:
@@ -455,6 +464,7 @@ def _correr_mutacion(comando, timeout=APPLY_TIMEOUT, cwd=None):
     en vez de en el cwd del proceso. No encierra nada — una ruta absoluta sigue yendo donde diga."""
     try:
         r = subprocess.run(comando, capture_output=True, timeout=timeout, shell=True,
+                           env=_env(),
                            cwd=(str(cwd) if cwd and os.path.isdir(str(cwd)) else None))
         out, err = _decodificar(r.stdout), _decodificar(r.stderr)
         if err.strip():
@@ -566,7 +576,7 @@ def ejecutar_pendiente(accion, aprobada_por):
     if accion.estado != Accion.Estado.PENDIENTE:
         return accion
     try:
-        r = subprocess.run(accion.comando, capture_output=True,
+        r = subprocess.run(accion.comando, capture_output=True, env=_env(),
                            timeout=APPLY_TIMEOUT, shell=True)
         out, err = _decodificar(r.stdout), _decodificar(r.stderr)
         if err.strip():

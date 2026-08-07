@@ -296,6 +296,10 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
     if prov:  # silla por API key → HTTP directo al proveedor (+ toolbelt si está habilitado)
         return ejecutar_api(participante, prov, prompt, timeout, sesion=sesion)
     env = os.environ.copy()
+    # La silla también corre git por su cuenta dentro de la carpeta de la mesa, y esa carpeta
+    # suele estar en el pendrive (exFAT, sin dueño) → «dubious ownership». Ver env_git_safe.
+    from .workspace import env_git_safe
+    env_git_safe(env)
     cwd = None
     if cwd_maquina:
         cwd = str(cwd_maquina)

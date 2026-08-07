@@ -1586,3 +1586,55 @@ class GitFaltanteTests(TestCase):
         from . import onboarding
         with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
             self.assertEqual(len(onboarding.escalones()), 2)
+
+
+class GitDubiousOwnershipTests(TestCase):
+    """exFAT/FAT32 no registra dueño → git ve el repo como ajeno y se planta con «detected
+    dubious ownership» antes de hacer nada. Es EL caso de Swarm (las mesas viven en el `data/`
+    del pendrive), no un borde. La receta que sugiere git —`config --global --add safe.directory`—
+    escribe en el ~/.gitconfig de la PC del cliente: justo el rastro que el modo SIN RASTRO
+    promete no dejar. Se marca por invocación (Oficina, 2026-08-07)."""
+
+    def test_nuestro_git_lleva_la_excepcion(self):
+        from .workspace import _git
+        with mock.patch('enjambre.workspace.subprocess.run') as run:
+            run.return_value = mock.Mock(returncode=0, stdout='', stderr='')
+            _git('/tmp/x', 'status', '--porcelain')
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[0], 'git')
+        self.assertIn('safe.directory=*', argv)
+        self.assertLess(argv.index('safe.directory=*'), argv.index('status'))  # antes del subcomando
+
+    def test_env_git_safe_pone_el_trio_completo(self):
+        from .workspace import env_git_safe
+        env = env_git_safe({})
+        self.assertEqual(env['GIT_CONFIG_COUNT'], '1')
+        self.assertEqual(env['GIT_CONFIG_KEY_0'], 'safe.directory')
+        self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')
+
+    def test_env_git_safe_no_pisa_lo_que_ya_venia(self):
+        """Si el entorno ya traía config por env, se agrega al final en vez de aplastarla."""
+        from .workspace import env_git_safe
+        env = env_git_safe({'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'core.pager',
+                            'GIT_CONFIG_VALUE_0': 'cat'})
+        self.assertEqual(env['GIT_CONFIG_COUNT'], '2')
+        self.assertEqual(env['GIT_CONFIG_KEY_0'], 'core.pager')   # intacta
+        self.assertEqual(env['GIT_CONFIG_KEY_1'], 'safe.directory')
+
+    def test_env_git_safe_sobrevive_un_contador_basura(self):
+        from .workspace import env_git_safe
+        self.assertEqual(env_git_safe({'GIT_CONFIG_COUNT': 'aaa'})['GIT_CONFIG_COUNT'], '1')
+
+    def test_la_silla_cli_hereda_la_excepcion(self):
+        """La silla corre git por su cuenta dentro de la carpeta de la mesa (status, diff…)."""
+        from .engine import ejecutar_cli
+        p = Participante.objects.create(key='oc', nombre='OC', comando=['opencode', 'run'])
+        with mock.patch('enjambre.engine.subprocess.run') as run:
+            run.return_value = mock.Mock(returncode=0, stdout='ok', stderr='')
+            ejecutar_cli(p, 'hola', 30)
+        env = run.call_args.kwargs['env']
+        self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')
+
+    def test_el_toolbelt_tambien(self):
+        from .toolbelt import _env
+        self.assertEqual(_env()['GIT_CONFIG_KEY_0'], 'safe.directory')
