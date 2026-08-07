@@ -300,8 +300,9 @@ goto ephemeral
 :persistent
 set "RUNTIME=%CACHE%"
 if exist "%CACHE%\.ok" goto run
+set "RTERR="
 call :verificar_runtime
-if errorlevel 1 goto fin_error
+if defined RTERR goto fin_error
 echo Descomprimiendo el runtime (una vez)...
 if not exist "%CACHE%" mkdir "%CACHE%"
 tar -xzf "%DIR%runtime-win.tar.gz" -C "%CACHE%" || goto tar_roto
@@ -315,8 +316,9 @@ for /d %%D in ("%BASE%\*") do if /I not "%%~nxD"=="%VER%" rd /s /q "%%~fD"
 goto run
 
 :ephemeral
+set "RTERR="
 call :verificar_runtime
-if errorlevel 1 goto fin_error
+if defined RTERR goto fin_error
 set "RUNTIME=%TEMP%\swarm-%RANDOM%%RANDOM%"
 set "CLEANUP=%RUNTIME%"
 mkdir "%RUNTIME%"
@@ -346,6 +348,12 @@ goto :eof
 rem El .ver que viaja al lado del tar.gz es su sha256 (12). Se verifica ANTES de extraer: un
 rem pendrive puede devolver un archivo del tamano exacto y con el contenido podrido, y sin esto
 rem el usuario ve un error crudo de tar que no dice ni que archivo es ni que hacer.
+rem
+rem El resultado se avisa por la VARIABLE %RTERR%, no por ERRORLEVEL: los caminos de exito salen
+rem con `goto :eof`, que NO resetea el ERRORLEVEL, asi que el llamador leia el que hubiera dejado
+rem el comando anterior. En `:ephemeral` ese comando era el `choice` del menu I/M/N (M = 2) y el
+rem launcher abortaba con un pause mudo aunque el runtime estuviera sano (bug real, Windows 11,
+rem 2026-08-07). El camino persistente zafaba de casualidad por el `set` que lo precede.
 :verificar_runtime
 if "%VER%"=="dev" goto :eof
 set "REAL="
@@ -366,8 +374,9 @@ echo   descarga a medias. Volve a copiar runtime-win.tar.gz, o baja de nuevo el 
 echo       https://github.com/hidr4lisk/swarm/releases/latest
 echo   Tus datos NO se tocan: mesas, sillas y boveda viven en data\, aparte del runtime.
 echo.
-rem `exit /b 1` dentro de un `call` NO termina el .bat, solo la subrutina: el que corta es el
-rem `if errorlevel 1 goto fin_error` de cada punto de llamada.
+rem `exit /b` dentro de un `call` NO termina el .bat, solo la subrutina: el que corta es el
+rem `if defined RTERR goto fin_error` de cada punto de llamada.
+set "RTERR=1"
 exit /b 1
 
 :tar_roto
