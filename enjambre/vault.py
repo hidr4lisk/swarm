@@ -20,6 +20,7 @@ Nada de esto loguea jamás el contenido de una key.
 import base64
 import hashlib
 import json
+import time
 import os
 from pathlib import Path
 
@@ -97,25 +98,61 @@ def _decrypt(passphrase):
     return json.loads(data)
 
 
+# ── Freno al brute-force de la passphrase ────────────────────────────────────
+# `unlock`/`verify` se llaman desde un POST sin login humano (Swarm es single-user en
+# 127.0.0.1). El único costo por intento era scrypt (~250-500 ms): freno para un
+# diccionario online, no para un proceso local martillando una passphrase débil.
+# Backoff exponencial en memoria: no persiste a propósito — reiniciar Swarm es algo
+# que hace el dueño, no el atacante remoto, y persistirlo pediría escribir un archivo
+# más al lado de la bóveda.
+_FALLOS_LIBRES = 3          # los primeros intentos no esperan (dedazo del dueño)
+_ESPERA_MAX_S = 30.0
+_fallos = 0
+_bloqueado_hasta = 0.0
+
+
+def _penalizar():
+    global _fallos, _bloqueado_hasta
+    _fallos += 1
+    if _fallos > _FALLOS_LIBRES:
+        espera = min(2.0 ** (_fallos - _FALLOS_LIBRES), _ESPERA_MAX_S)
+        _bloqueado_hasta = time.time() + espera
+
+
+def _limpiar_penalizacion():
+    global _fallos, _bloqueado_hasta
+    _fallos = 0
+    _bloqueado_hasta = 0.0
+
+
+def espera_restante():
+    """Segundos que faltan para poder reintentar (0 si se puede ahora). Para la UI."""
+    return max(0.0, _bloqueado_hasta - time.time())
+
+
 def verify(passphrase):
     """¿La passphrase abre la bóveda? (no escribe runtime)."""
-    if not has_vault():
+    if not has_vault() or espera_restante() > 0:
         return False
     try:
         _decrypt(passphrase)
+        _limpiar_penalizacion()
         return True
     except (InvalidToken, ValueError, KeyError, OSError):
+        _penalizar()
         return False
 
 
 def unlock(passphrase):
     """Descifra y deja los tokens en el runtime 0600 para que el worker los lea. True si abrió."""
-    if not has_vault():
+    if not has_vault() or espera_restante() > 0:
         return False
     try:
         tokens = _decrypt(passphrase)
     except (InvalidToken, ValueError, KeyError, OSError):
+        _penalizar()
         return False
+    _limpiar_penalizacion()
     _write_runtime(tokens)
     return True
 

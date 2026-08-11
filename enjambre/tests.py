@@ -1718,3 +1718,42 @@ class GitDubiousOwnershipTests(TestCase):
     def test_el_toolbelt_tambien(self):
         from .toolbelt import _env
         self.assertEqual(_env()['GIT_CONFIG_KEY_0'], 'safe.directory')
+
+
+class VaultBruteForceTests(TestCase):
+    """Regresión de la auditoría 2026-08: `unlock`/`verify` no tenían ningún freno.
+
+    El único costo por intento era scrypt (~250-500 ms), que frena un diccionario
+    online pero no un proceso local martillando una passphrase débil — y el endpoint
+    es un POST sin login humano.
+    """
+
+    def setUp(self):
+        from enjambre import vault
+        vault._limpiar_penalizacion()
+        self.addCleanup(vault._limpiar_penalizacion)
+
+    def test_los_primeros_fallos_no_penalizan(self):
+        """Un dedazo del dueño no puede dejarlo esperando."""
+        from enjambre import vault
+        for _ in range(vault._FALLOS_LIBRES):
+            vault._penalizar()
+        self.assertEqual(vault.espera_restante(), 0.0)
+
+    def test_backoff_crece_y_tiene_techo(self):
+        from enjambre import vault
+        for _ in range(vault._FALLOS_LIBRES + 1):
+            vault._penalizar()
+        primera = vault.espera_restante()
+        self.assertGreater(primera, 0.0)
+        for _ in range(20):
+            vault._penalizar()
+        self.assertLessEqual(vault.espera_restante(), vault._ESPERA_MAX_S + 1)
+
+    def test_un_acierto_limpia_la_penalizacion(self):
+        from enjambre import vault
+        for _ in range(vault._FALLOS_LIBRES + 2):
+            vault._penalizar()
+        self.assertGreater(vault.espera_restante(), 0.0)
+        vault._limpiar_penalizacion()
+        self.assertEqual(vault.espera_restante(), 0.0)
