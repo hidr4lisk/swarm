@@ -669,6 +669,48 @@ class RutasVedadasTests(TestCase):
         out = _list_dir(str(Path.home() / '.ssh'))
         self.assertIn('⛔', out)
 
+    # ── Regresión de la auditoría 2026-08 ──────────────────────────────────────
+    # Estos tres huecos sobrevivieron a una suite de 148 tests porque ninguno
+    # ejercitaba el CAMINO de `inspect` (`_correr_readonly`): se probaba
+    # `_es_ruta_vedada` en aislamiento y sobre `_list_dir`, y ahí daba verde.
+    # La lección es que hay que testear la puerta, no la cerradura.
+
+    def test_inspect_no_lee_credenciales(self):
+        """`_es_ruta_vedada` protegía read_file/list_dir/write_file pero NO inspect,
+        y con `cat`/`grep` en la allowlist las llaves salían al transcript de la mesa."""
+        from .toolbelt import _correr_readonly
+        for cmd in (f'cat {Path.home()}/.ssh/id_rsa',
+                    f'grep -r . {Path.home()}/.aws',
+                    'cat /etc/shadow'):
+            out, err = _correr_readonly(cmd)
+            self.assertIsNone(out, f'{cmd} devolvió salida')
+            self.assertIn('protegidas', err or '', f'{cmd} no fue bloqueado')
+
+    def test_inspect_no_ejecuta_arbitrario_por_env(self):
+        """`env` estaba en la allowlist read-only: `env sh -c '...'` ejecutaba
+        cualquier cosa, porque el gate sólo mira el basename del PRIMER token."""
+        from .toolbelt import _correr_readonly
+        out, err = _correr_readonly("env sh -c 'id -un'")
+        self.assertIsNone(out)
+        self.assertIn('allowlist', err or '')
+
+    def test_deny_flags_no_se_evaden_con_comillas(self):
+        """El filtro corría sobre el string crudo (`cmd.lower().split()`) mientras el
+        argv se armaba con shlex: `find . '-delete'` pasaba el gate y borraba."""
+        from .toolbelt import _correr_readonly
+        for cmd in ("find . '-delete'", 'find . "-delete"', 'find . -delete'):
+            out, err = _correr_readonly(cmd)
+            self.assertIsNone(out, f'{cmd} devolvió salida')
+            self.assertIn('-delete', err or '', f'{cmd} no fue bloqueado')
+
+    def test_inspect_sigue_sirviendo_para_lo_legitimo(self):
+        """Contrapeso: los fixes no pueden romper el uso normal de la herramienta."""
+        from .toolbelt import _correr_readonly
+        for cmd in ('ls /tmp', 'printenv HOME', 'uname -a'):
+            out, err = _correr_readonly(cmd)
+            self.assertIsNone(err, f'{cmd} quedó bloqueado de más: {err}')
+            self.assertIsNotNone(out)
+
 
 class ReadFilePaginadoTests(TestCase):
     """Mesa 7: un README de 87 KB dejó a la silla a mitad de camino, sin forma de pedir el resto."""

@@ -30,6 +30,22 @@ class Command(BaseCommand):
         host, port = o['host'], o['port']
         url = f'http://{host}:{port}/'
 
+        # La web no tiene login humano: en loopback eso es una decisión de producto
+        # («descomprimir y usar»), pero fuera de loopback significa que cualquiera en
+        # la red es `control` — prende el toolbelt y postea /armar. El README ya avisa
+        # «no la publiques tal cual»; acá el código lo respalda: aviso imposible de
+        # no ver y DEBUG apagado a la fuerza (un traceback publicaría settings y rutas).
+        if host not in ('127.0.0.1', 'localhost', '::1'):
+            from django.conf import settings
+            settings.DEBUG = False
+            self.stderr.write(self.style.WARNING(
+                '\n' + '=' * 70 +
+                f'\n  ⚠️  Estás publicando Swarm en {host}, fuera de loopback.'
+                '\n  NO HAY LOGIN: cualquiera que alcance este puerto puede prender el'
+                '\n  toolbelt y ejecutar comandos en ESTA máquina.'
+                '\n  Usalo solo en una red en la que confíes, y bajalo al terminar.'
+                '\n' + '=' * 70 + '\n'))
+
         # 1) DB al día (crea db.sqlite3 la primera vez).
         self.stdout.write('· Migrando la base…')
         call_command('migrate', interactive=False, verbosity=0)

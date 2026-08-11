@@ -379,8 +379,9 @@ queda junto, versionado y se baja con 📁 → «Descargar todo (.zip)». Si nom
 (`arreglá /etc/nginx/nginx.conf`, `revisá ~/repos/app`) o escribís **`/libre`**, ese turno trabaja
 donde vos dijiste. Se apaga por mesa en la tuerquita («Trabajar en la carpeta de la mesa»).
 
-Sin vueltas sobre qué tan fuerte es: para una silla **por API key** es un freno real (sus
-`write_file`/`apply_fix` pasan por Swarm y se rechazan fuera de la carpeta, avisando en la mesa);
+Sin vueltas sobre qué tan fuerte es: para una silla **por API key**, `write_file` **se rechaza**
+fuera de la carpeta; `apply_fix` corre un comando de shell con el `cwd` puesto ahí y **no se
+rechaza** — si el comando nombra una ruta de afuera, va y la toca, pero **queda anotado en la mesa**;
 para una silla **CLI** es el `cwd` más el encuadre del prompt — su shell alcanza toda la máquina
 igual. **No es una jaula, es prolijidad**: lo que evita es que el trabajo se disperse por el disco
 sin que nadie lo vea. Diagnosticar el equipo (leer logs, `inspect`) nunca queda limitado.

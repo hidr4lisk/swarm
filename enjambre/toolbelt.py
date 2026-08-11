@@ -75,7 +75,10 @@ def _decodificar(b):
 _ALLOW_POSIX = {
     'ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'zgrep', 'find', 'stat', 'file',
     'wc', 'sort', 'uniq', 'cut', 'tr', 'nl', 'tac', 'rev', 'du', 'df', 'free', 'uptime',
-    'uname', 'hostname', 'whoami', 'id', 'groups', 'ps', 'pgrep', 'env', 'printenv', 'date',
+    # ⚠️ `env` NO va acá: `env sh -c '<lo que sea>'` ejecuta arbitrario saltándose el gate
+    # entero, porque sólo se compara el basename del PRIMER token. Para ver el entorno está
+    # `printenv`, que no puede ejecutar nada, y `system_report`.
+    'uname', 'hostname', 'whoami', 'id', 'groups', 'ps', 'pgrep', 'printenv', 'date',
     'cal', 'which', 'whereis', 'type', 'pwd', 'realpath', 'readlink', 'basename', 'dirname',
     'lsblk', 'lscpu', 'lsusb', 'lspci', 'lsmod', 'blkid', 'journalctl', 'dmesg', 'ss', 'netstat',
     'getent', 'host', 'dig', 'nslookup', 'arp', 'w', 'who', 'last', 'vmstat', 'iostat', 'mpstat',
@@ -83,7 +86,12 @@ _ALLOW_POSIX = {
 }
 _ALLOW_WIN = {
     'dir', 'type', 'findstr', 'where', 'tasklist', 'systeminfo', 'ipconfig', 'netstat', 'whoami',
-    'hostname', 'ver', 'vol', 'tree', 'set', 'path', 'fc', 'comp', 'net',  # `net` read-only por convención (net view/user); mutaciones caen en apply_fix
+    'hostname', 'ver', 'vol', 'tree', 'set', 'path', 'fc', 'comp',
+    # ⚠️ `net` SE SACÓ (2026-08-11). Estaba «por convención: net view/user», pero el gate
+    # sólo mira el basename del primer token, nunca el subcomando — así que `net user X /add`,
+    # `net localgroup Administradores X /add`, `net share DATA=C:\` y `net stop WinDefend`
+    # pasaban por inspect como lecturas EJECUTADAS, y quedaban en la bitácora con
+    # es_mutacion=False (sin el aviso 🔧 en la mesa). Las mutaciones van por apply_fix.
 }
 _ALLOW = _ALLOW_WIN if IS_WIN else _ALLOW_POSIX
 
@@ -346,10 +354,23 @@ def _correr_readonly(comando, timeout=INSPECT_TIMEOUT):
     if base not in _ALLOW:
         return None, (f'«{base}» no está en la allowlist de solo-lectura. Para cambiar el sistema '
                       f'usá apply_fix (queda pendiente de aprobación).')
-    low = cmd.lower()
-    for flag in _DENY_FLAGS:
-        if flag in low.split():
-            return None, f'la bandera «{flag}» escribe/ejecuta — no va en inspect; usá apply_fix.'
+    # ⚠️ El deny-list se aplica sobre `parts` (ya post-shlex), NO sobre el string crudo.
+    # Antes era `cmd.lower().split()` (whitespace naive) mientras el argv se armaba con
+    # shlex: cualquier comilla evadía el filtro. `find . '-delete'` PASABA el gate y
+    # borraba archivos; `find / '-exec' cat '{}' ';'` exfiltraba ~/.ssh al transcript.
+    for arg in parts[1:]:
+        if arg.lower() in _DENY_FLAGS:
+            return None, f'la bandera «{arg}» escribe/ejecuta — no va en inspect; usá apply_fix.'
+    # ⚠️ Las rutas vedadas se chequean TAMBIÉN acá. `_es_ruta_vedada` protegía read_file,
+    # list_dir y write_file, pero NO este camino — que es el que ejecuta `inspect`. Con
+    # `cat` y `grep` en la allowlist, `cat ~/.ssh/id_rsa` salía entero al transcript de la
+    # mesa, que es lo que después se comparte o se exporta.
+    for arg in parts[1:]:
+        if arg.startswith('-'):
+            continue
+        if _es_ruta_vedada(arg):
+            return None, (f'«{arg}» está en las rutas protegidas (credenciales, llaves). '
+                          f'No se leen con el toolbelt.')
     try:
         r = subprocess.run(argv, capture_output=True, timeout=timeout, shell=False,
                            env=_env())
@@ -455,18 +476,44 @@ def _list_dir(ruta):
     return f"{p}:\n" + '\n'.join(filas) + extra if filas else f"{p}: (vacío)"
 
 
+def _rutas_de_afuera(comando):
+    """Rutas del comando que caen fuera de la carpeta del turno. Best-effort: parsea con shlex
+    y mira los tokens que parecen rutas. No pretende ser exhaustivo (un comando de shell puede
+    esconder rutas de mil formas) — sirve para que lo evidente quede a la vista en la mesa."""
+    try:
+        partes = shlex.split(comando)
+    except ValueError:
+        return []
+    fuera = []
+    for t in partes:
+        if not (t.startswith('/') or t.startswith('~') or t.startswith('..')):
+            continue
+        if _fuera_de_la_mesa(t) and t not in fuera:
+            fuera.append(t)
+    return fuera[:5]
+
+
 def _correr_mutacion(comando, timeout=APPLY_TIMEOUT, cwd=None):
     """Corre un comando que MUTA el sistema, con shell (el agente escribe pipes/redirecciones).
     Devuelve (salida, rc). Sin allowlist: con el toolbelt encendido el permiso ya está dado —
     el freno es el switch, y el registro es la Bitácora. Ver el bloque de arriba.
 
     `cwd` (la carpeta de la mesa, si el turno la tiene): las rutas RELATIVAS del comando caen ahí
-    en vez de en el cwd del proceso. No encierra nada — una ruta absoluta sigue yendo donde diga."""
+    en vez de en el cwd del proceso. No encierra nada — una ruta absoluta sigue yendo donde diga.
+
+    Por eso, cuando el turno está confinado y el comando nombra rutas de afuera, se ANOTA en la
+    salida. No se bloquea a propósito: el diseño es «prolijidad, no jaula» y hay pedidos legítimos
+    que tocan afuera (`arreglá /etc/nginx/nginx.conf`). Lo que no puede pasar es que se disperse
+    sin que nadie lo vea — que es justo lo que el confinamiento promete evitar."""
+    fuera = _rutas_de_afuera(comando) if cwd else []
     try:
         r = subprocess.run(comando, capture_output=True, timeout=timeout, shell=True,
                            env=_env(),
                            cwd=(str(cwd) if cwd and os.path.isdir(str(cwd)) else None))
         out, err = _decodificar(r.stdout), _decodificar(r.stderr)
+        if fuera:
+            out = ('⚠️ este comando nombra rutas FUERA de la carpeta de la mesa: '
+                   + ', '.join(fuera) + '\n' + out)
         if err.strip():
             out += ('\n[stderr]\n' + err)
         out = out.strip() or '(sin salida)'

@@ -35,8 +35,18 @@ def _resolver_secret_key():
         os.chmod(key_file, 0o600)
         return k
     except OSError:
-        # data/ no escribible (raro): no reventar el arranque, caer al default de dev.
-        return 'django-insecure-swarm-dev-key-cambiame'
+        # data/ no escribible: pendrive read-only, exFAT con error, bind-mount RO.
+        # ANTES caía a un literal hardcodeado — la MISMA clave en todas las
+        # instalaciones que llegaran acá, y publicada en el repo. Ahora se genera
+        # una al vuelo en memoria: invalida las sesiones en cada arranque (molesto,
+        # pero visible), en vez de firmarlas con una clave que cualquiera conoce.
+        import sys
+        from django.core.management.utils import get_random_secret_key
+        print('[swarm] AVISO: no pude guardar la clave de firma en data/ '
+              '(¿medio de solo lectura?). Uso una efímera: vas a tener que volver '
+              'a entrar cada vez que arranque. Seteá SWARM_SECRET_KEY para fijarla.',
+              file=sys.stderr)
+        return get_random_secret_key()
 
 
 SECRET_KEY = _resolver_secret_key()

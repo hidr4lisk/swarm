@@ -137,7 +137,12 @@ TRIGGER_LIBRE = '/libre'                       # este turno NO se ordena en la c
 # Rutas absolutas que el humano puede nombrar en su pedido (POSIX, `~/…` y Windows). Piden al
 # menos DOS tramos para no confundir un comando de mesa («/armar») con una ruta.
 RUTA_RE = re.compile(r'(?:~|(?:[A-Za-z]:[\\/]))[\w .\-]+[\\/][\w .\-]+'
-                     r'|/[\w.\-]+(?:/[\w .\-]+)+')
+                     r'|/[\w.\-]+(?:/[\w .\-]+)+'
+                     # UNC de Windows (\\servidor\recurso\...). Sin esto, un pedido como
+                     # «arreglá \\FS01\web\config\nginx.conf» NO se detectaba como ruta
+                     # absoluta: el turno quedaba "ordenado" y el trabajo aterrizaba en la
+                     # carpeta de la mesa, ignorando el pedido explícito y sin avisar.
+                     r'|\\\\[\w.\-]+\\[\w .\-]+(?:\\[\w .\-]+)*')
 
 # Centinela de _comando_control: "este texto NO era un comando de control, seguí con build/charla".
 # Se distingue de {} (resultado vacío legítimo de un comando ya manejado, ej. /alto).

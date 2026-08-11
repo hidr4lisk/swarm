@@ -138,9 +138,24 @@ def get_key(provider):
 
 
 # ── Escritura ────────────────────────────────────────────────────────────────
+def _escribir_atomico(destino, contenido):
+    """Escribe a un temporal y renombra. `Path.write_text()` es truncate-then-write:
+    una interrupción a mitad (pendrive tironeado, corte de luz, cuelgue del SO) deja
+    el archivo truncado o vacío. En el vault eso significa que `unlock()` falla en el
+    próximo arranque y se pierden TODAS las API keys, sin diagnóstico — y el caso de
+    uso nominal de este producto es justamente un pendrive exFAT sin journaling.
+
+    `os.replace` es atómico dentro del mismo filesystem: o queda el archivo viejo
+    entero, o el nuevo entero. Mismo patrón que ya usa ratelimit.py::_sellar_archivo.
+    """
+    tmp = destino.with_suffix(destino.suffix + '.tmp')
+    tmp.write_text(contenido)
+    os.replace(tmp, destino)
+
+
 def _write_runtime(tokens):
     p = _runtime_path()
-    p.write_text(json.dumps(tokens))
+    _escribir_atomico(p, json.dumps(tokens))
     try:
         os.chmod(p, 0o600)
     except OSError:
@@ -153,7 +168,8 @@ def _write_vault(passphrase, tokens, salt):
     meta = {'salt': base64.b64encode(salt).decode(),
             'providers': sorted(tokens.keys()),
             'blob': blob}
-    _vault_path().write_text(json.dumps(meta))
+    # Atómico a propósito: acá viven TODAS las API keys del usuario y no hay copia.
+    _escribir_atomico(_vault_path(), json.dumps(meta))
 
 
 def set_key(passphrase, provider, token):
