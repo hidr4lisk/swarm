@@ -1,0 +1,325 @@
+/* ============================================================================
+ * hidra landing-kit — la piel común de los 6 proyectos + el index de hidralisk
+ *
+ * FUENTE DE VERDAD: este archivo, en el repo hidralisk.
+ * Se distribuye a los 6 repos de landing con `scripts/sync-landings.sh`
+ * (copia, no symlink: cada sitio es GitHub Pages y tiene que bastarse solo).
+ * Después de editar acá: correr el sync, o `--check` para ver drift.
+ *
+ * QUÉ RESUELVE
+ *   Los 6 sitios comparten el mismo chasis (top-bar, gov-banner, tool-select,
+ *   lang-toggle, module-nav, glitch-overlay) pero se construyen de tres maneras
+ *   distintas —Tailwind con build (shield, tech), CSS plano (warp), CSS inline
+ *   (pentool, swarm, hidralisk-os)— y con DOS dialectos de tokens distintos.
+ *   Este kit define los tokens una sola vez y **aliasa los dos dialectos**, así
+ *   ningún sitio tiene que reescribir su CSS: alcanza con borrar su `:root` y
+ *   cargar este archivo antes que el suyo.
+ *
+ * REGISTRO VISUAL — «plano de ingeniería», no «terminal»
+ *   Fondo papel, tinta azul de plano, monoespaciada, filetes finos en vez de
+ *   glows. El azul es el `--accent-color` del tema Inverse de hidralisk, que es
+ *   literalmente azul de plano técnico. El efecto de arranque no se tira: el
+ *   RGB split deja de leerse como aberración de CRT y pasa a leerse como error
+ *   de registro de impresión — mismo DOM, mismos tiempos, otra lectura.
+ *
+ * ⚠️ NUNCA `rgba(var(--x-rgb), .N)`: los tokens `-rgb` van con componentes
+ *    separados por espacio y CSS no deja mezclar eso con el alpha por coma —
+ *    el navegador descarta la declaración entera y el fondo queda invisible.
+ *    Va `rgb(var(--x-rgb) / .N)`. Ese error dejó 118 fondos muertos en GECC.
+ * ========================================================================= */
+
+/* ── Fuentes self-hosted ────────────────────────────────────────────────────
+ * shield, tech y warp las cargaban desde Google Fonts por CDN, contra la regla
+ * de cero CDN externo (supply-chain + privacidad). Acá viajan con el sitio.
+ * Subset latino, las mismas cuatro que ya usa hidralisk.                     */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('fonts/inter-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('fonts/jetbrains-mono-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Major Mono Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/major-mono-display-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/vt323-latin.woff2') format('woff2');
+}
+
+:root {
+  /* ── Canónicos ────────────────────────────────────────────────────────────
+   * Valores del tema Inverse de hidralisk (hidra.css, [data-theme="inverse"]).
+   * Todo lo demás en este archivo se deriva de acá.                          */
+  --hk-paper:      #f4f5f7;   /* fondo: papel */
+  --hk-surface:    #ffffff;   /* hoja */
+  --hk-surface-2:  #eef1f5;   /* hoja levantada / zebra */
+  --hk-ink:        #0d0f12;   /* tinta principal */
+  --hk-ink-soft:   #3d4652;
+  --hk-ink-muted:  #5a6470;
+  /* ⚠️ `--hk-ink-faint` es el piso de lo LEGIBLE, no de lo decorativo. Estos
+     sitios usan `--text-disabled` para texto atenuado pero con significado
+     (versión del release, notas de build), no para controles apagados. Con
+     #b6bec9 la línea de versión de hidralisk-os quedaba en ~1.6:1 y no se leía
+     (verificado con captura). #7c8797 sobre el papel da ~3.9:1. */
+  --hk-ink-faint:  #7c8797;
+  --hk-ink-ghost:  #a3adba;   /* separadores y ghosts REALES, no texto */
+
+  --hk-blue:       #3b6fb5;   /* azul de plano — el acento */
+  --hk-blue-rgb:   59 111 181;
+  --hk-blue-deep:  #2f5a93;
+  --hk-blue-wash:  rgb(59 111 181 / .08);
+  --hk-blue-edge:  rgb(59 111 181 / .18);
+  --hk-blue-rule:  rgb(59 111 181 / .32);
+  --hk-on-blue:    #ffffff;
+
+  --hk-danger:     #dc2626;
+  --hk-danger-rgb: 220 38 38;
+  --hk-warning:    #b45309;
+  --hk-success:    #15803d;
+
+  --hk-font-mono:    'JetBrains Mono', 'SF Mono', Consolas, ui-monospace, monospace;
+  --hk-font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  --hk-font-display: 'Major Mono Display', 'JetBrains Mono', monospace;
+  --hk-font-pixel:   'VT323', 'JetBrains Mono', monospace;
+
+  /* Filetes en vez de glows. En claro un glow no se ve o se ve como mugre;
+     lo que da precisión de plano técnico es el borde nítido. */
+  --hk-rule:       0 0 0 1px var(--hk-blue-edge);
+  --hk-rule-strong: 0 0 0 1px var(--hk-blue-rule);
+  --hk-lift:       0 1px 2px rgb(13 15 18 / .04), 0 4px 12px rgb(13 15 18 / .06);
+
+  /* ── Alias · dialecto A (shield, tech, warp) ─────────────────────────────── */
+  --bg-base:        var(--hk-paper);
+  --bg-surface:     var(--hk-surface);
+  --bg-elevated:    var(--hk-surface-2);
+  --border-subtle:  var(--hk-blue-wash);
+  --border-default: var(--hk-blue-edge);
+  --border-strong:  var(--hk-blue-rule);
+  --text-primary:   var(--hk-ink);
+  --text-secondary: var(--hk-ink-muted);
+  --text-tertiary:  var(--hk-ink-faint);
+  --text-disabled:  var(--hk-ink-faint);  /* ver la nota de --hk-ink-faint */
+  --accent:         var(--hk-blue);
+  --accent-dim:     var(--hk-blue-deep);
+  --accent-glow:    var(--hk-blue-edge);
+  --accent-soft:    var(--hk-blue-wash);
+  --danger:         var(--hk-danger);
+  --danger-glow:    rgb(var(--hk-danger-rgb) / .22);
+  --danger-soft:    rgb(var(--hk-danger-rgb) / .07);
+  --info:           var(--hk-blue-deep);
+  --font-display:   var(--hk-font-display);
+  --font-mono:      var(--hk-font-mono);
+  --font-body:      var(--hk-font-body);
+  --glow-accent:    var(--hk-rule-strong), var(--hk-lift);
+  --glow-soft:      var(--hk-lift);
+
+  /* ── Alias · dialecto B (pentool, swarm, hidralisk-os) ───────────────────── */
+  --bg:             var(--hk-paper);
+  --surface:        var(--hk-surface);
+  --surface2:       var(--hk-surface-2);
+  --border:         var(--hk-blue-edge);
+  --text:           var(--hk-ink);
+  --text-soft:      var(--hk-ink-soft);
+  --text-dim:       var(--hk-ink-muted);
+  --font:           var(--hk-font-mono);
+  --nav-accent:     var(--hk-blue);
+  --amber:          var(--hk-warning);
+  --green:          var(--hk-success);
+  --orange:         var(--hk-warning);
+  --red:            var(--hk-danger);
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+html { background: var(--hk-paper); }
+
+/* El papel de plano: retícula azul muy tenue, 32px. Es la textura de la familia
+   —lo que hace que las seis páginas se lean como hojas del mismo legajo— y
+   reemplaza a los recursos que cada sitio tenía para lo mismo en oscuro (la
+   grilla blanca de warp, las scanlines permanentes). Al 3,5% no compite con
+   nada; a 32px coincide con la escala de espaciado que ya usan. */
+body {
+  background-color: var(--hk-paper);
+  background-image:
+    linear-gradient(rgb(var(--hk-blue-rgb) / .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--hk-blue-rgb) / .035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--hk-ink);
+  font-family: var(--hk-font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--hk-blue); color: var(--hk-on-blue); }
+
+:focus-visible {
+  outline: 2px solid var(--hk-blue);
+  outline-offset: 2px;
+}
+
+/* Barras de scroll: hairline, no barra oscura. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--hk-paper); }
+::-webkit-scrollbar-thumb {
+  background: var(--hk-blue-edge);
+  border: 3px solid var(--hk-paper);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--hk-blue-rule); }
+
+/* ── El efecto firma: error de registro de impresión ──────────────────────
+ * Mismo `#glitch-overlay` de siempre, misma duración, misma salida.
+ * Antes: barrido de scanlines oscuras sobre negro (CRT).
+ * Ahora: el rayado fino del papel de plano + una pasada de plotter.        */
+
+#glitch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  animation: hk-registro-out 1.6s ease-out forwards;
+}
+
+/* El rayado del papel técnico: hairlines azules, no barras negras. */
+#glitch-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(to bottom,
+      rgb(var(--hk-blue-rgb) / .07) 0 1px,
+      transparent 1px 4px),
+    repeating-linear-gradient(to right,
+      rgb(var(--hk-blue-rgb) / .05) 0 1px,
+      transparent 1px 4px);
+}
+
+/* La pasada del plotter: una sola línea que recorre la hoja y se va. */
+#glitch-overlay::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--hk-blue);
+  opacity: .9;
+  box-shadow: 0 0 0 1px rgb(var(--hk-blue-rgb) / .15);
+  animation: hk-plotter 1.6s cubic-bezier(.16, 1, .3, 1) forwards;
+}
+
+@keyframes hk-plotter {
+  0%   { top: 0;    opacity: 0; }
+  8%   { opacity: .9; }
+  92%  { opacity: .9; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes hk-registro-out {
+  0%, 70% { opacity: 1; }
+  100%    { opacity: 0; visibility: hidden; }
+}
+
+/* El desregistro de color del título: separación mínima de planchas, no
+   aberración de CRT. Se aplica sola en quien ya use `.title-glitch`. */
+@keyframes title-glitch {
+  0%, 100% { text-shadow: none; transform: translateX(0); }
+  20%  { text-shadow: -1px 0 rgb(var(--hk-danger-rgb) / .5), 1px 0 rgb(var(--hk-blue-rgb) / .5); }
+  40%  { text-shadow:  1px 0 rgb(var(--hk-danger-rgb) / .4), -1px 0 rgb(var(--hk-blue-rgb) / .4); transform: translateX(.5px); }
+  60%  { text-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #glitch-overlay { display: none; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ── Chasis compartido ────────────────────────────────────────────────────
+ * Sólo lo que los 6 sitios tienen en común. Cada sitio conserva su layout
+ * propio; esto fija la piel para que se lean como la misma máquina.        */
+
+.top-bar {
+  background: var(--hk-surface);
+  border-bottom: 1px solid var(--hk-blue-edge);
+  color: var(--hk-ink-muted);
+}
+
+.tool-select {
+  background: var(--hk-surface);
+  color: var(--hk-blue);
+  border: 1px solid var(--hk-blue-edge);
+  font-family: var(--hk-font-mono);
+}
+.tool-select:hover { border-color: var(--hk-blue-rule); }
+
+.gov-banner { color: var(--hk-ink-muted); }
+.gov-stars  { color: var(--hk-warning); }
+
+.lang-btn {
+  background: transparent;
+  color: var(--hk-ink-faint);
+  border: 0;
+  font-family: var(--hk-font-mono);
+  cursor: pointer;
+}
+.lang-btn:hover { color: var(--hk-blue); }
+.lang-btn.active { color: var(--hk-blue); font-weight: 700; }
+.lang-sep { color: var(--hk-ink-ghost); }
+
+.module-nav {
+  background: var(--hk-surface);
+  border-bottom: 1px solid var(--hk-blue-edge);
+}
+.module-nav__item { color: var(--hk-ink-muted); }
+.module-nav__item:hover { color: var(--hk-blue); }
+.module-nav__item.active { color: var(--hk-blue); }
+.module-nav__num,
+.vt323 { font-family: var(--hk-font-pixel); color: var(--hk-blue); }
+
+.skip-link {
+  background: var(--hk-blue);
+  color: var(--hk-on-blue);
+}
+
+/* ── Superficies que asumían fondo oscuro ─────────────────────────────────
+ * Estos sitios nacieron en oscuro y algunos "pozos" están escritos como
+ * `rgba(0,0,0,.3-.4)` en vez de con un token. Sobre papel eso no da un pozo:
+ * da un gris sucio, y un input se lee como deshabilitado (verificado con
+ * captura en shield antes de este bloque). Se corrigen acá, en el kit, para
+ * que valga en los seis sitios y no haya que tocarles el CSS.               */
+
+.cyber-input,
+.m3-phrase-wrap {
+  background: var(--hk-surface);
+  border-color: var(--hk-blue-edge);
+}
+
+.cyber-input {
+  color: var(--hk-ink);
+  box-shadow: inset 0 1px 2px rgb(13 15 18 / .04);
+}
+.cyber-input::placeholder { color: var(--hk-ink-faint); }
+.cyber-input:focus {
+  border-color: var(--hk-blue);
+  box-shadow: 0 0 0 2px var(--hk-blue-wash);
+}
+
+.m3-phrase-wrap { border-left-color: var(--hk-blue); }
