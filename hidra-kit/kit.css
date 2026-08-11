@@ -263,10 +263,19 @@ body {
 }
 
 .tool-select {
-  background: var(--hk-surface);
+  /* ⚠️ `background-color`, NO `background`: el shorthand borra el background-image,
+     que es la flechita ▾ del desplegable (el `appearance: none` mata la nativa). */
+  background-color: var(--hk-surface);
   color: var(--hk-blue);
   border: 1px solid var(--hk-blue-edge);
   font-family: var(--hk-font-mono);
+  /* La flecha viene como SVG embebido con el color del tema VIEJO (#98B4A6, el verde
+     grisáceo de matrix) hardcodeado en los 7 sitios. Sobre papel casi no se ve: el
+     desplegable parecía no tener flecha. Se repinta acá, en tinta azul, una sola vez
+     para toda la familia. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%233b6fb5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
 .tool-select:hover { border-color: var(--hk-blue-rule); }
 
