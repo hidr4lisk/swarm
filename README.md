@@ -128,6 +128,12 @@ Swarm is **single-user, on your machine**. No sugarcoating:
 - Anything the seats build with `/armar` lands in the mesa's own git folder; anything they do
   with the **toolbelt** lands on the real machine. Read the two sections below before flipping
   that switch.
+- **When a turn times out, Swarm kills the CLI and everything it spawned** — including
+  processes that escaped into their own session (opencode runs each toolbelt command that
+  way). It finds them by a per-turn marker in the environment they inherited, so it never
+  touches a process that isn't a descendant of the seat it launched. Without this, a turn
+  that timed out could **hang the worker forever**: the grandchildren keep the pipes open.
+  On Linux the sweep is complete; on Windows only the child tree is killed.
 
 **API-key vault.** When you run sillas by **API key** instead of a CLI,
 Swarm has to keep the keys — so it stores them **encrypted with a passphrase you choose**.
@@ -316,6 +322,12 @@ Swarm es **single-user en tu máquina**. Dicho sin vueltas:
 - Lo que las sillas fabrican con `/armar` queda en la carpeta git de la mesa; lo que hacen con
   el **toolbelt** cae sobre la máquina real. Leé las dos secciones de abajo antes de prender
   ese switch.
+- **Cuando un turno vence, Swarm mata al CLI y a todo lo que haya lanzado** — incluidos los
+  procesos que se hicieron sesión propia (opencode corre así cada comando de su toolbelt). Los
+  reconoce por una marca del turno en el entorno que heredaron, así que nunca toca un proceso
+  que no sea descendiente de la silla que arrancó. Sin esto, un turno vencido podía **colgar el
+  worker para siempre**: los nietos mantienen las pipes abiertas. En Linux el barrido es
+  completo; en Windows se mata solo el árbol de hijos.
 
 **Bóveda de API keys (ruta portátil).** Cuando corrés sillas por **API key** en vez de un
 CLI, Swarm tiene que guardar las keys — así que las guarda **cifradas con una passphrase que

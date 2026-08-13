@@ -2208,3 +2208,13 @@ msgstr "You didn't upload any file."
 msgid ""
 "Config importada: %(n)s nueva(s), %(a)s actualizada(s), %(b)s borrada(s)."
 msgstr "Config imported: %(n)s new, %(a)s updated, %(b)s deleted."
+
+#: enjambre/ayuda.html:0
+msgid ""
+"Si el login <strong>se vence</strong> mientras usás la mesa, la silla lo\n"
+"                dice con todas las letras y te deja el comando exacto para volver a loguearte — antes\n"
+"                quedaba muda y parecía un error de Swarm."
+msgstr ""
+"If your login <strong>expires</strong> mid-table, the seat says so in plain "
+"words and hands you the exact command to log back in — it used to just go "
+"quiet, which looked like a Swarm bug."
