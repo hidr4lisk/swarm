@@ -14,9 +14,11 @@ Sin mocks de red ni servicios externos: los CLIs no se invocan (se prueban los c
 de error, que son los nuestros); git sí se usa de verdad sobre un tmpdir.
 """
 import json
+import os
 import re
 import subprocess
 import tempfile
+import unittest
 from pathlib import Path
 from unittest import mock
 
@@ -28,12 +30,25 @@ from django.utils import translation
 from .clientes import build_comando
 from . import conexiones as conexiones_mod
 from .conexiones import detectar, resolver_bin, ruta_corta
+from . import engine as engine_mod
 from .engine import (
     Enjambre, ejecutar_cli, ejecutar_http, es_ruido, limpiar_salida, parse_comando,
 )
 from .models import Accion, Mensaje, Participante, Sesion
 from . import toolbelt as toolbelt_mod
 from .workspace import mesa_workspace
+
+
+def proceso_falso(stdout='', stderr='', returncode=0, timeout=False):
+    """Doble del `Popen` del CLI. `timeout=True` hace que el primer `communicate()` venza (el
+    segundo, el que drena las pipes del muerto, devuelve normal — igual que el real)."""
+    proc = mock.Mock(pid=4242, returncode=returncode)
+    if timeout:
+        proc.communicate.side_effect = [
+            subprocess.TimeoutExpired(cmd='cli', timeout=1), (stdout, stderr)]
+    else:
+        proc.communicate.return_value = (stdout, stderr)
+    return proc
 
 
 class EsRuidoTests(TestCase):
@@ -104,7 +119,7 @@ class LimpiarSalidaTests(TestCase):
         # llegar a la mesa como marcador de ruido, no como excepción.
         p = Participante.objects.create(key='sin-cli', nombre='Pelado',
                                         comando=['binario-que-no-existe', '-p'])
-        with mock.patch('enjambre.engine.subprocess.run', side_effect=FileNotFoundError()):
+        with mock.patch('enjambre.engine.subprocess.Popen', side_effect=FileNotFoundError()):
             salida, ruido = ejecutar_cli(p, 'hola', timeout=5)
         self.assertTrue(ruido)
         self.assertIn('no instalado', salida)
@@ -1422,15 +1437,16 @@ class ModoMaquinaCliTests(TestCase):
     @staticmethod
     def _parche_cli(salida):
         """Intercepta SOLO la invocación del CLI. `subprocess` es un módulo compartido, así que
-        parchear `run` a secas también se come los `git` del workspace (y `git init` explota con
-        un Mock por returncode). Este side_effect deja pasar git al subprocess real."""
-        real = subprocess.run
+        parchear `Popen` a secas también se come los `git` del workspace (`subprocess.run` de git
+        termina en el mismo Popen, y `git init` explota con un Mock por returncode). Este
+        side_effect deja pasar git al subprocess real."""
+        real = subprocess.Popen
 
         def dispatch(argv, *a, **kw):
             if argv and 'git' in str(argv[0]):
                 return real(argv, *a, **kw)
-            return mock.Mock(stdout=salida, stderr='', returncode=0)
-        return mock.patch('enjambre.engine.subprocess.run', side_effect=dispatch)
+            return proceso_falso(salida)
+        return mock.patch('enjambre.engine.subprocess.Popen', side_effect=dispatch)
 
     def _correr(self, salida='listo: miré /etc/fstab y no toqué nada', pedido='revisá el disco'):
         """Corre un turno interceptando el CLI. Devuelve la llamada del CLI (no la de git: el
@@ -1709,10 +1725,10 @@ class GitDubiousOwnershipTests(TestCase):
         """La silla corre git por su cuenta dentro de la carpeta de la mesa (status, diff…)."""
         from .engine import ejecutar_cli
         p = Participante.objects.create(key='oc', nombre='OC', comando=['opencode', 'run'])
-        with mock.patch('enjambre.engine.subprocess.run') as run:
-            run.return_value = mock.Mock(returncode=0, stdout='ok', stderr='')
+        with mock.patch('enjambre.engine.subprocess.Popen') as popen:
+            popen.return_value = proceso_falso('ok')
             ejecutar_cli(p, 'hola', 30)
-        env = run.call_args.kwargs['env']
+        env = popen.call_args.kwargs['env']
         self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')
 
     def test_el_toolbelt_tambien(self):
@@ -1757,3 +1773,187 @@ class VaultBruteForceTests(TestCase):
         self.assertGreater(vault.espera_restante(), 0.0)
         vault._limpiar_penalizacion()
         self.assertEqual(vault.espera_restante(), 0.0)
+
+
+class DispatchCliTests(TestCase):
+    """Lo que rodea a la invocación del CLI: config impuesta, estado aislado, muerte del árbol
+    al vencer el turno y credencial vencida. Portado del Enjambre de hidralisk (2026-08-12),
+    donde estas cuatro cosas se pagaron caras en producción."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = override_settings(ENJAMBRE_MESAS_DIR=str(Path(tmp.name) / 'mesas'))
+        p.enable()
+        self.addCleanup(p.disable)
+        self.oc = Participante.objects.create(key='oc', nombre='OC', comando=['opencode', 'run'])
+
+    @staticmethod
+    def _correr(participante, proc, prompt='hola', timeout=30):
+        with mock.patch('enjambre.engine.subprocess.Popen', return_value=proc) as popen:
+            salida, ruido = ejecutar_cli(participante, prompt, timeout)
+        return salida, ruido, popen.call_args
+
+    def test_opencode_corre_con_el_agente_title_apagado(self):
+        """El `title` interno de opencode usa `small_model`, que por default NO es free: era una
+        llamada paga fallida por turno y por silla. Se apaga; NO se le da un modelo free (eso
+        duplicaría el consumo de la cuota gratuita, que es el recurso escaso)."""
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        cfg = json.loads(call.kwargs['env']['OPENCODE_CONFIG_CONTENT'])
+        self.assertIs(cfg['agent']['title']['disable'], True)
+        self.assertNotIn('small_model', cfg)
+
+    def test_el_estado_de_opencode_no_se_comparte_entre_sillas(self):
+        """Sin XDG propio, las sillas comparten la SQLite de opencode y su lock: una matada por
+        timeout deja el lock tomado y cuelga a la siguiente."""
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        env = call.kwargs['env']
+        dirs = {env['XDG_DATA_HOME'], env['XDG_STATE_HOME'], env['XDG_CACHE_HOME']}
+        self.assertEqual(len(dirs), 3)                       # tres carpetas distintas
+        for d in dirs:
+            self.assertIn('cli-oc-', d)                      # y propias de ESTA silla
+
+    def test_la_carpeta_efimera_se_borra_al_terminar_el_turno(self):
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        self.assertFalse(Path(call.kwargs['env']['XDG_DATA_HOME']).parent.exists())
+
+    def test_una_silla_que_no_es_opencode_no_recibe_su_config(self):
+        cl = Participante.objects.create(key='cl', nombre='CL', comando=['claude', '-p'])
+        # `ejecutar_cli` arranca con `os.environ.copy()`: si la suite corre DENTRO de una silla
+        # opencode (el caso de la mesa en vivo), el ambiente ya trae OPENCODE_CONFIG_CONTENT y las
+        # XDG de `_env_opencode` y el assert fallaría por contaminación, no por el motor. El test
+        # limpia el ambiente heredado y verifica que el motor NO lo vuelve a meter para claude.
+        with mock.patch.dict(os.environ, {}, clear=False) as env:
+            env.pop('OPENCODE_CONFIG_CONTENT', None)
+            env.pop('XDG_DATA_HOME', None)
+            env.pop('XDG_STATE_HOME', None)
+            env.pop('XDG_CACHE_HOME', None)
+            _s, _r, call = self._correr(cl, proceso_falso('ok'))
+        self.assertNotIn('OPENCODE_CONFIG_CONTENT', call.kwargs['env'])
+
+    def test_al_vencer_el_turno_se_mata_el_arbol_y_no_solo_el_hijo(self):
+        """`Popen.kill()` deja vivos a los nietos (los CLIs son Node/Bun y paren shells/LSP):
+        siguen quemando cuota con la mesa dándolos por muertos."""
+        proc = proceso_falso(timeout=True)
+        with mock.patch('enjambre.engine._matar_arbol') as matar:
+            salida, ruido, _c = self._correr(self.oc, proc)
+        matar.assert_called_once()
+        self.assertIs(matar.call_args.args[0], proc)
+        self.assertTrue(matar.call_args.args[1])   # y con la marca del turno, para el barrido
+        self.assertIn('timeout', salida)
+        self.assertTrue(ruido)
+
+    def test_matar_arbol_usa_el_grupo_de_procesos_en_posix(self):
+        proc = mock.Mock(pid=4242)
+        with mock.patch('enjambre.engine.os.name', 'posix'), \
+             mock.patch('enjambre.engine.os.killpg') as killpg:
+            engine_mod._matar_arbol(proc)
+        killpg.assert_called_once()
+        self.assertEqual(killpg.call_args.args[0], 4242)
+
+    def test_credencial_vencida_dice_como_re_loguear(self):
+        """Sin esto la silla contesta «(sin respuesta)» y el humano no tiene cómo saber que lo
+        único que pasa es que hay que re-loguear el CLI."""
+        proc = proceso_falso('', 'Error: oauth token has expired')
+        salida, ruido, _c = self._correr(self.oc, proc)
+        self.assertTrue(ruido)
+        self.assertIn('opencode auth login', salida)
+
+    def test_una_mesa_que_habla_de_401_no_se_marca_como_credencial_vencida(self):
+        """Una mesa de pentesting menciona 401/unauthorized legítimamente: por eso los markers
+        son frases de auth de CLI y no esas dos palabras sueltas."""
+        salida, _r, _c = self._correr(
+            self.oc, proceso_falso('El endpoint devuelve 401 unauthorized sin el token'))
+        self.assertNotIn('auth login', salida)
+
+    def test_la_silla_arranca_sin_heredar_el_stdin_del_server(self):
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        self.assertEqual(call.kwargs['stdin'], subprocess.DEVNULL)
+
+
+@unittest.skipUnless(os.name != 'nt' and Path('/proc').is_dir(),
+                     'el barrido por marca es de Linux (lee /proc)')
+class TurnoVencidoNoDejaProcesosVivosTests(TestCase):
+    """Integración de verdad (sin mocks del subprocess): una silla falsa que deja hijos largos.
+
+    Uno queda en el grupo del CLI y otro se hace **sesión propia** con `setsid` — que es lo que
+    hace opencode con cada comando de su toolbelt (verificado en jarvis: sus hijos quedan con
+    ppid=1 y pgid propio, así que matar el grupo NO los alcanza).
+
+    Sin el matar completo esto no deja basura: **cuelga el turno para siempre**, porque los nietos
+    heredan las pipes y el `communicate()` posterior al kill espera a que se cierren.
+    """
+
+    GUION = 'sleep 60 & setsid sleep 60 & sleep 60'
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = override_settings(ENJAMBRE_MESAS_DIR=str(Path(tmp.name) / 'mesas'))
+        p.enable()
+        self.addCleanup(p.disable)
+
+    @staticmethod
+    def _vivos_con_marca(marca):
+        objetivo = f'SWARM_TURNO_ID={marca}'.encode()
+        pids = []
+        for entry in os.scandir('/proc'):
+            if not entry.name.isdigit():
+                continue
+            try:
+                with open(f'/proc/{entry.name}/environ', 'rb') as fh:
+                    if objetivo in fh.read():
+                        pids.append(int(entry.name))
+            except OSError:
+                continue
+        return pids
+
+    def test_no_sobrevive_ni_el_que_se_hizo_sesion_propia(self):
+        p = Participante.objects.create(key='falsa', nombre='Falsa',
+                                        comando=['bash', '-c', self.GUION])
+        marca = {}
+        real = subprocess.Popen
+
+        def espiar(*a, **kw):
+            marca['id'] = kw['env']['SWARM_TURNO_ID']
+            return real(*a, **kw)
+
+        with mock.patch('enjambre.engine.subprocess.Popen', side_effect=espiar):
+            salida, ruido = ejecutar_cli(p, 'ignorado', timeout=2)
+        self.assertIn('timeout', salida)
+        self.assertTrue(ruido)
+        sobrevivientes = self._vivos_con_marca(marca['id'])
+        for pid in sobrevivientes:          # que un fallo no deje procesos colgados en la máquina
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+        self.assertEqual(sobrevivientes, [])
+
+
+class ModeloConFormaDeFlagTests(TestCase):
+    """`modelo` es texto libre de un POST y termina en argv después de `--model`. Por argv no
+    puede inyectar comandos; lo que sí puede es hacerse pasar por una OPCIÓN del CLI."""
+
+    def test_un_modelo_que_parece_flag_se_descarta(self):
+        cmd, cmdt = build_comando('opencode', '--dangerously-skip-permissions')
+        self.assertNotIn('--dangerously-skip-permissions', cmd + cmdt)
+        self.assertNotIn('--model', cmd + cmdt)
+
+    def test_un_modelo_con_espacios_y_parentesis_sigue_pasando(self):
+        """Los modelos de `agy` son así: un filtro por charset los rompería."""
+        cmd, _t = build_comando('agy', 'Claude Sonnet 4.6 (Thinking)')
+        self.assertIn('Claude Sonnet 4.6 (Thinking)', cmd)
+
+
+class AnclaTemporalTests(TestCase):
+    """Sin fecha en el prompt la silla asume su fecha de entrenamiento y razona sobre
+    versiones/actualidad como si estuviera en un año anterior."""
+
+    def test_el_prompt_lleva_la_fecha_de_hoy(self):
+        from django.utils import timezone
+        s = Sesion.objects.create(nombre='t')
+        p = Participante.objects.create(key='oc2', nombre='OC', comando=['opencode', 'run'])
+        prompt = Enjambre(s).construir_prompt(p, 'hola')
+        self.assertIn('UBICACIÓN TEMPORAL', prompt)
+        self.assertIn(str(timezone.localtime(timezone.now()).year), prompt)

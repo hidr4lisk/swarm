@@ -37,13 +37,15 @@ CLIENTES = {
         'model_flag': '--model',
         'modelos': [
             '',
-            # Free (verificados)
+            # Free (verificados contra `opencode models` 2026-08-12). Señal fiable de free en
+            # opencode = sufijo `-free`; big-pickle es el único confirmado free sin sufijo.
             'opencode/big-pickle',
             'opencode/deepseek-v4-flash-free',
-            'opencode/nemotron-3-super-free',
             'opencode/mimo-v2.5-free',
-            'opencode/grok-build-0.1',
+            'opencode/nemotron-3-ultra-free',
+            'opencode/hy3-free',
             # Populares (pagos por la key de Zen)
+            'opencode/grok-build-0.1',
             'opencode/claude-sonnet-4-6',
             'opencode/claude-opus-4-8',
             'opencode/gpt-5.2',
@@ -177,6 +179,15 @@ def build_comando(cliente, modelo):
     cmd = list(c['comando'])
     # Los proveedores API no fabrican por CLI → si no traen comando_trabajo, cae a `comando`.
     cmdt = list(c.get('comando_trabajo') or c['comando'])
+    # ⚠️ `modelo` es texto libre de un POST y termina como elemento de argv después de
+    # `--model`. Al ir por argv (shell=False) NO puede inyectar comandos, así que lo único
+    # que hay que frenar es que tenga forma de FLAG: un valor como
+    # `--dangerously-skip-permissions` lo puede tomar el parser del CLI como opción propia
+    # en vez de como el valor de `--model`.
+    # ⚠️ NO se filtra por charset: los modelos de `agy` llevan espacios y paréntesis
+    # («Claude Sonnet 4.6 (Thinking)») y un filtro alfanumérico los rompería.
+    if modelo and str(modelo).lstrip().startswith('-'):
+        modelo = None
     if c.get('model_flag') and modelo:
         flag = [c['model_flag'], modelo]
         if cliente == 'agy':
@@ -223,7 +234,11 @@ PRECIOS_POR_MODELO = (
     ('grok',     (3.0, 15.0)),
 )
 # Modelos GRATIS de opencode/Zen (substrings en el id): no suman costo.
-FREE_MARKERS = ('-free', 'big-pickle', 'grok-build')
+# ⚠️ `grok-build` SACADO: NO es gratis (no lleva el sufijo `-free` y Zen lo factura). Mientras
+# estuvo acá el velocímetro lo tarifaba en $0, así que el gasto no se veía y el tope de costo
+# nunca podía saltar. Si Zen vuelve a ofrecer un grok gratis, confirmarlo en la factura antes de
+# re-marcarlo free.
+FREE_MARKERS = ('-free', 'big-pickle')
 
 
 def precio_silla(participante):

@@ -11,14 +11,32 @@ haya cargado su rc). El dispatch acá es el punto único que usa el worker.
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
+from pathlib import Path
 
 from django.conf import settings
+from django.utils import timezone
 
 from .models import Mensaje, Participante
+
+_DIAS = ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
+_MESES = ('enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+          'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre')
+
+
+def hoy_str():
+    """Fecha actual de la máquina (hora local) en español — ancla temporal para las sillas, que si
+    no asumen su fecha de entrenamiento (~2025) y razonan sobre versiones/actualidad como si
+    estuvieran en un año anterior. Se recalcula en cada turno (barato)."""
+    d = timezone.localtime(timezone.now())
+    return f"{_DIAS[d.weekday()]} {d.day} de {_MESES[d.month - 1]} de {d.year}"
+
 
 MAX_CONTEXTO = 30  # últimos N mensajes (no-ruido) reinyectados como contexto
 # Topes del contexto reinyectado (palanca de costo): sin esto, el líder re-lee toda la mesa en
@@ -47,6 +65,7 @@ RUIDO_PROPIO = ("(❌", "(⏰", "(sin respuesta)")
 # silla y entraban al contexto de las demás como si fueran un aporte válido.
 ERROR_MARKERS = ("session limit", "hit your", "unknownerror", "unexpected server error",
                  "internal server error", "rate limit", "overloaded", "bad request",
+                 "upstream request failed", "error from provider", "streaming response failed",
                  "no provider available", "no model available", "provider error")
 # Tope de largo para que un marker de proveedor cuente como ruido (errores reales son breves).
 RUIDO_MAX_LEN = 300
@@ -63,6 +82,21 @@ PREAMBULOS_CLI = (
     'database migration complete',
     '> build ·', '> plan ·',
 )
+
+# Credencial del CLI vencida. Sin esto la silla contesta «(sin respuesta)» y el humano no tiene
+# forma de saber que lo único que pasa es que hay que re-loguear el CLI en su terminal.
+# ⚠️ Markers MUY específicos de auth de CLI/proveedor: NO usar "401"/"unauthorized" sueltos —
+# una mesa de pentesting los menciona legítimamente y toda la mesa quedaría marcada como error.
+AUTH_EXPIRED_MARKERS = (
+    'invalid authentication credentials', 'oauth token has expired', 'authentication_error',
+    'invalid x-api-key', 'please run `claude', 'token has expired or is invalid',
+)
+
+
+def _parece_401(texto):
+    """True si la salida del CLI delata credencial caducada (auth, no contenido de la mesa)."""
+    t = (texto or '').lower()
+    return any(m in t for m in AUTH_EXPIRED_MARKERS)
 
 
 # Bloque de razonamiento de los modelos «thinking» (deepseek, qwen y varios de los free): no es la
@@ -199,7 +233,8 @@ def _prompt_plan(pedido, workers, editar):
         f"UNA POR LÍNEA, con el formato exacto:\n@alias: subtarea concreta\n\n"
         f"{modo} Podés darle varias subtareas a la misma silla (una por línea). "
         f"Arrancá con una frase breve de plan y después las líneas «@alias:». "
-        f"NO ejecutes vos las subtareas: solo planificá y repartí."
+        f"NO ejecutes vos las subtareas ni respondas vos el pedido: solo planificá y repartí "
+        f"(vos cerrás al final, cuando el equipo entregue)."
     )
 
 
@@ -228,6 +263,133 @@ def _sin_decoracion(linea):
 
 def _corta_bloque(linea):
     return bool(_RX_CORTE.match(linea))
+
+
+# ── Estado efímero y config del CLI por turno ────────────────────────────────────
+# Config que Swarm le impone a opencode en CADA invocación. Va por env (`OPENCODE_CONFIG_CONTENT`)
+# y no por archivo: escribir en el `~/.config/opencode/` del cliente sería dejar rastro en una
+# máquina que el modo sin rastro promete no tocar.
+#
+# `agent.title.disable`: además del modelo de la silla, opencode corre un agente interno `title`
+# para autotitular la sesión, y su `small_model` por default (gpt-5.4-nano) NO es free → cada
+# turno de cada silla dispara una llamada paga que muere con "No payment method" (66 en un día,
+# medido en jarvis). El título es cosmético: se apaga.
+# ⚠️ El arreglo NO es apuntar `small_model` a un modelo free: eso cambia una llamada paga que
+# falla SIN COSTO por una llamada REAL contra la cuota gratuita, o sea DUPLICA el consumo del
+# único recurso escaso (medido: 1 llamada free por corrida pasó a 2).
+# Verificado (2026-08-12, opencode del bundle): la env se lee y se VALIDA (una clave desconocida
+# corta con "Configuration is invalid at OPENCODE_CONFIG_CONTENT" → si la clave desapareciera se
+# notaría al arrancar, no en silencio); se MERGEA con el config del usuario en vez de pisarlo
+# (un config global roto sigue reportándose) y GANA sobre él (con `disable:false` en el global,
+# el log no registra un solo `agent=title`).
+OPENCODE_CONFIG = {'agent': {'title': {'disable': True}}}
+
+
+def _dir_efimero(participante):
+    """Carpeta descartable para el estado del CLI en ESTE turno, o None si no se pudo crear.
+
+    Las sillas corren una atrás de otra en la MISMA máquina y con el mismo HOME, así que sin esto
+    comparten la base SQLite de opencode y su lock (`<state>/opencode/locks/<hash>.lock`, mismo
+    hash siempre): una silla matada por timeout deja el lock tomado y cuelga a la siguiente.
+    Cuelga de la carpeta de datos de Swarm (no del temp del sistema) para no dejar rastro fuera.
+    """
+    try:
+        from .workspace import mesas_dir
+        base = Path(mesas_dir()).parent / 'tmp'
+        d = base / f"cli-{participante.key}-{uuid.uuid4().hex[:8]}"
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None  # sin aislamiento se trabaja igual (el estado va al HOME, como antes)
+    # Barrido de restos: el turno borra su carpeta al terminar, pero si a Swarm lo matan a lo
+    # bruto (o se corta la luz) queda tirada — y en un pendrive eso se acumula sin techo. Se
+    # limpian las de más de 6 h, que no pueden ser de un turno vivo (el techo es FABRICAR_TIMEOUT_MIN).
+    limite = time.time() - 6 * 3600
+    for viejo in base.glob('cli-*'):
+        try:
+            if viejo != d and viejo.stat().st_mtime < limite:
+                shutil.rmtree(viejo, ignore_errors=True)
+        except OSError:
+            continue
+    return d
+
+
+def _env_opencode(env, tmp):
+    """Aísla el estado de opencode en `tmp` y le impone la config de Swarm. Muta `env`.
+
+    ⚠️ Las CREDENCIALES no se tocan: `auth.json` NO vive bajo `XDG_DATA_HOME` — opencode lo lee
+    de `~/.local/share/opencode/auth.json` fijo. Verificado (2026-08-12): con las tres XDG
+    redirigidas a carpetas vacías la silla autentica y responde igual, y la db/lock/caché sí
+    aterrizan en las nuevas. Si algún día dejara de autenticar, el sospechoso es esto.
+    """
+    env['OPENCODE_CONFIG_CONTENT'] = json.dumps(OPENCODE_CONFIG)
+    if tmp:
+        env['XDG_DATA_HOME'] = str(tmp / 'data')
+        env['XDG_STATE_HOME'] = str(tmp / 'state')
+        env['XDG_CACHE_HOME'] = str(tmp / 'cache')
+
+
+def _barrer_por_marca(marca):
+    """Mata a los descendientes que se ESCAPARON del grupo de procesos del CLI (Linux).
+
+    Medido en jarvis (2026-08-12) con `opencode run --auto` y un turno vencido a propósito: cada
+    comando que la silla corre con su toolbelt queda en **su propia sesión** (ppid=1, pgid propio),
+    así que matar el grupo del CLI NO lo alcanza — quedaron dos `sleep 300` vivos, uno por corrida.
+    Como los hijos heredan el `env` que le pasamos al CLI, se los reconoce por una marca única del
+    turno. Se recorre /proc porque no hay dependencias externas en el bundle (nada de psutil).
+    """
+    if not marca or not os.path.isdir('/proc'):
+        return
+    objetivo = f'SWARM_TURNO_ID={marca}'.encode()
+    for entry in os.scandir('/proc'):
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(f'/proc/{entry.name}/environ', 'rb') as fh:
+                if objetivo not in fh.read():
+                    continue
+            os.kill(int(entry.name), signal.SIGKILL)
+        except OSError:
+            continue  # el proceso ya murió, o no es nuestro: nada que hacer
+
+
+def _matar_arbol(proc, marca=''):
+    """Mata el CLI Y a sus hijos cuando vence el turno.
+
+    `Popen.kill()` (lo que hace `subprocess.run(timeout=)`) mata SOLO al hijo directo, y los CLIs
+    de silla son Node/Bun: paren shells, servidores LSP y demás. Los nietos sobreviven al turno,
+    siguen quemando cuota contra la API con la mesa ya dándolos por muertos, y en Windows dejan
+    el pendrive tomado (no se puede expulsar). En hidralisk se midieron 3 huérfanos, ~1,1 GB, el
+    más viejo de 44 minutos.
+
+    ⚠️ Y acá era PEOR que en hidralisk, porque no hay contenedor que se lleve todo puesto: los
+    nietos heredan las pipes de stdout/stderr, así que el `communicate()` que sigue al kill se
+    queda esperando a que se cierren y **el turno no vuelve nunca** — no es que quede basura, es
+    que se cuelga el worker. Medido con un control negativo el 2026-08-12: sin este matar, la
+    llamada no retornó (se cortó a los 25 s desde afuera) y dejó 3 procesos vivos por corrida.
+    Best-effort igual: un fallo acá nunca puede tumbar el turno.
+
+    Dos redes, porque una sola no alcanza: el grupo de procesos (los hijos que se portan bien) y
+    el barrido por marca (los que se hicieron sesión propia, ver _barrer_por_marca).
+    ⚠️ En Windows queda solo la primera: `taskkill /T` recorre el árbol por parentesco, así que un
+    proceso que ya perdió a su padre no lo agarra. Sin dependencias nuevas no hay mejor (lo
+    correcto sería un Job Object por ctypes).
+    """
+    try:
+        if os.name == 'nt':
+            # taskkill /T recorre el árbol por PID padre; /F es SIGKILL. Built-in de Windows.
+            subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)],
+                           capture_output=True, timeout=30)
+        else:
+            # `start_new_session=True` hizo al CLI líder de sesión ⇒ su pgid == su pid.
+            os.killpg(proc.pid, signal.SIGKILL)
+    except Exception:  # noqa: BLE001 — limpieza best-effort (ProcessLookupError, permisos, …)
+        pass
+    try:
+        proc.kill()
+    except Exception:  # noqa: BLE001
+        pass
+    if os.name != 'nt':
+        _barrer_por_marca(marca)
 
 
 def ejecutar_http(participante, prompt, timeout):
@@ -312,6 +474,7 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
         env['ENJAMBRE_WORKDIR'] = str(workdir)
         cwd = str(workdir)
     argv = list(comando or participante.comando)
+    cli = os.path.basename(argv[0]) if argv else ''
     if argv:
         # El CLI se invoca directo: si el binario no está en el PATH del proceso (arranque por
         # doble-clic, sin el rc de la shell), resolver_bin lo busca en los dirs típicos.
@@ -319,10 +482,18 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
         ruta = resolver_bin(argv[0])
         if ruta:
             argv[0] = ruta
+    # Estado del CLI aislado por turno (ver _dir_efimero) + config propia de Swarm.
+    tmp = _dir_efimero(participante)
+    if cli == 'opencode':
+        _env_opencode(env, tmp)
+    # Marca del turno: la heredan TODOS los descendientes del CLI y es lo único que permite
+    # reconocerlos si se hicieron sesión propia (ver _barrer_por_marca).
+    marca = env['SWARM_TURNO_ID'] = uuid.uuid4().hex
+    proc = None
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             argv + [prompt],
-            capture_output=True, text=True, timeout=timeout, env=env, cwd=cwd,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=cwd,
             # encoding EXPLÍCITO: sin esto `text=True` decodifica con la codificación del SO
             # (`locale.getpreferredencoding`), que en Windows es cp1252 — y los CLIs de silla
             # (opencode/claude/agy, todos Node/Bun) emiten UTF-8 en cualquier plataforma. El
@@ -330,22 +501,37 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
             # (bug real, Windows 11, 2026-08-07). `errors=replace` para que un byte suelto no
             # tire el turno entero: mejor un «�» que perder la respuesta.
             encoding='utf-8', errors='replace',
-            # stdin explícito: `capture_output` solo cubre stdout/stderr, así que sin esto el CLI
-            # HEREDA el stdin del server. Rompe de dos maneras reales: si el server arrancó con el
-            # fd 0 abierto de solo-escritura (pasa con `nohup … >log 2>&1 &`), `opencode run --auto`
-            # muere al leerlo con "EBADF: bad file descriptor, read" y /armar no fabrica nada; y si
-            # arrancó desde una terminal, la silla se come las teclas del humano. Un subprocess de
-            # silla nunca tiene nada que leer de ahí.
+            # stdin explícito: sin esto el CLI HEREDA el stdin del server. Rompe de dos maneras
+            # reales: si el server arrancó con el fd 0 abierto de solo-escritura (pasa con
+            # `nohup … >log 2>&1 &`), `opencode run --auto` muere al leerlo con "EBADF: bad file
+            # descriptor, read" y /armar no fabrica nada; y si arrancó desde una terminal, la
+            # silla se come las teclas del humano. Un subprocess de silla nunca lee de ahí.
             stdin=subprocess.DEVNULL,
+            # Sesión propia ⇒ pgid == pid ⇒ al vencer el turno se puede matar el ÁRBOL entero
+            # (ver _matar_arbol). En Windows no existe: ahí el árbol lo recorre `taskkill /T`.
+            **({} if os.name == 'nt' else {'start_new_session': True}),
         )
-        salida = (limpiar_salida(result.stdout) or limpiar_salida(result.stderr)
-                  or "(sin respuesta)")
-    except subprocess.TimeoutExpired:
-        salida = f"(⏰ timeout tras {timeout}s)"
+        try:
+            out, err = proc.communicate(timeout=timeout)
+            salida = (limpiar_salida(out) or limpiar_salida(err) or "(sin respuesta)")
+            if _parece_401((out or '') + '\n' + (err or '')):
+                # Credencial vencida: sin esto la silla contesta «(sin respuesta)» y el humano no
+                # tiene cómo saber que solo hay que re-loguear el CLI en su terminal.
+                from .conexiones import CLIS
+                login = (CLIS.get(cli) or {}).get('login', f'volvé a loguear {cli}')
+                salida = (f"(❌ {participante.nombre}: la credencial de {cli} está vencida. "
+                          f"Re-logueá en tu terminal con:  {login})")
+        except subprocess.TimeoutExpired:
+            _matar_arbol(proc, marca)
+            proc.communicate()  # drena las pipes del muerto (si no, quedan fds abiertos)
+            salida = f"(⏰ timeout tras {timeout}s)"
     except FileNotFoundError:
         salida = f"(❌ {participante.nombre} no instalado)"
     except Exception as e:  # noqa: BLE001 — cualquier fallo del CLI es ruido, no rompe la mesa
         salida = f"(❌ error: {e})"
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
     return salida, es_ruido(salida)
 
 
@@ -491,6 +677,9 @@ class Enjambre:
             )
         return (
             f"{participante.persona_para(self._es_consulta())}\n\n"
+            f"UBICACIÓN TEMPORAL: hoy es {hoy_str()}. Esa es la fecha real de HOY; ignorá tu fecha "
+            f"de entrenamiento. Si buscás información o razonás sobre fechas/versiones/actualidad, "
+            f"tomá ésta como el presente y no asumas que estás en un año anterior.\n\n"
             f"Estás en una MESA DE TRABAJO multi-agente del Enjambre. En la mesa hay "
             f"{len(sillas)} silla(s): {roster}. VOS sos {participante.nombre}; las otras son {otras}. "
             f"El humano se llama {humano} y NO es una silla: hace pedidos, no vota ni cuenta como un "
