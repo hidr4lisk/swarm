@@ -332,3 +332,43 @@ body {
 }
 
 .m3-phrase-wrap { border-left-color: var(--hk-blue); }
+
+/* ── Chasis en pantalla angosta ───────────────────────────────────────────
+ * A 360px el lado derecho de la top-bar (EN/ES + el separador + STAFF) se sale
+ * del contenedor: el botón STAFF terminaba en x=380 con 350px de ancho útil,
+ * 30px afuera — y a 320px, 70px. No producía scroll horizontal (el flex lo
+ * recorta), así que la medición de desborde del documento no lo veía: se
+ * perdía el borde del botón contra el filo de la pantalla, nada más.
+ *
+ * El chasis pide 360px y hay 278: los tres que sobran son el `min-width: 150px`
+ * del desplegable (que no lo necesita: su opción más larga es «HIDRALISK OS»),
+ * el `|` decorativo entre el idioma y STAFF, y el interletrado de STAFF. Se
+ * aprietan los tres SOLO acá abajo; de 481px para arriba nada cambia.
+ *
+ * Va en el kit y no en cada sitio porque los 7 comparten este markup — el
+ * mismo motivo por el que existe este archivo. Distribuir con sync-landings.sh.
+ * ⚠️ Alto de la barra intacto (36px): tocarlo movería el layout de los 7.      */
+
+@media (max-width: 480px) {
+  .top-bar__inner { gap: 8px; }
+  .top-bar__left,
+  .top-bar__right { gap: 8px; }
+
+  /* El ancho lo pone el texto de la opción, no un mínimo escrito a mano. */
+  .tool-select {
+    min-width: 0;
+    max-width: 44vw;
+    padding-right: 22px;
+    background-position: right 6px center;
+    text-overflow: ellipsis;
+  }
+
+  /* El `|` sobra: la separación ya la da el espacio. Es lo único puramente
+     decorativo de la barra, así que es lo primero que se cae. */
+  .top-bar__sep { display: none; }
+
+  .lang-btn { min-width: 0; padding: 4px 6px; letter-spacing: .06em; }
+  .lang-toggle { gap: 4px; }
+
+  .staff-btn { padding: 4px 8px; letter-spacing: .08em; }
+}
