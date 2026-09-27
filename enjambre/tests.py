@@ -27,7 +27,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import translation
 
-from .clientes import build_comando
+from .clientes import CLIENTES, build_comando
 from . import conexiones as conexiones_mod
 from .conexiones import detectar, resolver_bin, ruta_corta
 from . import engine as engine_mod
@@ -231,6 +231,19 @@ class BuildComandoTests(TestCase):
         cmd, _ = build_comando('agy', 'Gemini 3.1 Pro (High)')
         self.assertEqual(cmd[-1], '-p')
         self.assertEqual(cmd[-3:-1], ['--model', 'Gemini 3.1 Pro (High)'])
+
+    def test_codex_exec_no_interactivo(self):
+        """Codex (experimental, sin probar con cuenta real): `codex exec`, charla en solo
+        lectura, fabricar con --full-auto, y el modelo antes del prompt (que va al final)."""
+        cmd, cmdt = build_comando('codex', 'gpt-5')
+        self.assertEqual(cmd[:2], ['codex', 'exec'])
+        self.assertIn('--skip-git-repo-check', cmd)
+        self.assertEqual(cmd[cmd.index('--sandbox') + 1], 'read-only')
+        self.assertNotIn('--full-auto', cmd)
+        self.assertIn('--full-auto', cmdt)
+        self.assertEqual(cmd[-2:], ['--model', 'gpt-5'])
+        self.assertTrue(CLIENTES['codex'].get('experimental'))
+        self.assertIn('codex', conexiones_mod.CLIS)
 
     def test_ollama_es_http_sin_comando(self):
         self.assertEqual(build_comando('ollama', 'qwen2.5:3b'), ([], []))

@@ -110,6 +110,11 @@ the point. This is exactly what the launchers run, from a pendrive or from a fol
 reports whether the credential **file exists**. API keys are the one exception — they live
 encrypted in the vault (see below).
 
+**Codex CLI (experimental, untested).** A `codex` seat is available (`codex exec`, read-only
+sandbox for chat, `--full-auto` to build inside the table's folder). It was wired from OpenAI's
+public docs and has **not been run against a real account yet** — see
+[issue #1](https://github.com/hidr4lisk/swarm/issues/1). Reports welcome.
+
 ![The Conexiones screen only reports whether each credential exists — never its contents](docs/img/conexiones.png)
 
 ## Threat model — read this before using it
@@ -305,6 +310,11 @@ del disco.
 tu `claude login` en esa máquina es la única fuente de verdad, y la pantalla Conexiones solo
 reporta si el **archivo existe**. Las API keys son la única excepción: viven cifradas en la
 bóveda (abajo).
+
+**Codex CLI (experimental, sin probar).** Hay una silla `codex` (`codex exec`, sandbox de solo
+lectura para charlar, `--full-auto` para fabricar dentro de la carpeta de la mesa). Se armó con
+la doc pública de OpenAI y **todavía no se corrió contra una cuenta real** — ver el
+[issue #1](https://github.com/hidr4lisk/swarm/issues/1). Se agradecen reportes.
 
 ## Modelo de amenaza — leelo antes de usarlo
 

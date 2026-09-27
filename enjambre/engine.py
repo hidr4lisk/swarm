@@ -66,7 +66,10 @@ RUIDO_PROPIO = ("(❌", "(⏰", "(sin respuesta)")
 ERROR_MARKERS = ("session limit", "hit your", "unknownerror", "unexpected server error",
                  "internal server error", "rate limit", "overloaded", "bad request",
                  "upstream request failed", "error from provider", "streaming response failed",
-                 "no provider available", "no model available", "provider error")
+                 "no provider available", "no model available", "provider error",
+                 # Codex (sin probar): cuentas ChatGPT sin acceso a un modelo. Texto de la doc/issues
+                 # públicos, NO visto en vivo — confirmar con la primera silla real (issue #1).
+                 "not supported when using codex", "model is not supported")
 # Tope de largo para que un marker de proveedor cuente como ruido (errores reales son breves).
 RUIDO_MAX_LEN = 300
 

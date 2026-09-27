@@ -35,6 +35,13 @@ CLIS = {
         'default': '~/.gemini/antigravity-cli',
         'login': 'agy  (login OAuth de Google)',
     },
+    # Experimental, sin probar (issue #1). CODEX_HOME mueve la carpeta; acá solo el default.
+    'codex': {
+        'nombre': 'Codex CLI (experimental)',
+        'env': 'SWARM_CODEX_CREDS',
+        'default': '~/.codex/auth.json',
+        'login': 'codex login',
+    },
 }
 
 

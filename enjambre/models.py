@@ -103,7 +103,8 @@ class Participante(models.Model):
             i = cmd.index('--model')
             if i + 1 < len(cmd):
                 return cmd[i + 1].split('/')[-1]
-        labels = {'claude': 'Claude Code', 'opencode': 'OpenCode', 'agy': 'Antigravity'}
+        labels = {'claude': 'Claude Code', 'opencode': 'OpenCode', 'agy': 'Antigravity',
+                  'codex': 'Codex'}
         return labels.get(self.key) or (cmd[0] if cmd else self.key)
 
     @property
