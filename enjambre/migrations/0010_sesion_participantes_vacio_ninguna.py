@@ -3,6 +3,19 @@
 from django.db import migrations, models
 
 
+def sentar_activas_en_mesas_vacias(apps, schema_editor):
+    """Hasta v1.1 una mesa vacía significaba «todas las activas». Para que ninguna mesa de un
+    usuario que actualiza quede muda de un día para el otro, las vacías se sientan con las
+    sillas activas de hoy (lo que de hecho les respondía). Las mesas nuevas nacen vacías."""
+    Sesion = apps.get_model('enjambre', 'Sesion')
+    Participante = apps.get_model('enjambre', 'Participante')
+    activas = list(Participante.objects.filter(activo=True))
+    if not activas:
+        return
+    for sesion in Sesion.objects.filter(participantes__isnull=True):
+        sesion.participantes.set(activas)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -15,4 +28,5 @@ class Migration(migrations.Migration):
             name='participantes',
             field=models.ManyToManyField(blank=True, help_text='Sillas que participan en esta mesa. Vacío = ninguna (mesa muda).', related_name='sesiones', to='enjambre.participante'),
         ),
+        migrations.RunPython(sentar_activas_en_mesas_vacias, migrations.RunPython.noop),
     ]
