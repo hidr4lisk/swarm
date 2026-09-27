@@ -273,12 +273,12 @@
 
     <!-- Comandos (solo control) + globito de Participantes (hover/tap, se abre hacia arriba) -->
     <div class="enj-chips">
-        {% if sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo and toolbelt_on %}
+        {% if sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo and sesion.lider.id in sel_ids and toolbelt_on %}
         <span class="enj-chip enj-lider-chip" title="{% trans 'Modo Líder: el líder descompone tu pedido en subtareas, las reparte y al final integra; @silla habla directo a una' %}">👑 {% trans 'Líder' %}: {{ sesion.lider.nombre }}</span>
-        {% elif sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo %}
+        {% elif sesion.topologia == 'lider' and sesion.lider and sesion.lider.activo and sesion.lider.id in sel_ids %}
         <span class="enj-chip enj-lider-chip" title="{% trans 'El modo Líder necesita el TOOLBELT encendido: sin él las sillas solo hablan, no hay trabajo que coordinar → la mesa corre PLANA. Prendé el toolbelt en Conexiones.' %}">⚠️ {% trans 'Líder → Plana (prendé el toolbelt)' %}</span>
         {% elif sesion.topologia == 'lider' %}
-        <span class="enj-chip enj-lider-chip" title="{% trans 'La mesa está en modo Líder pero el líder está inactivo o sin asignar → corre PLANA. Asigná un líder activo en ⚙ Sillas de la mesa.' %}">⚠️ {% trans 'Líder caído → Plana' %}</span>
+        <span class="enj-chip enj-lider-chip" title="{% trans 'La mesa está en modo Líder pero el líder está inactivo, sin asignar o no sentado → corre PLANA. Asigná un líder activo y sentado en ⚙ Sillas de la mesa.' %}">⚠️ {% trans 'Líder caído → Plana' %}</span>
         {% else %}
         <span class="enj-chip enj-lider-chip" title="{% trans 'Modo Plana: todas las sillas responden el pedido completo, sin reparto ni integración. Con /armar, cada silla CLI fabrica sobre la misma carpeta, en serie.' %}">⚖️ {% trans 'Plana' %}</span>
         {% endif %}
@@ -417,11 +417,17 @@
                             ese turno trabajan donde vos digas. Diagnosticar la máquina no se ve afectado.{% endblocktrans %}
                         </p>
                     </div>
-                    <div class="enj-panel-h" style="font-size:.85rem;opacity:.8;">{% trans 'Sillas de la mesa' %}</div>
+                    <div class="enj-panel-h" style="font-size:.85rem;opacity:.8;display:flex;align-items:center;gap:.5rem;">
+                        <span>{% trans 'Sillas de la mesa' %}</span>
+                        {% if sillas_activas %}
+                        <button type="button" class="enj-del enj-ghost enj-sillas-todas" data-todas
+                                title="{% trans 'Marcar / desmarcar todas las sillas' %}" aria-label="{% trans 'Marcar / desmarcar todas las sillas' %}"><i class="fas fa-check-double"></i></button>
+                        {% endif %}
+                    </div>
                     {% for silla in sillas_activas %}
                     <label class="enj-check enj-silla-opt"{% if silla.endpoint_url %} data-local="1"{% endif %}>
                         <input type="checkbox" name="sillas" value="{{ silla.key }}"
-                               {% if not sel_ids or silla.id in sel_ids %}checked{% endif %}>
+                               {% if silla.id in sel_ids %}checked{% endif %}>
                         <span>{{ silla.etiqueta }}{% if silla.endpoint_url %} <em class="enj-muted" style="font-size:.72rem;font-style:normal;">· {% trans 'local, no fabrica' %}</em>{% endif %}</span>
                     </label>
                     {% empty %}
@@ -543,6 +549,16 @@
 <script src="{% static 'enjambre/vendor/markdown/marked.min.js' %}"></script>
 <script src="{% static 'enjambre/vendor/markdown/purify.min.js' %}"></script>
 <script>
+// ✓✓ Marcar / desmarcar todas las sillas del modal de configuración (mismo botón que en el
+// listado de mesas; acá no auto-guarda: se confirma con «Guardar»).
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-todas]');
+    if (!btn) return;
+    const cbs = Array.from(btn.closest('form').querySelectorAll('input[name="sillas"]:not(:disabled)'));
+    if (!cbs.length) return;
+    const todas = cbs.every(c => c.checked);
+    cbs.forEach(c => { c.checked = !todas; });
+});
 (function () {
     const cont = document.getElementById('mensajes');
     function lastId() {

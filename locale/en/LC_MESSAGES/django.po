@@ -1435,11 +1435,13 @@ msgstr "Leader → Flat (turn on the toolbelt)"
 
 #: enjambre/templates/enjambre/mesa.html:281
 msgid ""
-"La mesa está en modo Líder pero el líder está inactivo o sin asignar → corre"
-" PLANA. Asigná un líder activo en ⚙ Sillas de la mesa."
+"La mesa está en modo Líder pero el líder está inactivo, sin asignar o no "
+"sentado → corre PLANA. Asigná un líder activo y sentado en ⚙ Sillas de la "
+"mesa."
 msgstr ""
-"The table is in Leader mode but the leader is inactive or unassigned → it "
-"runs FLAT. Assign an active leader in the table’s ⚙ Seats."
+"The table is in Leader mode but the leader is inactive, unassigned or not "
+"seated → it runs FLAT. Assign an active, seated leader in the table’s ⚙ "
+"Seats."
 
 #: enjambre/templates/enjambre/mesa.html:281
 msgid "Líder caído → Plana"
@@ -2218,3 +2220,8 @@ msgstr ""
 "If your login <strong>expires</strong> mid-table, the seat says so in plain "
 "words and hands you the exact command to log back in — it used to just go "
 "quiet, which looked like a Swarm bug."
+
+#: enjambre/templates/enjambre/home.html:129
+#: enjambre/templates/enjambre/mesa.html:424
+msgid "Marcar / desmarcar todas las sillas"
+msgstr "Check / uncheck all seats"

@@ -125,6 +125,10 @@
                 </div>
             </div>
             <div class="enj-card-sillas">
+                {% if sillas_activas %}
+                <button type="button" class="enj-del enj-ghost enj-sillas-todas" data-todas
+                        title="{% trans 'Marcar / desmarcar todas las sillas' %}" aria-label="{% trans 'Marcar / desmarcar todas las sillas' %}"><i class="fas fa-check-double"></i></button>
+                {% endif %}
                 {% for silla in sillas_activas %}
                 {% if s.topologia == 'lider' and silla.endpoint_url %}
                 <label class="enj-check enj-check-sm" style="opacity:.45;"
@@ -135,7 +139,7 @@
                 {% else %}
                 <label class="enj-check enj-check-sm">
                     <input type="checkbox" name="sillas" value="{{ silla.key }}"
-                           {% if not s.sel_ids or silla.id in s.sel_ids %}checked{% endif %}>
+                           {% if silla.id in s.sel_ids %}checked{% endif %}>
                     <span>{{ silla.nombre }}</span>
                 </label>
                 {% endif %}
@@ -210,9 +214,7 @@
     });
 
     // Auto-guardar las sillas de una mesa al tildar/destildar (sin botón).
-    grid.addEventListener('change', function (e) {
-        if (!e.target.matches('.enj-card-sillas input[type="checkbox"]')) return;
-        var card = e.target.closest('.enj-card');
+    function guardarSillas(card) {
         var fd = new FormData();
         card.querySelectorAll('.enj-card-sillas input:checked').forEach(function (c) {
             fd.append('sillas', c.value);
@@ -222,6 +224,23 @@
             headers: {'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'fetch'},
             body: fd,
         }).then(function (r) { if (r.ok) flash(card); }).catch(function () {});
+    }
+    grid.addEventListener('change', function (e) {
+        if (!e.target.matches('.enj-card-sillas input[type="checkbox"]')) return;
+        guardarSillas(e.target.closest('.enj-card'));
+    });
+
+    // ✓✓ Marcar / desmarcar todas las sillas de la tarjeta de un toque. Si están todas marcadas
+    // las destilda; si falta alguna, las marca todas. Un solo guardado, no uno por silla.
+    grid.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-todas]');
+        if (!btn) return;
+        var card = btn.closest('.enj-card');
+        var cbs = Array.prototype.slice.call(card.querySelectorAll('.enj-card-sillas input[type="checkbox"]:not(:disabled)'));
+        if (!cbs.length) return;
+        var todas = cbs.every(function (c) { return c.checked; });
+        cbs.forEach(function (c) { c.checked = !todas; });
+        guardarSillas(card);
     });
 
     // Renombrar mesa: lápiz ✎ → input inline.

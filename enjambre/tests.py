@@ -524,6 +524,58 @@ class VistasTests(TestCase):
         self.assertEqual(silla.persona_consulta, 'B')
 
 
+class MesaSinSillasTests(TestCase):
+    """Vacío = ninguna silla (no «todas las activas»): una mesa nueva nace muda y lo dice."""
+
+    def setUp(self):
+        self.a = Participante.objects.create(key='sa', nombre='A', comando=['true'], activo=True)
+        self.b = Participante.objects.create(key='sb', nombre='B', comando=['true'], activo=True)
+
+    def test_mesa_nueva_nace_sin_sillas(self):
+        self.client.post(reverse('enjambre:crear_sesion'), {'nombre': 'muda'})
+        sesion = Sesion.objects.get(nombre='muda')
+        self.assertEqual(sesion.participantes.count(), 0)
+        self.assertEqual(Enjambre(sesion).sillas(), [])
+
+    def test_mesa_vacia_avisa_y_no_despacha(self):
+        sesion = Sesion.objects.create(nombre='muda')
+        with mock.patch.object(engine_mod, 'ejecutar_cli') as cli:
+            r = Enjambre(sesion).responder('hola')
+        self.assertEqual(r, {})
+        cli.assert_not_called()
+        self.assertTrue(sesion.mensajes.filter(
+            es_sistema=True, texto__contains='no tiene sillas sentadas').exists())
+
+    def test_sillas_son_solo_las_sentadas(self):
+        sesion = Sesion.objects.create(nombre='una')
+        sesion.participantes.set([self.a])
+        self.assertEqual([s.key for s in Enjambre(sesion).sillas()], ['sa'])
+
+    def test_lider_no_sentado_corre_plana_y_avisa(self):
+        sesion = Sesion.objects.create(nombre='lider', topologia='lider', lider=self.a)
+        sesion.participantes.set([self.b])
+        e = Enjambre(sesion)
+        with mock.patch.object(Enjambre, 'responder', return_value={}) as resp:
+            e.liderar('hola')
+        resp.assert_called_once()
+        self.assertTrue(sesion.mensajes.filter(
+            es_sistema=True, texto__contains='no está sentado en la mesa').exists())
+
+    def test_config_no_acepta_lider_no_sentado(self):
+        sesion = Sesion.objects.create(nombre='cfg')
+        self.client.post(reverse('enjambre:guardar_config', args=[sesion.pk]),
+                         {'sillas': ['sb'], 'topologia': 'lider', 'lider': 'sa'})
+        sesion.refresh_from_db()
+        self.assertIsNone(sesion.lider)
+        self.assertEqual(sesion.topologia, 'plana')
+
+    def test_listado_no_tilda_sillas_de_una_mesa_vacia(self):
+        Sesion.objects.create(nombre='vacia')
+        html = self.client.get(reverse('enjambre:home')).content.decode()
+        self.assertIn('data-todas', html)   # botón ✓✓
+        self.assertNotRegex(html, r'value="sa"[^>]*checked')
+
+
 class WorkspaceTests(TestCase):
     def test_mesa_workspace_idempotente(self):
         with tempfile.TemporaryDirectory() as tmp:

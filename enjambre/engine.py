@@ -23,7 +23,7 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 
-from .models import Mensaje, Participante
+from .models import Mensaje
 
 _DIAS = ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
 _MESES = ('enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
@@ -543,10 +543,9 @@ class Enjambre:
 
     # ── Persistencia ──────────────────────────────────────────────────────────
     def sillas(self):
-        """Sillas de ESTA mesa (∩ globalmente activas). Vacío = fallback a todas las
-        activas, así una mesa vieja o sin selección nunca queda muda."""
-        sel = list(self.sesion.participantes.filter(activo=True).order_by('orden', 'key'))
-        return sel or list(Participante.objects.filter(activo=True).order_by('orden', 'key'))
+        """Sillas de ESTA mesa (∩ globalmente activas). Vacío = ninguna silla sentada: la
+        mesa queda muda y avisa (ver responder())."""
+        return list(self.sesion.participantes.filter(activo=True).order_by('orden', 'key'))
 
     def guardar(self, emisor, texto, participante=None, ruido=False, sistema=False,
                 tokens=0, costo=0):
@@ -1299,22 +1298,26 @@ class Enjambre:
         Degrada solo: sin líder válido → plana; @mención → solo esa silla; /deshacer y /debate
         los maneja el líder como en plana; consulta nunca fabrica (el verbo queda como charla)."""
         lider = self.sesion.lider
-        # Líder caído (desactivado): la mesa está marcada como LÍDER pero corre plana. Antes era
-        # 100% silencioso — avisamos UNA vez (mensaje de sistema) para que no parezca que el líder
-        # trabajó. La @mención no avisa: es una desviación deliberada de un turno puntual, no una
-        # degradación de la topología.
-        if lider is not None and not lider.activo and self.mencion(texto) is None:
-            self.log(f"⚠️ líder {lider.nombre} inactivo — la mesa corre PLANA", nivel='error')
+        lider_sentado = lider is not None and lider.pk in {s.pk for s in self.sillas()}
+        # Líder caído (desactivado) o no sentado en la mesa: la mesa está marcada como LÍDER
+        # pero corre plana (misma regla que ya aplica guardar_config: el líder tiene que estar
+        # SENTADO para dirigir). Avisamos UNA vez (mensaje de sistema) para que no parezca que el
+        # líder trabajó. La @mención no avisa: es una desviación deliberada de un turno puntual,
+        # no una degradación de la topología.
+        if lider is not None and (not lider.activo or not lider_sentado) and self.mencion(texto) is None:
+            motivo_log = "inactivo" if not lider.activo else "no sentado"
+            self.log(f"⚠️ líder {lider.nombre} {motivo_log} — la mesa corre PLANA", nivel='error')
             # Dedupe: si el último mensaje de sistema YA es este aviso, no lo repetimos en cada
             # turno (sería spam). Vuelve a aparecer solo si algún otro sistema lo "tapó" en el medio.
             ult_sis = (self.sesion.mensajes.filter(es_sistema=True).order_by('-id')
                        .values_list('texto', flat=True).first() or '')
             if 'modo PLANO' not in ult_sis:
-                self.guardar("Enjambre", f"⚠️ El líder de esta mesa ({lider.nombre}) está desactivado: "
+                detalle = "está desactivado" if not lider.activo else "no está sentado en la mesa"
+                self.guardar("Enjambre", f"⚠️ El líder de esta mesa ({lider.nombre}) {detalle}: "
                              "este turno corre en modo PLANO (todas las sillas responden, sin reparto). "
                              "Reactivá esa silla o asigná otro líder en ⚙ para recuperar el modo líder.",
                              sistema=True)
-        if lider is None or not lider.activo or self.mencion(texto) is not None:
+        if lider is None or not lider.activo or not lider_sentado or self.mencion(texto) is not None:
             return self.responder(texto, on_respuesta=on_respuesta)
 
         # El líder SOLO tiene sentido con el toolbelt ENCENDIDO. Apagado, todas las sillas solo
@@ -1448,6 +1451,10 @@ class Enjambre:
             texto = self._sin_mencion(texto)
         else:
             destinatarias = self.sillas()
+        if not destinatarias:
+            self.guardar("Enjambre", "⚠️ Esta mesa no tiene sillas sentadas: tildá las que "
+                         "quieras en el listado de mesas o en ⚙ y volvé a escribir.", sistema=True)
+            return {}
         # Comando de mesa (tras sacar la @mención). Gate de rango: consulta = solo charla.
         comando, limpio = parse_comando(texto)
         editar = False

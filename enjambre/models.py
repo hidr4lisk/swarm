@@ -132,7 +132,7 @@ class Sesion(models.Model):
     timeout = models.PositiveIntegerField(default=180, help_text='Segundos por call a un CLI.')
     participantes = models.ManyToManyField(
         Participante, blank=True, related_name='sesiones',
-        help_text='Sillas que participan en esta mesa. Vacío = todas las activas.',
+        help_text='Sillas que participan en esta mesa. Vacío = ninguna (mesa muda).',
     )
     activa = models.BooleanField(default=True)
     # Fijada (pin, como en Brain): las mesas fijadas van arriba en el listado.

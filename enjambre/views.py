@@ -259,12 +259,9 @@ def crear_sesion(request):
         if not nombre:
             sesion.nombre = f'Mesa {sesion.pk}'
             sesion.save(update_fields=['nombre'])
-        # Arranca con las sillas activas que el usuario puede usar (consulta = solo permitidas,
-        # nunca vacío para que el fallback "todas las activas" del engine no cuele una paga).
-        iniciales = Participante.objects.filter(activo=True)
-        if not _es_control(request):
-            iniciales = iniciales.filter(permitir_consulta=True)
-        sesion.participantes.set(iniciales)
+        # La mesa nace SIN sillas sentadas: con muchas sillas activas, el default "todas" obligaba
+        # a destildar de a una para armar la mesa que uno quería. Vacío = mesa muda (avisa el
+        # engine); se tildan las que se quieran en el listado o en ⚙.
         # Crear la carpeta de la mesa YA (no perezosamente). Si no existe, subir un archivo
         # antes de que una silla fabrique lo guardaba como archivo suelto `mesa-<id>` →
         # rompía el worker (mkdir exist_ok igual revienta si el path es un archivo). El
@@ -324,8 +321,7 @@ def guardar_config(request, pk):
         # Topología + líder: SOLO si el POST los trae (el modal de la mesa). El auto-save de sillas
         # del listado no manda 'topologia' → no debe pisar/borrar el líder ya configurado.
         if 'topologia' in request.POST:
-            # El líder debe ser una silla SENTADA en la mesa (o, si no hay selección explícita =
-            # mesa con todas las activas, cualquier silla activa permitida).
+            # El líder debe ser una silla SENTADA en la mesa.
             topo = request.POST.get('topologia')
             if topo in (Topologia.PLANA, Topologia.LIDER):
                 sesion.topologia = topo
@@ -336,7 +332,7 @@ def guardar_config(request, pk):
                 if not _es_control(request):
                     cand = cand.filter(permitir_consulta=True)
                 cand = cand.first()
-                if cand and (not keys_ok or cand.key in keys_ok):
+                if cand and cand.key in keys_ok:
                     lider = cand
             sesion.lider = lider
             if sesion.topologia == Topologia.LIDER and lider is None:
@@ -425,9 +421,9 @@ def mesa(request, pk):
         m.avatar = _avatar_de(m, avatar_map, av_enjambre, av_humano)
         m.es_humano = _es_humano(m)
         m.modelo = _modelo_corto(m)
-    # Sillas de la mesa (∩ activas); vacío = todas las activas (espejo del engine).
+    # Sillas de la mesa (∩ activas); vacío = ninguna.
     sel_ids = set(sesion.participantes.values_list('id', flat=True))
-    mesa_sillas = [p for p in todas if p.activo and (not sel_ids or p.id in sel_ids)]
+    mesa_sillas = [p for p in todas if p.activo and p.id in sel_ids]
     # Para el modal de sillas en vivo: las que el usuario puede sentar (consulta = permitidas).
     seleccionables = Participante.objects.filter(activo=True).order_by('orden', 'key')
     if not _es_control(request):

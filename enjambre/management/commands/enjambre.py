@@ -37,6 +37,9 @@ class Command(BaseCommand):
                 return
         else:
             sesion = Sesion.objects.create(nombre='Mesa REPL')
+            # Vacío = mesa muda (engine): el REPL es herramienta de dev, así que la sentamos
+            # con TODAS las sillas activas para no arrancar sordo.
+            sesion.participantes.set(Participante.objects.filter(activo=True))
 
         enjambre = Enjambre(sesion)
         sillas = {s.key: s for s in enjambre.sillas()}
