@@ -11,7 +11,11 @@ shell no haya cargado su rc). Ver README.
 Procesa cada pasada:
   1) Tareas en estado 'pendiente' → ejecutar_tarea (worktree aislado → commit → branch).
   2) Sesiones cuyo último mensaje es del humano (participante nulo) → las sillas responden.
+     Con SWARM_WORKER_PARALELO > 1, varias mesas a la vez (ver `_responder_paralelo`).
 """
+import concurrent.futures
+import os
+import threading
 import time
 
 from django.conf import settings
@@ -23,6 +27,23 @@ import sys
 from enjambre.engine import Enjambre
 from enjambre.models import Sesion, Tarea, Topologia, WorkerRestart
 from enjambre.workspace import ejecutar_tarea
+
+
+class _LockedStream:
+    """Envuelve `self.stdout`/`self.stderr` (OutputWrapper de Django) para que `.write()` sea
+    atómico entre hilos. Solo se usa con SWARM_WORKER_PARALELO > 1: sin esto, dos turnos
+    escribiendo a la vez entremezclan líneas a mitad de escritura."""
+
+    def __init__(self, inner, lock):
+        self._inner = inner
+        self._lock = lock
+
+    def write(self, *args, **kwargs):
+        with self._lock:
+            return self._inner.write(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
 
 
 class Command(BaseCommand):
@@ -95,19 +116,49 @@ class Command(BaseCommand):
         #    pierde, no se re-procesa el mismo). Si el turno falla, el watermark NO se revierte
         #    (sería un reintento infinito de un pedido que rompe): `_responder` atrapa el error y
         #    lo postea en la mesa para que el humano lo vea y decida.
+        #
+        #    SWARM_WORKER_PARALELO (default 1, ver `_paralelo()`): con 1 este bloque es EXACTAMENTE
+        #    el de siempre — secuencial, sin hilos. Con N > 1 se paraleliza SOLO este paso (Tareas
+        #    y --auto siguen secuenciales). Regla que no se negocia: como mucho UN turno en vuelo
+        #    por silla (dos turnos de la misma silla se comen la cuota/rate limit de su login o
+        #    su key entre ellos). Si alguna silla de una mesa ya quedó reservada en ESTE tick, la
+        #    mesa entera espera al siguiente sin mover su watermark — conservador a propósito.
         atendidas = set()
-        for sesion in Sesion.objects.filter(activa=True):
-            ultimo_humano = (sesion.mensajes
-                             .filter(participante__isnull=True, es_sistema=False)
-                             .order_by('-id').first())
-            if ultimo_humano and ultimo_humano.id > sesion.ultimo_humano_respondido:
+        paralelo = self._paralelo()
+        if paralelo <= 1:
+            for sesion in Sesion.objects.filter(activa=True):
+                ultimo_humano = (sesion.mensajes
+                                 .filter(participante__isnull=True, es_sistema=False)
+                                 .order_by('-id').first())
+                if ultimo_humano and ultimo_humano.id > sesion.ultimo_humano_respondido:
+                    Sesion.objects.filter(pk=sesion.pk).update(
+                        ultimo_humano_respondido=ultimo_humano.id)
+                    sesion.ultimo_humano_respondido = ultimo_humano.id
+                    self.stdout.write(f"  ▶ sesión #{sesion.pk}: respondiendo a «{ultimo_humano.texto[:50]}»")
+                    self._responder(sesion, ultimo_humano.texto)
+                    atendidas.add(sesion.pk)
+                    n += 1
+        else:
+            # Selección: MISMO criterio que arriba (id > watermark), más la reserva por silla.
+            # `Enjambre.sillas()` es la fuente real (∩ con las activas; vacío = ninguna).
+            pendientes = []
+            ocupadas = set()  # keys de Participante ya reservadas en ESTE tick
+            for sesion in Sesion.objects.filter(activa=True):
+                ultimo_humano = (sesion.mensajes
+                                 .filter(participante__isnull=True, es_sistema=False)
+                                 .order_by('-id').first())
+                if not (ultimo_humano and ultimo_humano.id > sesion.ultimo_humano_respondido):
+                    continue
+                keys = {p.key for p in Enjambre(sesion).sillas()}
+                if keys & ocupadas:
+                    continue  # silla ocupada este tick → espera al siguiente, sin tocar watermark
+                ocupadas |= keys
                 Sesion.objects.filter(pk=sesion.pk).update(
                     ultimo_humano_respondido=ultimo_humano.id)
                 sesion.ultimo_humano_respondido = ultimo_humano.id
-                self.stdout.write(f"  ▶ sesión #{sesion.pk}: respondiendo a «{ultimo_humano.texto[:50]}»")
-                self._responder(sesion, ultimo_humano.texto)
+                pendientes.append((sesion, ultimo_humano.texto))
                 atendidas.add(sesion.pk)
-                n += 1
+            n += self._responder_paralelo(pendientes, paralelo)
 
         # 3) Modo --auto: sesiones que iteran SOLAS hacia su objetivo (sin que el
         #    humano dispare cada /seguí). El engine (auto_paso) chequea los límites (tope de costo,
@@ -123,6 +174,49 @@ class Command(BaseCommand):
                 self.stderr.write(f"    auto error #{sesion.pk}: {e}")
             n += 1
         return n
+
+    def _paralelo(self):
+        """Techo de turnos EN VUELO del paso 2 (responder mesas). Default 1 = secuencial.
+        Se lee al arrancar cada tick; cambiarlo es variable de entorno + reiniciar Swarm."""
+        raw = (getattr(settings, 'SWARM_WORKER_PARALELO', '')
+               or os.environ.get('SWARM_WORKER_PARALELO', '1'))
+        try:
+            return max(1, int(raw))
+        except (TypeError, ValueError):
+            return 1
+
+    def _responder_paralelo(self, pendientes, n_paralelo):
+        """Corre `pendientes` (lista de (sesion, texto), ya filtrada en `_tick` para que ninguna
+        silla se repita en el lote) en hasta `n_paralelo` hilos a la vez. `_responder` ya atrapa
+        y postea cualquier excepción del turno, así que un turno que explota no tumba al resto.
+
+        Lo que sí es del worker y hay que cuidar acá:
+          - stdout/stderr: envueltos con un lock mientras corre el lote.
+          - conexiones a la DB: Django abre una por hilo y no la cierra sola → `close_all()` en
+            el `finally` de cada hilo. SQLite aguanta los escritores concurrentes por el WAL +
+            busy_timeout + IMMEDIATE de settings.py."""
+        if not pendientes:
+            return 0
+        orig_stdout, orig_stderr = self.stdout, self.stderr
+        lock = threading.Lock()
+        self.stdout = _LockedStream(orig_stdout, lock)
+        self.stderr = _LockedStream(orig_stderr, lock)
+        try:
+            def _trabajar(sesion, texto):
+                try:
+                    self.stdout.write(
+                        f"  ▶ sesión #{sesion.pk}: respondiendo a «{texto[:50]}» (paralelo)")
+                    self._responder(sesion, texto)
+                finally:
+                    connections.close_all()  # una conexión por hilo — SIEMPRE se cierra acá
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=n_paralelo) as ex:
+                futuros = [ex.submit(_trabajar, sesion, texto) for sesion, texto in pendientes]
+                for f in concurrent.futures.as_completed(futuros):
+                    f.result()  # _responder no propaga; esto solo re-lanzaría un bug del worker
+        finally:
+            self.stdout, self.stderr = orig_stdout, orig_stderr
+        return len(pendientes)
 
     def _responder(self, sesion, texto):
         """Turno completo sobre un mensaje humano. Nunca propaga: si explota, el humano tiene que

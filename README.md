@@ -105,6 +105,10 @@ the machine's PATH; API-key seats talk to the providers over plain HTTP. There's
 the [toolbelt](#threat-model--read-this-before-using-it) acts on the real machine, and that's
 the point. This is exactly what the launchers run, from a pendrive or from a folder on disk.
 
+The worker answers **one table at a time** by default. Set `SWARM_WORKER_PARALELO=N` (and restart)
+to let up to N tables answer at once — only tables that share **no** seat run together, so a seat
+never has two turns in flight against the same login or key.
+
 **Credentials are never copied.** Swarm doesn't ask for, store or log a CLI login: your
 `claude login` on that machine is the single source of truth, and the Conexiones screen only
 reports whether the credential **file exists**. API keys are the one exception — they live
@@ -305,6 +309,10 @@ PATH de la máquina; las de API key hablan con los proveedores por HTTP plano. N
 — el [toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo) actúa sobre la máquina real, y esa
 es la idea. Es exactamente lo que corren los launchers, desde un pendrive o desde una carpeta
 del disco.
+
+Por default el worker atiende **una mesa por vez**. Con `SWARM_WORKER_PARALELO=N` (y reiniciando)
+responden hasta N mesas a la vez — solo mesas que **no** comparten ninguna silla, así una silla
+nunca tiene dos turnos en vuelo contra el mismo login o la misma key.
 
 **Las credenciales no se copian nunca.** Swarm no pide, guarda ni loguea el login de un CLI:
 tu `claude login` en esa máquina es la única fuente de verdad, y la pantalla Conexiones solo

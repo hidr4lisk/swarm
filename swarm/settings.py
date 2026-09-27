@@ -174,6 +174,11 @@ SWARM_DATA_DIR = os.environ.get('SWARM_DATA_DIR') or str(BASE_DIR / 'data')
 # a atender). Ver "Threat model" del README.
 SWARM_TOOLBELT = os.environ.get('SWARM_TOOLBELT', '')
 
+# Cuántas mesas atiende el worker A LA VEZ (turnos en vuelo). Default 1 = secuencial, el camino
+# de siempre (sin hilos). Con N > 1 mesas que NO comparten ninguna silla responden en paralelo;
+# una silla nunca tiene dos turnos en vuelo (mismo login/cuota del CLI o de la key).
+SWARM_WORKER_PARALELO = os.environ.get('SWARM_WORKER_PARALELO', '1')
+
 # base_url del proveedor "OpenAI-compatible" (para apuntar a Groq/DeepSeek/LM Studio/etc.).
 # Vacío = api.openai.com. Solo afecta a las sillas api-openai.
 SWARM_OPENAI_BASE_URL = os.environ.get('SWARM_OPENAI_BASE_URL', '')

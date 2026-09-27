@@ -589,6 +589,66 @@ class MesaSinSillasTests(TestCase):
         self.assertNotRegex(html, r'value="sa"[^>]*checked')
 
 
+class WorkerParaleloTests(TestCase):
+    """SWARM_WORKER_PARALELO: default 1 = secuencial de siempre; N > 1 atiende en paralelo mesas
+    que no comparten silla, y una silla nunca tiene dos turnos en vuelo."""
+
+    def setUp(self):
+        from .management.commands.enjambre_worker import Command
+        self.cmd = Command()
+        self.a = Participante.objects.create(key='pa', nombre='A', comando=['true'], activo=True)
+        self.b = Participante.objects.create(key='pb', nombre='B', comando=['true'], activo=True)
+
+    def _mesa(self, nombre, sillas):
+        sesion = Sesion.objects.create(nombre=nombre)
+        sesion.participantes.set(sillas)
+        Mensaje.objects.create(sesion=sesion, emisor='Humano', texto=f'hola {nombre}')
+        return sesion
+
+    def test_default_es_secuencial_sin_hilos(self):
+        self._mesa('m1', [self.a])
+        self._mesa('m2', [self.b])
+        self.assertEqual(self.cmd._paralelo(), 1)
+        with mock.patch.object(self.cmd, '_responder') as resp, \
+                mock.patch('concurrent.futures.ThreadPoolExecutor') as pool:
+            self.cmd._tick()
+        self.assertEqual(resp.call_count, 2)
+        pool.assert_not_called()
+
+    @override_settings(SWARM_WORKER_PARALELO='2')
+    def test_mesas_sin_silla_en_comun_corren_a_la_vez(self):
+        import threading
+        self._mesa('m1', [self.a])
+        self._mesa('m2', [self.b])
+        # Barrera de 2: si el worker corriera secuencial, el primer turno esperaría solo y la
+        # barrera se rompería por timeout → el test falla (no alcanza con «no explotó»).
+        barrera = threading.Barrier(2, timeout=5)
+        with mock.patch.object(self.cmd, '_responder', side_effect=lambda *a: barrera.wait()), \
+                mock.patch('enjambre.management.commands.enjambre_worker.connections'):
+            self.cmd._tick()
+        self.assertFalse(barrera.broken)
+
+    @override_settings(SWARM_WORKER_PARALELO='4')
+    def test_silla_compartida_espera_al_tick_siguiente(self):
+        m1 = self._mesa('m1', [self.a])
+        m2 = self._mesa('m2', [self.a, self.b])
+        with mock.patch.object(self.cmd, '_responder') as resp, \
+                mock.patch('enjambre.management.commands.enjambre_worker.connections'):
+            self.cmd._tick()
+            # Comparten la silla A: en este tick responde UNA sola; la otra queda sin tocar.
+            self.assertEqual(resp.call_count, 1)
+            primera = resp.call_args.args[0].pk
+            otra = m2 if primera == m1.pk else m1
+            otra.refresh_from_db()
+            self.assertEqual(otra.ultimo_humano_respondido, 0)   # watermark intacto
+            self.cmd._tick()
+        self.assertEqual({c.args[0].pk for c in resp.call_args_list}, {m1.pk, m2.pk})
+
+    @override_settings(SWARM_WORKER_PARALELO='basura')
+    def test_valor_invalido_cae_a_secuencial(self):
+        self.assertEqual(self.cmd._paralelo(), 1)
+
+
 class WorkspaceTests(TestCase):
     def test_mesa_workspace_idempotente(self):
         with tempfile.TemporaryDirectory() as tmp:
