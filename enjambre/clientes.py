@@ -37,23 +37,28 @@ CLIENTES = {
         'model_flag': '--model',
         'modelos': [
             '',
-            # Free (verificados contra `opencode models` 2026-08-12). Señal fiable de free en
-            # opencode = sufijo `-free`; big-pickle es el único confirmado free sin sufijo.
+            # Free (verificados contra `opencode models` y con PONG de 14 k caracteres,
+            # 2026-09-28, opencode 1.18.33 — Zen exige ≥ 1.18.0 para el free tier). Señal fiable
+            # de free en opencode = sufijo `-free`; big-pickle es el único confirmado sin sufijo.
+            # Ese día Zen retiró mimo-v2.5, deepseek-v4-flash, hy3 y north-mini-code.
             'opencode/big-pickle',
-            'opencode/deepseek-v4-flash-free',
-            'opencode/mimo-v2.5-free',
+            'opencode/mimo-v2.6-flash-free',
             'opencode/nemotron-3-ultra-free',
-            'opencode/hy3-free',
-            # Populares (pagos por la key de Zen)
-            'opencode/grok-build-0.1',
-            'opencode/claude-sonnet-4-6',
-            'opencode/claude-opus-4-8',
-            'opencode/gpt-5.2',
-            'opencode/gemini-3-flash',
-            'opencode/kimi-k2.6',
-            'opencode/glm-5',
-            'opencode/qwen3.6-plus',
-            'opencode/minimax-m2.7',
+            'opencode/nemotron-3.5-lightning-free',
+            'opencode/ling-3.0-flash-fin-free',
+            'opencode/longcat-2.5-preview-free',
+            'opencode/muse-spark-1.3-contributor-free',
+            'opencode/space-bunny-free',
+            # Populares (pagos por la key de Zen) — refrescados a la última versión 2026-09-28
+            'opencode/claude-sonnet-5',
+            'opencode/claude-opus-5-5',
+            'opencode/gpt-6-sol',
+            'opencode/gemini-3.8-flash',
+            'opencode/kimi-k3',
+            'opencode/glm-5.3',
+            'opencode/qwen3.8-max',
+            'opencode/minimax-m3',
+            'opencode/grok-4.7',
         ],
     },
     'agy': {
