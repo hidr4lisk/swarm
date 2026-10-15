@@ -1,7 +1,7 @@
 # Revisión de Codex CLI en SWARM — 2026-10-15
 
 **Resultado:** en el código publicado en `61d7ccf` la charla funciona, pero fabricar con
-Codex CLI **0.162.1** falla antes de invocar al modelo. Corrección preparada para **v1.2.1** y
+Codex CLI **0.162.1** falla antes de invocar al modelo. Corrección **publicada en v1.2.1** y
 probada en Linux y Windows. Las pruebas no modificaron bases persistentes de SWARM.
 
 ## Hallazgos
@@ -78,13 +78,58 @@ firma: Sakura
 | Solo lectura en Windows | Intento real mediante PowerShell bloqueado, `denied.txt` inexistente |
 | `/armar` en Windows con sandbox nativo | `smoke.txt` con contenido exacto, commit `ddbc780`, árbol limpio, mesa HTTP 200 |
 
-La prueba real usó una **base de tests en memoria**, mesas y datos en un directorio temporal.
+Los recorridos reales documentados usaron una **base de tests en memoria**, mesas y datos en un directorio temporal.
 No se modificó la DB persistente de SWARM ni la de hidralisk. Los rollouts del CLI
 confirmaron el intento real de escritura bloqueado y el comando que creó `smoke.txt`.
 
 Otros ajustes: prompt de Codex por **stdin**, para no depender del límite de argumentos de
 Windows ni interpretar un prompt que empieza con un flag; modelo vacío como default del CLI
 en lugar de sugerencias no verificadas para la cuenta. README y Ayuda ES/EN actualizados.
+
+## Publicación verificada — 2026-10-15
+
+- [Release v1.2.1](https://github.com/hidr4lisk/swarm/releases/tag/v1.2.1): código
+  `55bf979c26dc6ec0987b66b91e43b1cca9d5bd35`; el workflow dejó el sello de versión en
+  `main` mediante `6f5fe0f71968225bc882afcc721bd1b955c0bb3e`. El tag apunta al código de
+  release; el empaquetado sella la versión antes de construir.
+- [CI](https://github.com/hidr4lisk/swarm/actions/runs/38764767088),
+  [portable-release](https://github.com/hidr4lisk/swarm/actions/runs/38765116839) y
+  [Pages](https://github.com/hidr4lisk/swarm/actions/runs/38765230245): terminados con éxito.
+- La [web pública](https://hidr4lisk.github.io/swarm/) respondió HTTP 200, mostró
+  **v1.2.1 · 15/10/2026** y el texto de compatibilidad con Codex 0.162.1.
+- Se descargó el ZIP público por `releases/latest/download/swarm-portable.zip` (HTTP 200):
+  **101.596.805 bytes**, SHA256
+  `91070fd83422c8d16d004114a225b9bb3c56fb2899f9e4f64e6e48794ea8af9c`, coincidente con
+  el digest de GitHub. CRC íntegro, versión v1.2.1, migración 0011 incluida y los archivos
+  modificados de ejecución iguales al código publicado.
+- Se verificaron los SHA256 truncados de **ambos** runtimes contra sus `.ver`; el runtime
+  Linux extraído del ZIP final pasó `manage.py check` y `migrate --noinput` completo sobre
+  SQLite temporal. Esto no es un reensayo del launcher ni una prueba Windows del ZIP final:
+  Windows se ejercitó antes con el bundle de QA y overlay descrito abajo.
+
+### Reproducir las regresiones desde fuente
+
+Con las dependencias del repo instaladas, desde la raíz de SWARM (Linux):
+
+```bash
+DJANGO_SETTINGS_MODULE=swarm.settings SWARM_SECRET_KEY=swarm-audit-only \
+DATABASE_URL=sqlite:///:memory: ENJAMBRE_MESAS_DIR=/tmp/swarm-audit-suite/mesas \
+.venv/bin/python manage.py test enjambre --noinput -v 0
+```
+
+Para solo las regresiones de Codex, reemplazar `enjambre` por `enjambre.test_codex` en ese comando.
+El parser real se comprueba si el ejecutable está disponible; las pruebas con inferencia
+requieren además login válido y fueron ejercitadas por separado, no por toda la suite.
+Las evidencias crudas de QA en `/tmp` son auxiliares y pueden desaparecer; los resultados,
+entorno, alcance y huella del artefacto quedan registrados en este informe versionado.
+
+### Actualizar y publicar de nuevo
+
+Las [notas v1.2.1](releases/v1.2.1.md) detallan cómo conservar **`data/` completa** y
+configurar Codex en Windows. Se actualizaron README, Ayuda ES/EN y LEEME.
+Para otro release: tests → código en main → notas `docs/releases/<tag>.md` → tag `vX.Y.Z` →
+workflow portable-release → comprobar digest/versión/migraciones del ZIP y versión/fecha de
+Pages. No editar el sello a mano ni retaggear una versión publicada.
 
 ## Contrato y alcance pendiente
 
@@ -110,7 +155,7 @@ esa librería de la misma versión de Django como suplemento **de QA**, no al pr
 La prueba final agregó al bundle reconstruido los dos archivos de código/tests corregidos durante
 el diagnóstico mediante un overlay de QA. Se repitieron las regresiones y el recorrido completo
 con el código actualizado, una mesa nueva y DB de tests en memoria. Resultado final: `stage=complete`.
-Evidencia completa en jarvis: `/tmp/swarm-codex-windows-20261015/windows-results-final.json`.
+Evidencia cruda temporal en jarvis: `/tmp/swarm-codex-windows-20261015/windows-results-final.json`.
 
 El backend `unelevated` usado en la prueba conserva token restringido y límites de filesystem,
 pero tiene menor aislamiento de red que `elevated`; no se desactivó el sandbox. El backend se elige

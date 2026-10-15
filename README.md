@@ -18,7 +18,7 @@ changes apply immediately, and everything lands in the log.
 🌐 **Project page:** <https://hidr4lisk.github.io/swarm>
 
 **v1.2.1 · Codex CLI compatibility update.** Tested on Linux and Windows with CLI 0.162.1:
-chat, read-only enforcement and building real files. [Release notes and upgrade instructions](docs/releases/v1.2.1.md).
+chat, read-only enforcement and building real files. [Release notes and upgrade instructions](docs/releases/v1.2.1.md) · [Test report and limitations](docs/codex-cli-audit.md).
 
 ![A Swarm table: the seats debate the request, /armar builds the script for real (one commit per turn) and the worker's live flow shows on the right](docs/img/mesa.png)
 
@@ -265,7 +265,7 @@ inspeccionar, editar y arreglar la computadora real en la que estás. El switch 
 🌐 **Página del proyecto:** <https://hidr4lisk.github.io/swarm>
 
 **v1.2.1 · Actualización de compatibilidad con Codex CLI.** Probado en Linux y Windows con
-CLI 0.162.1: charla, solo lectura y fabricación real. [Notas e instrucciones para actualizar](docs/releases/v1.2.1.md).
+CLI 0.162.1: charla, solo lectura y fabricación real. [Notas e instrucciones para actualizar](docs/releases/v1.2.1.md) · [Informe de pruebas y límites](docs/codex-cli-audit.md).
 
 ## Quickstart
 
