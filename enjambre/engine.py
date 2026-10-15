@@ -67,8 +67,7 @@ ERROR_MARKERS = ("session limit", "hit your", "unknownerror", "unexpected server
                  "internal server error", "rate limit", "overloaded", "bad request",
                  "upstream request failed", "error from provider", "streaming response failed",
                  "no provider available", "no model available", "provider error",
-                 # Codex (sin probar): cuentas ChatGPT sin acceso a un modelo. Texto de la doc/issues
-                 # públicos, NO visto en vivo — confirmar con la primera silla real (issue #1).
+                 # Modelos no disponibles en la cuenta; respaldo para CLIs que salen con exit 0.
                  "not supported when using codex", "model is not supported")
 # Tope de largo para que un marker de proveedor cuente como ruido (errores reales son breves).
 RUIDO_MAX_LEN = 300
@@ -495,7 +494,7 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
     proc = None
     try:
         proc = subprocess.Popen(
-            argv + [prompt],
+            argv + (['-'] if cli == 'codex' else [prompt]),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=cwd,
             # encoding EXPLÍCITO: sin esto `text=True` decodifica con la codificación del SO
             # (`locale.getpreferredencoding`), que en Windows es cp1252 — y los CLIs de silla
@@ -509,14 +508,36 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
             # `nohup … >log 2>&1 &`), `opencode run --auto` muere al leerlo con "EBADF: bad file
             # descriptor, read" y /armar no fabrica nada; y si arrancó desde una terminal, la
             # silla se come las teclas del humano. Un subprocess de silla nunca lee de ahí.
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if cli == 'codex' else subprocess.DEVNULL,
             # Sesión propia ⇒ pgid == pid ⇒ al vencer el turno se puede matar el ÁRBOL entero
             # (ver _matar_arbol). En Windows no existe: ahí el árbol lo recorre `taskkill /T`.
             **({} if os.name == 'nt' else {'start_new_session': True}),
         )
         try:
-            out, err = proc.communicate(timeout=timeout)
-            salida = (limpiar_salida(out) or limpiar_salida(err) or "(sin respuesta)")
+            if cli == 'codex':
+                out, err = proc.communicate(input=prompt, timeout=timeout)
+            else:
+                out, err = proc.communicate(timeout=timeout)
+            codex_sandbox = (re.search(r'^sandbox:\s*(\S+)', ANSI_RE.sub('', err or ''), re.MULTILINE)
+                             if cli == 'codex' else None)
+            # Codex reserva stdout para la respuesta final; stderr contiene progreso/MCP.
+            # Un proceso fallido nunca puede entrar al contexto como un aporte válido.
+            if proc.returncode:
+                detalle = limpiar_salida(err) or limpiar_salida(out)
+                salida = (f"(❌ {participante.nombre}: {cli} terminó con código {proc.returncode})"
+                          + (f"\n{detalle}" if detalle else ''))
+            elif (cli == 'codex'
+                  and ('--sandbox', 'workspace-write') in zip(argv, argv[1:])
+                  and codex_sandbox and codex_sandbox[1] == 'read-only'):
+                # Windows sin backend nativo seleccionado degrada workspace-write a read-only
+                # y sale con exit 0. No contar esa negativa como fabricación exitosa.
+                salida = (f"(❌ {participante.nombre}: Codex arrancó en solo lectura aunque se pidió "
+                          "escritura. Revisá sus permisos; en Windows configurá el sandbox nativo "
+                          "[windows].sandbox en config.toml antes de usar /armar.)")
+            else:
+                salida = (limpiar_salida(out)
+                          or (limpiar_salida(err) if cli != 'codex' else '')
+                          or "(sin respuesta)")
             if _parece_401((out or '') + '\n' + (err or '')):
                 # Credencial vencida: sin esto la silla contesta «(sin respuesta)» y el humano no
                 # tiene cómo saber que solo hay que re-loguear el CLI en su terminal.

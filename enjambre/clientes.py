@@ -80,21 +80,19 @@ CLIENTES = {
             'Gemini 3.1 Pro (High)',
         ],
     },
-    # ⚠️ EXPERIMENTAL — SIN PROBAR contra una cuenta real (issue #1, pendiente de revisión).
-    # Armado desde la doc pública de OpenAI Codex CLI: `codex exec` es el modo no interactivo
-    # (el prompt va al final, como en el resto) y nunca pide aprobación. `--skip-git-repo-check`
-    # porque exec se niega a correr fuera de un repo git y la charla no siempre está en uno.
-    # Charla con sandbox de solo lectura; fabricar con `--full-auto` (= sandbox workspace-write:
-    # escribe en la carpeta de la mesa, NO fuera). La credencial es la del login del CLI
-    # (`~/.codex/auth.json`): Swarm no la lee, solo mira si existe (ver conexiones.py).
+    # Codex 0.162.1 ya no acepta --full-auto. Fijar sandbox y approval_policy explícitos:
+    # charla read-only; fabricar workspace-write (NO da escritura arbitraria en el host).
+    # El prompt viaja por stdin en engine.py: no queda limitado por el argv de Windows.
+    # La credencial sigue siendo la del login del CLI; Swarm no lee su contenido.
+    # Linux y Windows probados con 0.162.1; otros backends/versiones siguen experimentales.
     'codex': {
-        'label': 'Codex CLI (OpenAI) — experimental, sin probar',
+        'label': 'Codex CLI (OpenAI) — experimental',
         'comando': ['codex', 'exec', '--skip-git-repo-check', '--sandbox', 'read-only',
-                    '--color', 'never'],
-        'comando_trabajo': ['codex', 'exec', '--skip-git-repo-check', '--full-auto',
-                            '--color', 'never'],
+                    '-c', 'approval_policy="never"', '--color', 'never'],
+        'comando_trabajo': ['codex', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write',
+                            '-c', 'approval_policy="never"', '--color', 'never'],
         'model_flag': '--model',
-        'modelos': ['', 'gpt-5-codex', 'gpt-5', 'o4-mini'],  # '' = default de la cuenta
+        'modelos': [''],  # default del CLI; el campo libre acepta el ID disponible en tu cuenta
         'experimental': True,
     },
     # ── Proveedores por API KEY (sin binarios, ruta portable) ──────────────────

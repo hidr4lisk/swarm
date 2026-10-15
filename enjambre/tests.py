@@ -233,15 +233,17 @@ class BuildComandoTests(TestCase):
         self.assertEqual(cmd[-3:-1], ['--model', 'Gemini 3.1 Pro (High)'])
 
     def test_codex_exec_no_interactivo(self):
-        """Codex (experimental, sin probar con cuenta real): `codex exec`, charla en solo
-        lectura, fabricar con --full-auto, y el modelo antes del prompt (que va al final)."""
-        cmd, cmdt = build_comando('codex', 'gpt-5')
+        """Sandbox explícito y sin aprobaciones interactivas; --full-auto fue retirado."""
+        cmd, cmdt = build_comando('codex', 'modelo-de-la-cuenta')
         self.assertEqual(cmd[:2], ['codex', 'exec'])
         self.assertIn('--skip-git-repo-check', cmd)
         self.assertEqual(cmd[cmd.index('--sandbox') + 1], 'read-only')
         self.assertNotIn('--full-auto', cmd)
-        self.assertIn('--full-auto', cmdt)
-        self.assertEqual(cmd[-2:], ['--model', 'gpt-5'])
+        self.assertNotIn('--full-auto', cmdt)
+        self.assertEqual(cmdt[cmdt.index('--sandbox') + 1], 'workspace-write')
+        for comando in (cmd, cmdt):
+            self.assertIn('approval_policy="never"', comando)
+        self.assertEqual(cmd[-2:], ['--model', 'modelo-de-la-cuenta'])
         self.assertTrue(CLIENTES['codex'].get('experimental'))
         self.assertIn('codex', conexiones_mod.CLIS)
 

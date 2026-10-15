@@ -457,6 +457,31 @@ que las sillas fabriquen.
 
 Para las sillas por API key hace falta un modelo que soporte herramientas (function-calling); las
 de CLI usan las suyas.
+
+CODEX CLI — Windows y Linux (probado con 0.162.1 el 15/10/2026)
+-----------------------------------------------------------
+Las sillas CLI se instalan y se loguean por separado: el bundle no trae sus binarios ni copia
+credenciales de otra PC. Para Codex, ejecutá "codex login" y elegí el cliente codex en Sillas.
+Dejá el modelo vacío para usar el default de tu CLI. Para fabricar: git + TOOLBELT encendido.
+
+Codex conserva su sandbox: escribe en la carpeta de la mesa, no en cualquier parte del host.
+En Windows hay que configurar antes su sandbox nativo en el config.toml de Codex. Sin un backend
+elegido, el CLI puede bajar a solo lectura aunque se le haya pedido escritura. Swarm ahora lo
+avisa como error. Para uso portátil sin preparación de administrador se probó:
+
+  [windows]
+  sandbox = "unelevated"
+
+Ese backend mantiene token restringido y límites de archivos, pero aísla menos la red que
+"elevated", que requiere preparación de administrador. Swarm no pisa tu elección de backend.
+Más detalle: https://github.com/hidr4lisk/swarm#readme
+
+ACTUALIZAR SIN PERDER DATOS
+--------------------------
+Cerrá Swarm. Reemplazá app/, los launchers y runtime-*.tar.gz/.ver por los de la nueva versión,
+pero conservá tu carpeta data/ completa. No la reemplaces por la data/ vacía del zip.
+Al arrancar se actualiza la base; esta versión corrige automáticamente las plantillas Codex
+estándar ya guardadas. Los comandos personalizados se conservan.
 TXT
 
 echo "✅ Listo: $OUT"

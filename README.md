@@ -4,7 +4,7 @@
 
 A **multi-agent worktable** in your browser: several AIs sit at the same table —
 **chat, debate and act** — coordinated by a leader. Run them on your already-logged-in
-**CLIs** (`claude`, `opencode`, `agy`) or on your own **API keys** (Anthropic,
+**CLIs** (`claude`, `opencode`, `agy`, `codex`) or on your own **API keys** (Anthropic,
 OpenAI-compatible, OpenRouter). **It's one self-contained folder**: leave it on the PC or
 carry it on a pendrive and plug it into any bare machine — Windows or Linux, no Python,
 no Docker, nothing to install.
@@ -16,6 +16,9 @@ changes apply immediately, and everything lands in the log.
 → [Toolbelt](#threat-model--read-this-before-using-it)
 
 🌐 **Project page:** <https://hidr4lisk.github.io/swarm>
+
+**v1.2.1 · Codex CLI compatibility update.** Tested on Linux and Windows with CLI 0.162.1:
+chat, read-only enforcement and building real files. [Release notes and upgrade instructions](docs/releases/v1.2.1.md).
 
 ![A Swarm table: the seats debate the request, /armar builds the script for real (one commit per turn) and the worker's live flow shows on the right](docs/img/mesa.png)
 
@@ -114,10 +117,31 @@ never has two turns in flight against the same login or key.
 reports whether the credential **file exists**. API keys are the one exception — they live
 encrypted in the vault (see below).
 
-**Codex CLI (experimental, untested).** A `codex` seat is available (`codex exec`, read-only
-sandbox for chat, `--full-auto` to build inside the table's folder). It was wired from OpenAI's
-public docs and has **not been run against a real account yet** — see
-[issue #1](https://github.com/hidr4lisk/swarm/issues/1). Reports welcome.
+**Codex CLI (experimental; Linux and Windows tested with 0.162.1).** A `codex` seat uses `codex exec`,
+an explicit `read-only` sandbox for chat and `workspace-write` to build in the table's folder,
+with non-interactive approvals. `--full-auto` is no longer accepted by that CLI version.
+Leave the model empty to use your CLI's configured default, or enter an ID your account supports.
+Unlike the other CLI seats, Codex keeps its write sandbox when the toolbelt is on: it cannot
+modify arbitrary paths elsewhere on the machine. Prompts travel over stdin, not command-line
+arguments. Existing standard Codex seats are updated by migration `0011`; custom commands are
+left untouched. Conexiones respects `CODEX_HOME` but only checks for an `auth.json` file, not
+whether the login is valid (keyring/environment-only auth is not detected).
+Chat, read-only enforcement and file creation/commit were tested on both platforms. Other CLI
+versions and Windows sandbox backends remain unverified — see [issue #1](https://github.com/hidr4lisk/swarm/issues/1).
+
+On native Windows, **configure Codex's Windows sandbox before building**. With no backend
+selected, CLI 0.162.1 silently downgrades `workspace-write` to `read-only`, even with exit 0.
+Choose the backend appropriate to your machine in Codex's `config.toml`; SWARM does not
+override it. For portable QA without administrator setup we used:
+
+```toml
+[windows]
+sandbox = "unelevated"
+```
+
+This keeps a restricted token and filesystem boundaries, but has weaker network isolation
+than the administrator-provisioned `elevated` backend. See the
+[official Windows sandbox guide](https://developers.openai.com/codex/windows).
 
 ![The Conexiones screen only reports whether each credential exists — never its contents](docs/img/conexiones.png)
 
@@ -227,7 +251,7 @@ Built by [Federico Furgiuele](https://github.com/hidr4lisk).
 
 Una **mesa de trabajo multi-agente** en tu navegador: varias IAs se sientan a la misma
 mesa — **charlan, debaten y actúan** — coordinadas por un líder. Corrélas sobre tus
-**CLIs** ya logueados (`claude`, `opencode`, `agy`) o sobre tus propias **API keys**
+**CLIs** ya logueados (`claude`, `opencode`, `agy`, `codex`) o sobre tus propias **API keys**
 (Anthropic, compatible-OpenAI, OpenRouter). **Es una sola carpeta que se basta sola**:
 dejala en la PC o llevátela en un pendrive y enchufalo en cualquier máquina pelada —
 Windows o Linux, sin Python, sin Docker, sin instalar nada.
@@ -239,6 +263,9 @@ inspeccionar, editar y arreglar la computadora real en la que estás. El switch 
 → [Toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo)
 
 🌐 **Página del proyecto:** <https://hidr4lisk.github.io/swarm>
+
+**v1.2.1 · Actualización de compatibilidad con Codex CLI.** Probado en Linux y Windows con
+CLI 0.162.1: charla, solo lectura y fabricación real. [Notas e instrucciones para actualizar](docs/releases/v1.2.1.md).
 
 ## Quickstart
 
@@ -319,10 +346,32 @@ tu `claude login` en esa máquina es la única fuente de verdad, y la pantalla C
 reporta si el **archivo existe**. Las API keys son la única excepción: viven cifradas en la
 bóveda (abajo).
 
-**Codex CLI (experimental, sin probar).** Hay una silla `codex` (`codex exec`, sandbox de solo
-lectura para charlar, `--full-auto` para fabricar dentro de la carpeta de la mesa). Se armó con
-la doc pública de OpenAI y **todavía no se corrió contra una cuenta real** — ver el
-[issue #1](https://github.com/hidr4lisk/swarm/issues/1). Se agradecen reportes.
+**Codex CLI (experimental; Linux y Windows probados con 0.162.1).** La silla `codex` usa `codex exec`,
+sandbox explícito `read-only` para charlar y `workspace-write` para fabricar en la carpeta de
+la mesa, sin aprobaciones interactivas. Esa versión del CLI ya no acepta `--full-auto`.
+Dejá el modelo vacío para usar el default de tu CLI, o escribí un ID disponible en tu cuenta.
+A diferencia de las otras sillas CLI, Codex conserva su sandbox de escritura con el toolbelt
+encendido: no puede modificar rutas arbitrarias fuera de la mesa. El prompt viaja por stdin,
+no como argumento. La migración `0011` actualiza las sillas Codex estándar ya guardadas; deja
+intactos los comandos personalizados. Conexiones respeta `CODEX_HOME`, pero solo verifica que
+exista `auth.json`, no que el login sea válido (no detecta auth solo por keyring o entorno).
+Charla, bloqueo de escritura y creación/commit de archivos probados en ambos sistemas. Otras
+versiones del CLI y otros backends del sandbox de Windows siguen sin verificar — ver el
+[issue #1](https://github.com/hidr4lisk/swarm/issues/1).
+
+En Windows nativo, **configurá el sandbox de Windows de Codex antes de fabricar**. Sin un
+backend elegido, el CLI 0.162.1 degrada `workspace-write` a `read-only` aunque salga con exit 0.
+Elegí el backend adecuado para tu máquina en el `config.toml` de Codex; SWARM no lo pisa.
+Para la prueba portátil sin preparación de administrador usamos:
+
+```toml
+[windows]
+sandbox = "unelevated"
+```
+
+Conserva un token restringido y límites de filesystem, pero aísla menos la red que el backend
+`elevated`, que requiere preparación de administrador. Ver la
+[guía oficial del sandbox de Windows](https://developers.openai.com/codex/windows).
 
 ## Modelo de amenaza — leelo antes de usarlo
 

@@ -35,7 +35,7 @@ CLIS = {
         'default': '~/.gemini/antigravity-cli',
         'login': 'agy  (login OAuth de Google)',
     },
-    # Experimental, sin probar (issue #1). CODEX_HOME mueve la carpeta; acá solo el default.
+    # Solo detecta el archivo: keyring/API por env no se reflejan en este indicador.
     'codex': {
         'nombre': 'Codex CLI (experimental)',
         'env': 'SWARM_CODEX_CREDS',
@@ -47,7 +47,12 @@ CLIS = {
 
 def ruta_creds(cli):
     """Ruta configurada (o default) de la credencial del CLI, como string del HOST."""
-    return os.environ.get(CLIS[cli]['env']) or str(Path(CLIS[cli]['default']).expanduser())
+    override = os.environ.get(CLIS[cli]['env'])
+    if override:
+        return override
+    if cli == 'codex' and os.environ.get('CODEX_HOME'):
+        return str(Path(os.environ['CODEX_HOME']).expanduser() / 'auth.json')
+    return str(Path(CLIS[cli]['default']).expanduser())
 
 
 def ruta_corta(ruta):

@@ -62,6 +62,10 @@ jobs:
           recién instalada no viene: `winget install --id Git.Git -e` en Windows,
           `sudo apt install git` en Linux. Si falta, Swarm te avisa al arrancar.
           EOF
+          # Las notas versionadas incluyen requisitos y cómo conservar data/ al actualizar.
+          if [ -f "docs/releases/$GITHUB_REF_NAME.md" ]; then
+            cp "docs/releases/$GITHUB_REF_NAME.md" notes.md
+          fi
           gh release create "$GITHUB_REF_NAME" swarm-portable.zip \
             --title "Swarm $GITHUB_REF_NAME — portátil" --notes-file notes.md \
           || gh release upload "$GITHUB_REF_NAME" swarm-portable.zip --clobber
