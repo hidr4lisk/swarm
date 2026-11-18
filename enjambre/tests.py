@@ -16,6 +16,7 @@ de error, que son los nuestros); git sí se usa de verdad sobre un tmpdir.
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -695,6 +696,7 @@ class WorkspaceTests(TestCase):
                                       repo_path=repo)
             with mock.patch.object(ws_mod, 'crear_worktree', return_value='abc123'), \
                     mock.patch.object(ws_mod, 'ejecutar_cli', return_value=('lo hice', False)), \
+                    mock.patch.object(ws_mod, '_git', return_value=''), \
                     mock.patch.object(ws_mod, 'comitear', side_effect=RuntimeError('git roto')), \
                     mock.patch.object(ws_mod, 'remover_worktree'):
                 ws_mod.ejecutar_tarea(t2, timeout=1)
@@ -1568,18 +1570,24 @@ class ModoMaquinaCliTests(TestCase):
         termina en el mismo Popen, y `git init` explota con un Mock por returncode). Este
         side_effect deja pasar git al subprocess real."""
         real = subprocess.Popen
+        procs = []
 
         def dispatch(argv, *a, **kw):
             if argv and 'git' in str(argv[0]):
                 return real(argv, *a, **kw)
-            return proceso_falso(salida)
-        return mock.patch('enjambre.engine.subprocess.Popen', side_effect=dispatch)
+            procs.append(proceso_falso(salida))
+            return procs[-1]
+        parche = mock.patch('enjambre.engine.subprocess.Popen', side_effect=dispatch)
+        parche.procs = procs   # el prompt viaja por stdin: se lee del `communicate` del proceso
+        return parche
 
     def _correr(self, salida='listo: miré /etc/fstab y no toqué nada', pedido='revisá el disco'):
         """Corre un turno interceptando el CLI. Devuelve la llamada del CLI (no la de git: el
         turno ordenado commitea al final, así que la última llamada es del commit)."""
-        with self._parche_cli(salida) as run:
+        parche = self._parche_cli(salida)
+        with parche as run:
             Enjambre(self.sesion).enviar(self.cli, pedido)
+        self.prompt_enviado = parche.procs[0].communicate.call_args.kwargs['input']
         return [c for c in run.call_args_list if 'git' not in str(c.args[0][0])][0]
 
     @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
@@ -1588,7 +1596,9 @@ class ModoMaquinaCliTests(TestCase):
         # usa el comando AGÉNTICO (puede leer/editar/ejecutar), no el de charla
         self.assertIn('--agent', args.args[0])
         # y el prompt le dice que está sobre la máquina real
-        self.assertIn('TOOLBELT está ENCENDIDO', args.args[0][-1])
+        # (el prompt va por stdin, no por argv: ver `prompt_stdin`)
+        self.assertIn('TOOLBELT está ENCENDIDO', self.prompt_enviado)
+        self.assertNotIn(self.prompt_enviado, args.args[0])
         # Aterriza en la carpeta de la mesa (prolijidad por default): sigue alcanzando toda la
         # máquina, pero lo que produce queda junto y versionado.
         self.assertIn('mesa-', args.kwargs['cwd'])
@@ -1994,7 +2004,12 @@ class DispatchCliTests(TestCase):
         self.assertNotIn('auth login', salida)
 
     def test_la_silla_arranca_sin_heredar_el_stdin_del_server(self):
+        """Nunca el stdin del server: o lleva el prompt (PIPE) o va a DEVNULL (agy, que lo recibe
+        por argv)."""
         _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        self.assertEqual(call.kwargs['stdin'], subprocess.PIPE)
+        agy = Participante.objects.create(key='agy1', nombre='AGY', comando=['agy', '--sandbox', '-p'])
+        _s, _r, call = self._correr(agy, proceso_falso('ok'))
         self.assertEqual(call.kwargs['stdin'], subprocess.DEVNULL)
 
 
@@ -2084,3 +2099,611 @@ class AnclaTemporalTests(TestCase):
         prompt = Enjambre(s).construir_prompt(p, 'hola')
         self.assertIn('UBICACIÓN TEMPORAL', prompt)
         self.assertIn(str(timezone.localtime(timezone.now()).year), prompt)
+
+
+# ── Defensas portadas del Enjambre de hidralisk (auditoría S-01 … S-09) ────────────────────────
+# Los que necesitan symlinks o scripts `#!/bin/sh` se saltean en Windows; los caminos
+# alternativos de Windows (sin O_NOFOLLOW/dir_fd) se ejercitan en Linux forzando `_CON_DIRFD`.
+SOLO_POSIX = unittest.skipIf(os.name == 'nt', 'usa symlinks / scripts sh (POSIX)')
+
+
+class GitDelHostTests(TestCase):
+    """S-01: el git del HOST corre sobre un `.git` que la silla puede escribir. Hooks y fsmonitor
+    se apagan por flag; un filtro no, así que un `.git` que cambió en el turno o que trae algo que
+    ejecuta no se commitea. Repos descartables en tmp, git real."""
+
+    def setUp(self):
+        from . import workspace
+        self.ws = workspace
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.centinela = self.tmp / 'PWNED'
+        self.repo = self.tmp / 'mesa'
+        self.repo.mkdir()
+        workspace._git(self.repo, 'init')
+        (self.repo / 'a.txt').write_text('a')
+        workspace._git(self.repo, 'add', '-A')
+        workspace._git(self.repo, *workspace.GIT_AUTOR, 'commit', '-m', 'init')
+
+    def _script(self, nombre):
+        s = self.tmp / nombre
+        s.write_text(f'#!/bin/sh\ntouch {self.centinela}\ncat\n')
+        s.chmod(0o755)
+        return s
+
+    def _head(self):
+        return self.ws._git(self.repo, 'rev-parse', 'HEAD')
+
+    def test_todo_git_lleva_los_flags_seguros_y_entorno_limpio(self):
+        with mock.patch.dict(os.environ, {'GIT_DIR': '/otro', 'GIT_CONFIG_COUNT': '1'}), \
+                mock.patch('enjambre.workspace.subprocess.run') as run:
+            run.return_value = mock.Mock(returncode=0, stdout='', stderr='')
+            self.ws._git(self.repo, 'status')
+        cmd, kw = run.call_args.args[0], run.call_args.kwargs
+        for flag in self.ws.GIT_SEGURO:
+            self.assertIn(flag, cmd)
+        self.assertIn(f'core.hooksPath={os.devnull}', cmd)
+        self.assertIn('core.fsmonitor=false', cmd)
+        self.assertIn('safe.directory=*', cmd)            # lo de Swarm (pendrive exFAT) sigue
+        self.assertFalse([k for k in kw['env'] if k.startswith('GIT_') and not k.startswith('GIT_CONFIG_')])
+        self.assertEqual(kw['env']['GIT_CONFIG_NOSYSTEM'], '1')
+        self.assertEqual(kw['env']['GIT_CONFIG_GLOBAL'], os.devnull)
+        self.assertNotIn('GIT_CONFIG_COUNT', kw['env'])
+
+    @SOLO_POSIX
+    def test_hook_no_corre_y_la_mesa_no_se_commitea(self):
+        hook = self.repo / '.git' / 'hooks' / 'pre-commit'
+        hook.write_text(f'#!/bin/sh\ntouch {self.centinela}\n')
+        hook.chmod(0o755)
+        (self.repo / 'b.txt').write_text('b')
+        # Aunque se llame a git directo, el hook está apagado por flag.
+        self.ws._git(self.repo, 'add', '-A')
+        self.ws._git(self.repo, *self.ws.GIT_AUTOR, 'commit', '-m', 'x')
+        self.assertFalse(self.centinela.exists())
+        # Y comitear() ni lo intenta: un hook real en una mesa es una mesa tocada.
+        (self.repo / 'c.txt').write_text('c')
+        with self.assertRaisesRegex(self.ws.GitAlterado, 'hook pre-commit'):
+            self.ws.comitear(self.repo, 'y')
+
+    @SOLO_POSIX
+    def test_fsmonitor_no_corre(self):
+        self.ws._git(self.repo, 'config', 'core.fsmonitor', str(self._script('fsmon')))
+        self.ws._git(self.repo, 'status', '--porcelain')
+        self.assertFalse(self.centinela.exists())
+
+    @SOLO_POSIX
+    def test_filtro_puesto_en_el_turno_no_corre_ni_se_commitea(self):
+        huella = self.ws.huella_git(self.repo)
+        antes = self._head()
+        # Lo que haría la silla con `.git` escribible: un filtro + .gitattributes.
+        cfg = self.repo / '.git' / 'config'
+        cfg.write_text(cfg.read_text() + f'[filter "x"]\n\tclean = {self._script("filtro")}\n')
+        (self.repo / '.gitattributes').write_text('* filter=x\n')
+        (self.repo / 'b.txt').write_text('b')
+        with self.assertRaises(self.ws.GitAlterado) as e:
+            self.ws.comitear(self.repo, 'turno', huella=huella)
+        self.assertTrue(str(e.exception).startswith(self.ws.GIT_ALTERADO_MARCA))
+        self.assertFalse(self.centinela.exists())
+        self.assertEqual(self._head(), antes)
+
+    def test_la_huella_cambia_si_cambia_la_config_o_un_hook(self):
+        h0 = self.ws.huella_git(self.repo)
+        self.assertEqual(self.ws.huella_git(self.repo), h0)          # estable sin cambios
+        cfg = self.repo / '.git' / 'config'
+        cfg.write_text(cfg.read_text() + '[user]\n\tname = x\n')
+        h1 = self.ws.huella_git(self.repo)
+        self.assertNotEqual(h1, h0)
+        (self.repo / '.git' / 'hooks' / 'post-commit').write_text('x')
+        self.assertNotEqual(self.ws.huella_git(self.repo), h1)
+
+    def test_turno_que_toca_git_deja_la_tarea_en_error_con_la_marca(self):
+        from .models import Tarea
+        p = Participante.objects.create(key='neo-git', nombre='Neo', comando=['x'])
+        s = Sesion.objects.create(nombre='m')
+        t = Tarea.objects.create(sesion=s, participante=p, titulo='t', ordenes='hacelo',
+                                 estado=Tarea.Estado.EN_CURSO, persistente=True)
+
+        def silla(*a, **k):
+            dest = Path(s.workspace_dir)
+            (dest / '.git' / 'hooks' / 'post-commit').write_text('#!/bin/sh\nexit 0\n')
+            (dest / 'b.txt').write_text('b')
+            return ('lo hice', False)
+
+        with override_settings(ENJAMBRE_MESAS_DIR=str(self.tmp / 'mesas')), \
+                mock.patch.object(self.ws, 'ejecutar_cli', side_effect=silla):
+            self.ws._ejecutar_persistente(t, timeout=1)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn(self.ws.GIT_ALTERADO_MARCA, t.salida)
+        # solo el commit init: lo de la silla no se versionó
+        self.assertEqual(self.ws._git(s.workspace_dir, 'log', '--oneline').count('\n'), 0)
+
+    def _motivos(self):
+        return self.ws.peligros_git(self.repo)
+
+    def test_mesa_recien_creada_esta_limpia(self):
+        self.assertEqual(self._motivos(), [])
+
+    def test_lista_blanca_de_config(self):
+        """Cualquier clave que `git init` no deja es una mesa tocada (gpg.program, worktreeConfig…)."""
+        for clave, valor in (('commit.gpgSign', 'true'), ('gpg.program', './firmar'),
+                             ('extensions.worktreeConfig', 'true')):
+            self.ws._git(self.repo, 'config', clave, valor)
+        self.assertLessEqual({'config commit.gpgsign', 'config gpg.program',
+                              'config extensions.worktreeconfig'}, set(self._motivos()))
+
+    def test_repo_anidado_bloquea(self):
+        (self.repo / 'sub').mkdir()
+        self.ws._git(self.repo / 'sub', 'init')
+        self.assertIn('repo anidado sub/.git', self._motivos())
+        with self.assertRaises(self.ws.GitAlterado):
+            self.ws.asegurar_git(self.repo)
+
+    def test_git_que_no_es_directorio_bloquea(self):
+        shutil.rmtree(self.repo / '.git')
+        (self.repo / '.git').write_text('gitdir: /otro/lado\n')
+        self.assertEqual(self._motivos(), ['.git no es un directorio'])
+
+    def test_indirecciones_de_git_bloquean(self):
+        (self.repo / '.git' / 'commondir').write_text('../otro')
+        self.assertIn('.git/commondir', self._motivos())
+
+    def test_worktree_niega_claves_que_ejecutan(self):
+        git_dir = self.repo / '.git'
+        self.ws._git(self.repo, 'config', 'filter.x.clean', 'cat')
+        self.ws._git(self.repo, 'config', 'core.hooksPath', 'hooks-del-proyecto')   # legítima
+        motivos = self.ws.peligros_worktree(self.repo, git_dir)
+        self.assertIn('config filter.x.clean', motivos)
+        self.assertFalse([m for m in motivos if 'hookspath' in m.lower()])
+
+    def test_comitear_sano_sigue_andando(self):
+        huella = self.ws.huella_git(self.repo)
+        (self.repo / 'b.txt').write_text('b')
+        self.assertTrue(self.ws.comitear(self.repo, 'ok', huella=huella))
+        self.assertIsNone(self.ws.comitear(self.repo, 'nada', huella=huella))
+
+    def test_comitear_y_postear_deja_el_fallo_en_la_mesa(self):
+        """GitAlterado en el turno de una silla: aviso de sistema + log de error + fallo_ejecucion."""
+        from .models import LogMesa
+        s = Sesion.objects.create(nombre='alt')
+        p = Participante.objects.create(key='alt1', nombre='Alt', comando=['x'])
+        enj = Enjambre(s)
+        with mock.patch('enjambre.workspace.comitear',
+                        side_effect=self.ws.GitAlterado(f'{self.ws.GIT_ALTERADO_MARCA} en x: y')):
+            enj._comitear_y_postear(p, str(self.repo), 'abc')
+        self.assertTrue(s.mensajes.filter(es_sistema=True, texto__contains=self.ws.GIT_ALTERADO_MARCA).exists())
+        self.assertTrue(LogMesa.objects.filter(sesion=s, nivel='error').exists())
+        self.assertTrue(enj.fallo_ejecucion)
+
+    def test_enviar_toma_la_huella_antes_del_turno_y_la_pasa_al_commit(self):
+        with tempfile.TemporaryDirectory() as tmp, override_settings(ENJAMBRE_MESAS_DIR=tmp):
+            s = Sesion.objects.create(nombre='h')
+            p = Participante.objects.create(key='h1', nombre='H', comando=['opencode', 'run'])
+            s.participantes.add(p)
+            with mock.patch('enjambre.clientes.puede_actuar', return_value=True), \
+                    mock.patch('enjambre.engine.ejecutar_cli', return_value=('hecho', False)), \
+                    mock.patch.object(Enjambre, '_comitear_y_postear') as post:
+                Enjambre(s).enviar(p, 'armá algo', editar=True)
+            self.assertEqual(post.call_args.kwargs['huella'], self.ws.huella_git(s.workspace_dir))
+
+    def test_rebobinar_con_git_tocado_se_niega(self):
+        with tempfile.TemporaryDirectory() as tmp, override_settings(ENJAMBRE_MESAS_DIR=tmp):
+            s = Sesion.objects.create(nombre='r')
+            dest = mesa_workspace(s)
+            (dest / '.git' / 'hooks' / 'post-checkout').write_text('x')
+            enj = Enjambre(s)
+            self.assertFalse(enj._git_sano(str(dest)))
+            enj.deshacer()
+            self.assertTrue(s.mensajes.filter(es_sistema=True, texto__contains='No rebobino').exists())
+
+
+class ArtefactosSinSeguirEnlacesTests(TestCase):
+    """S-02: lo que escribe la silla lo lee/sirve el host o la web; un symlink no puede sacar nada
+    de afuera. Cada caso corre por la vía POSIX (O_NOFOLLOW + dir_fd) y por la de Windows (lstat)."""
+
+    def setUp(self):
+        from . import workspace
+        self.ws = workspace
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.base = self.tmp / 'mesa'
+        self.base.mkdir()
+        self.secreto = self.tmp / 'secreto.txt'
+        self.secreto.write_text('TOKEN-SECRETO')
+
+    def _vias(self):
+        yield 'posix', mock.patch.object(self.ws, '_CON_DIRFD', self.ws._CON_DIRFD)
+        yield 'fallback', mock.patch.object(self.ws, '_CON_DIRFD', False)
+
+    def test_lee_un_archivo_regular_acotado(self):
+        (self.base / 'NOTAS.md').write_text('0123456789')
+        for _n, via in self._vias():
+            with via:
+                self.assertEqual(self.ws.leer_artefacto(self.base, 'NOTAS.md', 4), '0123')
+                self.assertEqual(self.ws.leer_artefacto(self.base, 'no-existe.md', 4), '')
+
+    def test_nombre_invalido_se_rechaza(self):
+        for malo in ('', '..', 'a/b'):
+            with self.assertRaises(ValueError):
+                self.ws.leer_artefacto(self.base, malo, 10)
+
+    @SOLO_POSIX
+    def test_symlink_al_secreto_no_se_lee(self):
+        os.symlink(self.secreto, self.base / 'NOTAS.md')
+        for _n, via in self._vias():
+            with via:
+                self.assertEqual(self.ws.leer_artefacto(self.base, 'NOTAS.md', 100), '')
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'NOTAS.md'))
+
+    @SOLO_POSIX
+    def test_symlink_de_directorio_en_el_camino_no_se_sigue(self):
+        os.symlink(self.tmp, self.base / 'sub')
+        for _n, via in self._vias():
+            with via:
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'sub/secreto.txt'))
+
+    def test_dot_dot_y_git_no_son_componentes_validos(self):
+        (self.base / '.git').mkdir()
+        (self.base / '.git' / 'config').write_text('x')
+        for rel in ('../secreto.txt', '.git/config', '.', ''):
+            for _n, via in self._vias():
+                with via:
+                    self.assertIsNone(self.ws.abrir_artefacto(self.base, rel), rel)
+
+    def test_directorio_no_es_un_artefacto(self):
+        (self.base / 'd').mkdir()
+        for _n, via in self._vias():
+            with via:
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'd'))
+
+    def test_abre_anidado_y_devuelve_los_bytes(self):
+        (self.base / 'a').mkdir()
+        (self.base / 'a' / 'b.bin').write_bytes(b'\x00\r\n\xff')
+        for _n, via in self._vias():
+            with via:
+                fd = self.ws.abrir_artefacto(self.base, 'a/b.bin')
+                self.assertIsNotNone(fd)
+                try:
+                    self.assertEqual(self.ws.leer_fd(fd, 100), b'\x00\r\n\xff')
+                finally:
+                    os.close(fd)
+
+    def test_escritura_normal_y_trunca_a_pedido(self):
+        (self.base / 'x.txt').write_text('viejo y largo')
+        for _n, via in self._vias():
+            with via:
+                with os.fdopen(self.ws.abrir_escritura(self.base, 'x.txt'), 'wb') as out:
+                    out.truncate()
+                    out.write(b'nuevo')
+                self.assertEqual((self.base / 'x.txt').read_bytes(), b'nuevo')
+
+    @SOLO_POSIX
+    def test_escritura_a_traves_de_un_symlink_se_niega(self):
+        os.symlink(self.secreto, self.base / 'x.txt')
+        for _n, via in self._vias():
+            with via:
+                with self.assertRaises(OSError):
+                    self.ws.abrir_escritura(self.base, 'x.txt')
+        self.assertEqual(self.secreto.read_text(), 'TOKEN-SECRETO')
+
+    @SOLO_POSIX
+    def test_escritura_sobre_un_fifo_no_cuelga_y_se_niega(self):
+        os.mkfifo(self.base / 'tubo')
+        for _n, via in self._vias():
+            with via:
+                with self.assertRaises(OSError):
+                    self.ws.abrir_escritura(self.base, 'tubo')
+
+    def test_sin_o_nofollow_las_constantes_caen_a_cero(self):
+        """En Windows `os.O_NOFOLLOW`/`O_NONBLOCK`/`O_DIRECTORY` no existen: se usan con getattr."""
+        for nombre in ('_O_NOFOLLOW', '_O_NONBLOCK', '_O_DIRECTORY', '_O_BINARY'):
+            self.assertIsInstance(getattr(self.ws, nombre), int)
+
+    @SOLO_POSIX
+    def test_huella_de_symlink_no_lee_el_destino(self):
+        (self.base / '.git').mkdir()
+        os.symlink(self.secreto, self.base / '.git' / 'config')
+        h = self.ws._huella_archivo(self.base / '.git' / 'config')
+        self.assertTrue(h.startswith(b'link:'))
+        self.assertNotIn(b'TOKEN', h)
+
+    def test_la_vista_de_subida_no_escribe_a_traves_de_un_enlace(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        with override_settings(ENJAMBRE_MESAS_DIR=str(self.tmp / 'mesas')):
+            s = Sesion.objects.create(nombre='sube')
+            dest = Path(self.ws.mesas_dir()) / f'mesa-{s.pk}'
+            dest.mkdir(parents=True)
+            if os.name != 'nt':
+                os.symlink(self.secreto, dest / 'robo.txt')
+            resp = self.client.post(reverse('enjambre:mesa_subir', args=[s.pk]), {
+                'archivos': [SimpleUploadedFile('robo.txt', b'pisado'),
+                             SimpleUploadedFile('ok.txt', b'bien')]})
+        self.assertEqual((dest / 'ok.txt').read_bytes(), b'bien')
+        self.assertEqual(self.secreto.read_text(), 'TOKEN-SECRETO')
+        if os.name != 'nt':
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(any('robo.txt' in r for r in resp.json().get('rechazados', [])))
+
+    @SOLO_POSIX
+    def test_la_vista_de_descarga_y_el_zip_no_sirven_enlaces(self):
+        with override_settings(ENJAMBRE_MESAS_DIR=str(self.tmp / 'mesas')):
+            s = Sesion.objects.create(nombre='baja')
+            dest = Path(self.ws.mesas_dir()) / f'mesa-{s.pk}'
+            dest.mkdir(parents=True)
+            (dest / 'real.txt').write_text('real')
+            os.symlink(self.secreto, dest / 'enlace.txt')
+            r1 = self.client.get(reverse('enjambre:mesa_archivo', args=[s.pk]), {'path': 'real.txt'})
+            self.assertEqual(b''.join(r1.streaming_content), b'real')
+            r2 = self.client.get(reverse('enjambre:mesa_archivo', args=[s.pk]), {'path': 'enlace.txt'})
+            self.assertEqual(r2.status_code, 403)   # resuelve fuera de la carpeta
+            z = self.client.get(reverse('enjambre:mesa_zip', args=[s.pk]))
+        import io
+        import zipfile
+        nombres = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+        self.assertEqual(nombres, ['real.txt'])
+
+
+class SillaEntornoYStdinTests(TestCase):
+    """S-04: el CLI de la silla hereda SOLO el entorno permitido y recibe el prompt por stdin
+    (excepto agy, que lo recibe por argv)."""
+
+    SECRETOS = {'SWARM_SECRET_KEY': 'k', 'GITHUB_TOKEN': 'g', 'AWS_SECRET_ACCESS_KEY': 'a',
+                'DATABASE_URL': 'd', 'SWARM_DATA_DIR': '/boveda', 'ENJAMBRE_HOST_UID': '1'}
+    PERMITIDAS = {'PATH': '/bin', 'HOME': '/h', 'APPDATA': 'C:\\A', 'USERPROFILE': 'C:\\U',
+                  'SystemRoot': 'C:\\W', 'ANTHROPIC_API_KEY': 'ak', 'OPENCODE_CONFIG': 'c',
+                  'CODEX_HOME': '/cx', 'GEMINI_API_KEY': 'gk', 'HTTPS_PROXY': 'p',
+                  'LC_ALL': 'C', 'XDG_CONFIG_HOME': '/x'}
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = override_settings(ENJAMBRE_MESAS_DIR=str(Path(tmp.name) / 'mesas'))
+        p.enable()
+        self.addCleanup(p.disable)
+
+    def _correr(self, comando, key='s1', extra_env=None):
+        silla = Participante.objects.create(key=key, nombre='T', comando=comando)
+        proc = proceso_falso('hola')
+        entorno = {**self.SECRETOS, **self.PERMITIDAS, **(extra_env or {})}
+        with mock.patch.dict(os.environ, entorno), \
+                mock.patch('enjambre.engine.subprocess.Popen', return_value=proc) as popen:
+            ejecutar_cli(silla, 'PROMPT-SECRETO', 10)
+        return popen.call_args, proc
+
+    def test_no_hereda_secretos_ni_variables_de_swarm(self):
+        call, _p = self._correr(['opencode', 'run'])
+        env = call.kwargs['env']
+        for k in self.SECRETOS:
+            self.assertNotIn(k, env)
+
+    def test_hereda_lo_que_el_cli_necesita(self):
+        call, _p = self._correr(['claude', '-p'], key='s2')
+        env = call.kwargs['env']
+        for k, v in self.PERMITIDAS.items():
+            if os.name == 'nt':
+                k = k.upper()
+            self.assertEqual(env[k] if k in env else env[next(x for x in env if x.upper() == k.upper())], v)
+
+    def test_marcas_del_turno_se_agregan_aparte(self):
+        call, _p = self._correr(['opencode', 'run'], key='s3')
+        env = call.kwargs['env']
+        self.assertIn('SWARM_TURNO_ID', env)
+        self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')          # safe.directory del pendrive
+        self.assertIn('OPENCODE_CONFIG_CONTENT', env)
+
+    def test_swarm_silla_env_suma_nombres_y_prefijos(self):
+        call, _p = self._correr(['opencode', 'run'], key='s4',
+                                extra_env={'SWARM_SILLA_ENV': 'GROQ_*, MI_VAR',
+                                           'GROQ_API_KEY': 'gq', 'MI_VAR': 'v', 'OTRA': 'x'})
+        env = call.kwargs['env']
+        self.assertEqual(env['GROQ_API_KEY'], 'gq')
+        self.assertEqual(env['MI_VAR'], 'v')
+        self.assertNotIn('OTRA', env)
+        self.assertNotIn('SWARM_SILLA_ENV', env)
+
+    def test_el_nombre_se_compara_sin_distinguir_mayusculas(self):
+        """Windows entrega `SystemRoot`/`Path`; en Linux un `path` en minúscula también pasa."""
+        call, _p = self._correr(['opencode', 'run'], key='s5', extra_env={'Windir': 'C:\\W'})
+        self.assertTrue(any(k.upper() == 'WINDIR' for k in call.kwargs['env']))
+
+    def test_claude_y_opencode_van_por_stdin(self):
+        for i, cmd in enumerate((['claude', '-p', '--output-format', 'text'], ['opencode', 'run'])):
+            call, proc = self._correr(cmd, key=f'in{i}')
+            self.assertNotIn('PROMPT-SECRETO', call.args[0])
+            self.assertEqual(call.kwargs['stdin'], subprocess.PIPE)
+            proc.communicate.assert_called_once_with(input='PROMPT-SECRETO', timeout=10)
+
+    def test_codex_sigue_por_stdin_con_guion(self):
+        call, proc = self._correr(['codex', 'exec'], key='cx')
+        self.assertEqual(call.args[0][-1], '-')
+        proc.communicate.assert_called_once_with(input='PROMPT-SECRETO', timeout=10)
+
+    def test_agy_sigue_por_argv_con_stdin_cerrado(self):
+        """agy no tiene verificado leer de stdin: queda `-p <prompt>` (anotado en clientes.py)."""
+        call, proc = self._correr(['agy', '--sandbox', '-p'], key='agy2')
+        self.assertEqual(call.args[0][-1], 'PROMPT-SECRETO')
+        self.assertIs(call.kwargs['stdin'], subprocess.DEVNULL)
+        proc.communicate.assert_called_once_with(timeout=10)
+
+    def test_prompt_stdin_solo_en_los_clientes_verificados(self):
+        self.assertTrue(CLIENTES['claude']['prompt_stdin'])
+        self.assertTrue(CLIENTES['opencode']['prompt_stdin'])
+        self.assertFalse(CLIENTES['agy'].get('prompt_stdin'))
+
+
+class PromptPlanReglasTests(TestCase):
+    def test_reglas_de_reparto_y_reconocimiento(self):
+        from .engine import _prompt_plan
+        s = Sesion.objects.create(nombre='plan')
+        w = Participante.objects.create(key='pw', nombre='PW', comando=['x'])
+        s.participantes.add(w)
+        build = _prompt_plan('hacé X', [w], editar=True)
+        self.assertIn('UNA sola llamada', build)                 # varias líneas por alias = 1 llamada
+        self.assertIn('persista el avance', build)               # trabajo extenso: persistir
+        self.assertIn('RECONOCIMIENTO', build)
+        self.assertIn('No inventes consignas', build)
+        charla = _prompt_plan('pensá X', [w], editar=False)
+        self.assertNotIn('UNA sola llamada', charla)             # solo aplica al modo fabricar
+        self.assertIn('RECONOCIMIENTO', charla)
+        for prohibido in ('Ultron', 'Mesa X'):
+            self.assertNotIn(prohibido, build)
+
+
+class FalloEjecucionVisibleTests(TestCase):
+    """Un turno con subtareas caídas no se cierra como «completo»; un plan caído no se parsea."""
+
+    def _mesa(self):
+        lider = Participante.objects.create(key='lid-f', nombre='Líder', comando=['x'])
+        worker = Participante.objects.create(key='wk-f', nombre='WorkerF', comando=['x'])
+        s = Sesion.objects.create(nombre='lf', topologia='lider', lider=lider)
+        s.participantes.add(lider, worker)
+        return s, lider, worker
+
+    def _liderar(self, respuestas, texto='pedido'):
+        s, _l, _w = self._mesa()
+        it = iter(respuestas)
+        enj = Enjambre(s)
+        with mock.patch.object(Enjambre, 'enviar', side_effect=lambda *a, **k: next(it)), \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            res = enj.liderar(texto)
+        return s, enj, res
+
+    def test_silla_caida_marca_fallo(self):
+        _s, enj, _r = self._liderar(['@workerf: tarea', '(❌ WorkerF falló)', 'Cierre legible'])
+        self.assertIs(enj.fallo_ejecucion, True)
+
+    def test_todo_bien_no_marca_fallo(self):
+        _s, enj, _r = self._liderar(['@workerf: tarea', 'Hecho', 'Cierre legible'])
+        self.assertIs(enj.fallo_ejecucion, False)
+
+    def test_excepcion_de_la_silla_marca_fallo(self):
+        s, _l, _w = self._mesa()
+        resp = iter(['@workerf: tarea', RuntimeError('CLI roto'), 'Cierre'])
+
+        def enviar(*a, **k):
+            r = next(resp)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        enj = Enjambre(s)
+        with mock.patch.object(Enjambre, 'enviar', side_effect=enviar), \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            enj.liderar('pedido')
+        self.assertIs(enj.fallo_ejecucion, True)
+
+    def test_cierre_caido_marca_fallo(self):
+        _s, enj, _r = self._liderar(['@workerf: tarea', 'Hecho', '(⏰ timeout tras 600s)'])
+        self.assertIs(enj.fallo_ejecucion, True)
+
+    def test_plan_caido_no_se_parsea_y_deja_aviso(self):
+        s, _l, _w = self._mesa()
+        enj = Enjambre(s)
+        with mock.patch.object(Enjambre, 'enviar', return_value='(⏰ timeout tras 7s)\n\nx') as env, \
+                mock.patch.object(Enjambre, '_parse_asignaciones') as parse, \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            enj.liderar('pedido')
+        env.assert_called_once()
+        parse.assert_not_called()
+        self.assertIs(enj.fallo_ejecucion, True)
+        aviso = s.mensajes.filter(es_sistema=True).latest('id').texto
+        self.assertIn('no se repartieron ni ejecutaron subtareas', aviso)
+
+    def test_liderar_reinicia_el_fallo_en_cada_llamada(self):
+        s, _l, _w = self._mesa()
+        enj = Enjambre(s)
+        resp = iter(['@workerf: tarea', '(❌ cae)', 'Cierre',
+                     '@workerf: tarea', 'Hecho', 'Cierre'])
+        with mock.patch.object(Enjambre, 'enviar', side_effect=lambda *a, **k: next(resp)), \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            enj.liderar('uno')
+            self.assertIs(enj.fallo_ejecucion, True)
+            enj.liderar('dos')
+        self.assertIs(enj.fallo_ejecucion, False)
+
+    def _turno(self, resultados, fallo):
+        from types import SimpleNamespace
+
+        from .management.commands.enjambre_worker import Command
+        sesion = SimpleNamespace(topologia='plana', lider_id=None, autonoma=False, pk=1)
+        with mock.patch('enjambre.management.commands.enjambre_worker.Enjambre') as cls:
+            enj = cls.return_value
+            enj.responder.return_value = resultados
+            enj.fallo_ejecucion = fallo
+            Command()._turno(sesion, 'pedido')
+        return [c.args[0] for c in enj.log.call_args_list]
+
+    def test_worker_no_dice_turno_completo_si_todo_fue_ruido(self):
+        textos = self._turno({'silla': '(❌ proveedor)'}, False)
+        self.assertTrue(any('turno sin respuesta válida' in t for t in textos))
+        self.assertFalse(any('turno completo' in t for t in textos))
+
+    def test_worker_no_dice_turno_completo_con_fallos_de_ejecucion(self):
+        textos = self._turno({'a': 'bien'}, True)
+        self.assertTrue(any('turno con fallos de ejecución' in t for t in textos))
+        self.assertFalse(any('turno completo' in t for t in textos))
+
+    def test_worker_turno_sano_dice_completo(self):
+        textos = self._turno({'a': 'bien'}, False)
+        self.assertTrue(any('turno completo' in t for t in textos))
+
+
+class TareaNoSeCuelgaTests(TestCase):
+    """S-05/S-09: lo que explota antes del try/finally de una Tarea la cierra en ERROR."""
+
+    def _tarea(self, **kw):
+        from .models import Tarea
+        p = Participante.objects.create(key=f'n{Tarea.objects.count()}', nombre='Neo', comando=['x'])
+        return Tarea.objects.create(participante=p, titulo='t', ordenes='hacelo',
+                                    estado=Tarea.Estado.PENDIENTE, **kw)
+
+    def test_worktree_que_explota_no_clava_la_tarea(self):
+        from . import workspace
+        from .models import Tarea
+        with tempfile.TemporaryDirectory() as repo:
+            t = self._tarea(repo_path=repo)
+            with mock.patch.object(workspace, 'crear_worktree', side_effect=RuntimeError('worktree roto')), \
+                    mock.patch.object(workspace, 'remover_worktree') as rm, \
+                    mock.patch.object(workspace, 'ejecutar_cli') as cli:
+                workspace.ejecutar_tarea(t, timeout=1)   # NO propaga al worker
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn('worktree roto', t.salida)
+        cli.assert_not_called()
+        rm.assert_called_once()
+
+    def test_persistente_que_explota_antes_del_try_no_clava_la_tarea(self):
+        from . import workspace
+        from .models import Tarea
+        s = Sesion.objects.create(nombre='m')
+        t = self._tarea(sesion=s, persistente=True)
+        with mock.patch.object(workspace, 'mesa_workspace', side_effect=OSError('disco lleno')):
+            workspace.ejecutar_tarea(t, timeout=1)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn('disco lleno', t.salida)
+
+    def test_worktree_real_con_git_alterado_queda_en_error_sin_commit(self):
+        """Ruta de worktree con git real: una clave `filter.*` en la config del repo → no se commitea."""
+        from . import workspace
+        from .models import Tarea
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / 'repo'
+            repo.mkdir()
+            workspace._git(repo, 'init')
+            (repo / 'a.txt').write_text('a')
+            workspace._git(repo, 'add', '-A')
+            workspace._git(repo, *workspace.GIT_AUTOR, 'commit', '-m', 'init')
+            base = workspace._git(repo, 'rev-parse', 'HEAD')
+            t = self._tarea(repo_path=str(repo), base_ref=base)
+
+            def silla(*a, **k):
+                workspace._git(repo, 'config', 'filter.x.clean', 'cat')
+                (Path(k['workdir']) / 'b.txt').write_text('b')
+                return ('lo hice', False)
+
+            with override_settings(ENJAMBRE_WORKSPACES_DIR=str(Path(tmp) / 'wt')), \
+                    mock.patch.object(workspace, 'ejecutar_cli', side_effect=silla):
+                workspace.ejecutar_tarea(t, timeout=1)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn(workspace.GIT_ALTERADO_MARCA, t.salida)
