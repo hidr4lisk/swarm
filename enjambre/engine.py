@@ -23,6 +23,7 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 
+from .clientes import CLIENTES
 from .models import Mensaje
 
 _DIAS = ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
@@ -224,7 +225,11 @@ def _prompt_plan(pedido, workers, editar):
     if editar:
         modo = ("Los trabajadores van a EDITAR ARCHIVOS de verdad en la carpeta de la mesa, "
                 "así que cada subtarea tiene que ser una acción de construcción concreta "
-                "(qué archivo, qué cambio).")
+                "(qué archivo, qué cambio). Varias líneas para el mismo alias se agrupan en "
+                "UNA sola llamada con un único presupuesto de ejecución compartido; NO son "
+                "subtareas despachadas por separado. Si el trabajo es extenso, encargá al trabajador "
+                "que persista el avance en los archivos de la mesa y que no prometa completar todo "
+                "el lote en un turno.")
     else:
         modo = ("Esto es trabajo de ANÁLISIS/CHARLA (no se editan archivos): cada subtarea es "
                 "algo para pensar, investigar o responder.")
@@ -236,7 +241,12 @@ def _prompt_plan(pedido, workers, editar):
         f"{modo} Podés darle varias subtareas a la misma silla (una por línea). "
         f"Arrancá con una frase breve de plan y después las líneas «@alias:». "
         f"NO ejecutes vos las subtareas ni respondas vos el pedido: solo planificá y repartí "
-        f"(vos cerrás al final, cuando el equipo entregue)."
+        f"(vos cerrás al final, cuando el equipo entregue). "
+        f"La lectura inicial es RECONOCIMIENTO, no la ejecución del encargo: para PDFs "
+        f"comprobá qué archivos hay y si tienen texto; si son escaneos, encargá el OCR y la "
+        f"lectura completa al trabajador. NO hagas el OCR de todo el lote ni pruebes cómo "
+        f"generar PDFs antes de repartir. No inventes consignas que todavía no leíste: "
+        f"indicá que el trabajador debe extraerlas y conservarlas."
     )
 
 
@@ -446,6 +456,57 @@ def ejecutar_api(participante, provider, prompt, timeout, sesion=None):
     return salida, es_ruido(salida)
 
 
+# Entorno que hereda el subprocess de una silla CLI (S-04). Lista blanca, no `os.environ.copy()`:
+# el proceso de Swarm puede traer claves que no le sirven a un CLI que ejecuta texto escrito por un
+# modelo (`SWARM_SECRET_KEY`, rutas de la bóveda, tokens de otras herramientas: GITHUB_TOKEN, AWS_*…).
+# Se compara en MAYÚSCULAS porque Windows no distingue el caso de los nombres.
+#  · Base del SO y de la shell, en Linux/macOS y en Windows: sin `SystemRoot`/`ComSpec`/`PATHEXT`
+#    ni `APPDATA`/`USERPROFILE` un CLI Node/Bun en Windows no arranca ni encuentra su login.
+#  · Lo que cada CLI de silla usa para su credencial y su config (prefijos de su fabricante y de su
+#    runtime), y proxy/certificados para salir a internet.
+#  · NO entra ningún `SWARM_*` ni `ENJAMBRE_*` del proceso: el motor agrega los del turno aparte
+#    (`ENJAMBRE_WORKDIR`, `SWARM_TURNO_ID`). Para una variable que falte (otro proveedor de opencode,
+#    p. ej. `GROQ_API_KEY`) está `SWARM_SILLA_ENV`: nombres o prefijos con `*`, separados por comas.
+# El toolbelt (modo máquina) NO usa esto: opera la máquina del humano a propósito (ver toolbelt._env).
+_ENV_SILLA = frozenset((
+    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TZ', 'TERM', 'COLORTERM',
+    'NO_COLOR', 'TMPDIR', 'TEMP', 'TMP', 'DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS',
+    # Windows
+    'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'APPDATA', 'LOCALAPPDATA',
+    'USERPROFILE', 'USERNAME', 'USERDOMAIN', 'HOMEDRIVE', 'HOMEPATH', 'PROGRAMDATA', 'PROGRAMFILES',
+    'PROGRAMFILES(X86)', 'PROGRAMW6432', 'COMMONPROGRAMFILES', 'COMMONPROGRAMFILES(X86)',
+    'COMMONPROGRAMW6432', 'PUBLIC', 'ALLUSERSPROFILE', 'COMPUTERNAME', 'OS', 'SESSIONNAME',
+    'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
+    'PROCESSOR_REVISION', 'DRIVERDATA',
+    # red
+    'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+    'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+))
+_ENV_SILLA_PREFIJOS = (
+    'LC_', 'XDG_',
+    'ANTHROPIC_', 'CLAUDE_',                     # claude
+    'OPENCODE_', 'BUN_',                         # opencode
+    'CODEX_', 'OPENAI_',                         # codex
+    'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_',  # agy
+    'NODE_',                                     # runtime de los CLIs (NODE_EXTRA_CA_CERTS…)
+)
+
+
+def _env_silla():
+    """Entorno del CLI de una silla: solo lo permitido por `_ENV_SILLA` (+ `SWARM_SILLA_ENV`)."""
+    extra = [x.strip().upper() for x in (os.environ.get('SWARM_SILLA_ENV') or '').split(',')
+             if x.strip()]
+    extra_exactos = {x for x in extra if not x.endswith('*')}
+    extra_prefijos = tuple(x[:-1] for x in extra if x.endswith('*') and len(x) > 1)
+    env = {}
+    for k, v in os.environ.items():
+        ku = k.upper()
+        if (ku in _ENV_SILLA or ku in extra_exactos
+                or ku.startswith(_ENV_SILLA_PREFIJOS + extra_prefijos)):
+            env[k] = v
+    return env
+
+
 def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
                  sesion=None, cwd_maquina=None):
     """Corre la silla con el prompt dado. Devuelve (salida, ruido).
@@ -464,7 +525,7 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
     prov = api_de(participante)
     if prov:  # silla por API key → HTTP directo al proveedor (+ toolbelt si está habilitado)
         return ejecutar_api(participante, prov, prompt, timeout, sesion=sesion)
-    env = os.environ.copy()
+    env = _env_silla()
     # La silla también corre git por su cuenta dentro de la carpeta de la mesa, y esa carpeta
     # suele estar en el pendrive (exFAT, sin dueño) → «dubious ownership». Ver env_git_safe.
     from .workspace import env_git_safe
@@ -477,6 +538,8 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
         cwd = str(workdir)
     argv = list(comando or participante.comando)
     cli = os.path.basename(argv[0]) if argv else ''
+    if os.name == 'nt' and cli.lower().endswith(('.exe', '.cmd', '.bat')):
+        cli = cli[:-4]   # `codex.cmd` → `codex` (el comando puede venir ya resuelto con extensión)
     if argv:
         # El CLI se invoca directo: si el binario no está en el PATH del proceso (arranque por
         # doble-clic, sin el rc de la shell), resolver_bin lo busca en los dirs típicos.
@@ -491,10 +554,15 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
     # Marca del turno: la heredan TODOS los descendientes del CLI y es lo único que permite
     # reconocerlos si se hicieron sesión propia (ver _barrer_por_marca).
     marca = env['SWARM_TURNO_ID'] = uuid.uuid4().hex
+    # Prompt por stdin siempre que el CLI lo lea (S-04): por argv lo ve cualquiera con `ps`/el
+    # Administrador de tareas y en Windows topa con el límite de ~32 k de la línea de comandos.
+    # codex pide `-` como argumento; claude y opencode leen stdin si no hay prompt. `agy` sigue por
+    # argv (`-p <prompt>`): su stdin no está verificado. Ver `prompt_stdin` en clientes.py.
+    por_stdin = (cli == 'codex') or bool(CLIENTES.get(cli, {}).get('prompt_stdin'))
     proc = None
     try:
         proc = subprocess.Popen(
-            argv + (['-'] if cli == 'codex' else [prompt]),
+            argv + (['-'] if cli == 'codex' else [] if por_stdin else [prompt]),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=cwd,
             # encoding EXPLÍCITO: sin esto `text=True` decodifica con la codificación del SO
             # (`locale.getpreferredencoding`), que en Windows es cp1252 — y los CLIs de silla
@@ -508,13 +576,13 @@ def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
             # `nohup … >log 2>&1 &`), `opencode run --auto` muere al leerlo con "EBADF: bad file
             # descriptor, read" y /armar no fabrica nada; y si arrancó desde una terminal, la
             # silla se come las teclas del humano. Un subprocess de silla nunca lee de ahí.
-            stdin=subprocess.PIPE if cli == 'codex' else subprocess.DEVNULL,
+            stdin=subprocess.PIPE if por_stdin else subprocess.DEVNULL,
             # Sesión propia ⇒ pgid == pid ⇒ al vencer el turno se puede matar el ÁRBOL entero
             # (ver _matar_arbol). En Windows no existe: ahí el árbol lo recorre `taskkill /T`.
             **({} if os.name == 'nt' else {'start_new_session': True}),
         )
         try:
-            if cli == 'codex':
+            if por_stdin:
                 out, err = proc.communicate(input=prompt, timeout=timeout)
             else:
                 out, err = proc.communicate(timeout=timeout)
@@ -564,6 +632,9 @@ class Enjambre:
 
     def __init__(self, sesion):
         self.sesion = sesion
+        # `liderar()` lo deja en True si el reparto o la ejecución de alguna silla falló. El worker
+        # lo lee al cerrar el turno: sin esto un turno con subtareas caídas se cerraba como «completo».
+        self.fallo_ejecucion = False
 
     # ── Persistencia ──────────────────────────────────────────────────────────
     def sillas(self):
@@ -741,7 +812,7 @@ class Enjambre:
         maquina = not puede and not self._es_consulta() and actua
         # API a la que se le pidió `/armar`: opera la máquina, pero apuntada a la carpeta de la mesa.
         fabrica_api = maquina and not cli and editar and not self._es_consulta()
-        workdir = comando = base = None
+        workdir = comando = base = huella = None
         cwd_maq = carpeta = commit_dir = None
         timeout = self.sesion.timeout
         if maquina:
@@ -750,7 +821,7 @@ class Enjambre:
             # Sigue alcanzando toda la máquina (el toolbelt es el permiso); lo que cambia es dónde
             # deja lo que produce. Antes el líder en modo máquina arrancaba en $HOME y su entrega
             # quedaba fuera de la mesa, sin commit y sin que nadie la viera (mesa 4 del pendrive).
-            from .workspace import mesa_workspace, _git
+            from .workspace import _git, huella_git, mesa_workspace
             raiz = None if self._turno_libre(texto) else str(mesa_workspace(self.sesion))
             cwd_maq = raiz or toolbelt.cwd_maquina()
             comando = participante.cmd_trabajo() if cli else None  # agéntico: lee, edita y ejecuta
@@ -760,11 +831,13 @@ class Enjambre:
                 carpeta = raiz or workdir   # va al prompt: dónde dejar el trabajo
                 commit_dir = workdir if (fabrica_api or raiz) else None
                 base = _git(workdir, 'rev-parse', 'HEAD', check=False)
+                huella = huella_git(workdir)   # testigo de `.git`: se compara antes de commitear
         elif puede:
-            from .workspace import mesa_workspace, _git
+            from .workspace import _git, huella_git, mesa_workspace
             workdir = commit_dir = str(mesa_workspace(self.sesion))
             comando = participante.cmd_trabajo()
             base = _git(workdir, 'rev-parse', 'HEAD', check=False)
+            huella = huella_git(workdir)
             # Fabricar tarda más que charlar: subir el techo para no matar el turno a mitad.
             timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
         prompt = self.construir_prompt(participante, texto, editar=puede,
@@ -807,7 +880,7 @@ class Enjambre:
         # También commitea el turno de modo máquina ORDENADO (líder incluido): si aterrizó en la
         # carpeta de la mesa, lo que dejó ahí se versiona igual que lo de una silla que fabrica.
         if commit_dir:
-            self._comitear_y_postear(participante, commit_dir, base, parcial=ruido)
+            self._comitear_y_postear(participante, commit_dir, base, parcial=ruido, huella=huella)
         # Modo máquina CLI: el turno entero queda en la Bitácora — es donde el equipo ve trabajar a
         # la silla (qué CLI corrió, en qué carpeta y qué contó que hizo). Nunca rompe el turno.
         # Las sillas API NO pasan por acá: el toolbelt ya anotó cada herramienta una por una.
@@ -819,23 +892,32 @@ class Enjambre:
                 self.log(f"no se pudo registrar el turno en la bitácora: {e}", nivel='error')
         return salida
 
-    def _comitear_y_postear(self, participante, workdir, base, parcial=False):
+    def _comitear_y_postear(self, participante, workdir, base, parcial=False, huella=None):
         """Tras un turno agéntico: commitea la carpeta de la mesa. En el CHAT postea solo la
         línea corta + el stat (para no ensuciarlo); el diff completo va al LOG DE ACTIVIDAD,
         desplegable al hacer hover sobre el commit. Si no hubo cambios, no postea nada.
 
         `parcial`: el turno se cortó (timeout/error) pero quedó trabajo en disco — se rescata y se
         marca como parcial para que se sepa que NO es una entrega completa."""
-        from .workspace import comitear, diff_stat, _git
+        from .workspace import GitAlterado, _git, comitear, diff_stat
         marca = ' (PARCIAL · turno cortado)' if parcial else ''
         try:
-            sha = comitear(workdir, f"Enjambre · mesa {self.sesion.id}: {participante.nombre}{marca}")
+            sha = comitear(workdir, f"Enjambre · mesa {self.sesion.id}: {participante.nombre}{marca}",
+                           huella=huella)
+        except GitAlterado as e:
+            # A la vista en la mesa: el `.git` cambió durante el turno o trae algo que ejecuta.
+            self.fallo_ejecucion = True
+            self.guardar("Enjambre", f"{e}. Turno de {participante.nombre}.", sistema=True)
+            self.log(f"🛑 .git alterado · {participante.nombre} · sin commit", nivel='error',
+                     detalle=str(e))
+            return
         except Exception:  # noqa: BLE001 — un fallo de git no debe tumbar el turno
             return
         if not sha:
             return
         stat = diff_stat(workdir, base) if base else ''
-        diff = _git(workdir, 'diff', f'{base}..HEAD', check=False) if base else ''
+        diff = (_git(workdir, 'diff', '--no-ext-diff', '--no-textconv', f'{base}..HEAD', check=False)
+                if base else '')
         # Chat: corto (commit + stat), sin volcar el diff entero.
         if parcial:
             cuerpo = f"⏰ Rescatado (commit {sha[:7]}) — el turno se cortó por timeout; se guardó lo que alcanzó a escribir"
@@ -849,11 +931,24 @@ class Enjambre:
         etiqueta = '⏰ commit parcial' if parcial else '✓ commit'
         self.log(f"{etiqueta} {sha[:7]} · {participante.nombre}", nivel='ok', detalle=detalle)
 
+    def _git_sano(self, dest):
+        """`reset --hard` corre los filtros `smudge` de la config: con un `.git` tocado no se
+        rebobina (S-01). Si no está sano lo dice en la mesa y devuelve False."""
+        from .workspace import GitAlterado, asegurar_git
+        try:
+            asegurar_git(dest)
+        except GitAlterado as e:
+            self.guardar("Enjambre", f"{e}. No rebobino la carpeta.", sistema=True)
+            return False
+        return True
+
     def deshacer(self):
         """Revierte el último turno de /armar: git reset --hard al commit anterior de la carpeta
         de la mesa. Guard: nunca pasa el commit init (se conserva al menos 1 commit)."""
         from .workspace import mesa_workspace, _git
         dest = str(mesa_workspace(self.sesion))
+        if not self._git_sano(dest):
+            return
         n = _git(dest, 'rev-list', '--count', 'HEAD', check=False)
         if not n.isdigit() or int(n) < 2:
             self.guardar("Enjambre", "↩️ No hay nada que deshacer todavía.", sistema=True)
@@ -888,6 +983,8 @@ class Enjambre:
         if not full or full not in ancestros:
             self.guardar("Enjambre", f"⚠️ No encuentro el commit «{sha}» en el historial de la mesa. "
                          "Usá «/volver» (sin nada) para ver la lista.", sistema=True)
+            return
+        if not self._git_sano(dest):
             return
         actual = _git(dest, 'rev-parse', '--short', 'HEAD', check=False)
         _git(dest, 'reset', '--hard', full, check=False)
@@ -1155,12 +1252,9 @@ class Enjambre:
                 break
         listado.sort(key=str.lower)
         files_txt = '\n'.join(listado) if listado else '(sin archivos)'
-        notas = ''
-        try:
-            with open(os.path.join(dest, 'NOTAS.md'), encoding='utf-8') as f:
-                notas = f.read()[:2000]
-        except Exception:  # noqa: BLE001
-            pass
+        # Sin seguir symlinks y acotado: ver `leer_artefacto` (S-02).
+        from .workspace import leer_artefacto
+        notas = leer_artefacto(dest, 'NOTAS.md', 8000)[:2000]
         return f"Archivos en la carpeta:\n{files_txt}\n\nNOTAS.md (memoria de la mesa):\n{notas or '(vacío)'}"
 
     def _objetivo_cumplido(self):
@@ -1321,6 +1415,7 @@ class Enjambre:
 
         Degrada solo: sin líder válido → plana; @mención → solo esa silla; /deshacer y /debate
         los maneja el líder como en plana; consulta nunca fabrica (el verbo queda como charla)."""
+        self.fallo_ejecucion = False
         lider = self.sesion.lider
         lider_sentado = lider is not None and lider.pk in {s.pk for s in self.sillas()}
         # Líder caído (desactivado) o no sentado en la mesa: la mesa está marcada como LÍDER
@@ -1390,12 +1485,22 @@ class Enjambre:
         if on_respuesta:
             on_respuesta(lider, plan)
         resultados = {lider.key: plan}
+        if workers and es_ruido(plan):
+            # Un plan caído (timeout, error del CLI) NO se parsea ni se reparte: antes el texto del
+            # error se leía como un plan sin reparto y el aviso decía «formato», no «falló».
+            self.fallo_ejecucion = True
+            aviso = "⚠️ el líder no pudo responder; no se repartieron ni ejecutaron subtareas"
+            self.log(aviso, nivel='error')
+            self.guardar("Enjambre", aviso, sistema=True)
+            return resultados
         if not workers:
             return resultados
 
         # 2) Parsear las asignaciones del plan.
         asignaciones = self._parse_asignaciones(plan, workers)
         if not asignaciones:
+            if editar:
+                self.fallo_ejecucion = True   # se pidió fabricar y nadie fabricó
             self.log("⚠️ El líder no repartió subtareas (formato «@silla: …»)", nivel='error')
             self.guardar("Enjambre", "ℹ️ El líder no repartió subtareas con el formato «@silla: …»; "
                          "su mensaje queda como respuesta de la mesa.", sistema=True)
@@ -1415,6 +1520,8 @@ class Enjambre:
                 resp = self.enviar(silla, encargo, editar=editar)
             except Exception as e:  # noqa: BLE001
                 resp = f"(❌ error: {e})"
+            if es_ruido(resp):
+                self.fallo_ejecucion = True
             resultados[silla.key] = resp
             if on_respuesta:
                 on_respuesta(silla, resp)
@@ -1429,6 +1536,8 @@ class Enjambre:
             for s, _ in asignaciones
         )
         cierre = self.enviar(lider, _prompt_integracion(pedido, resumen))
+        if es_ruido(cierre):
+            self.fallo_ejecucion = True
         if on_respuesta:
             on_respuesta(lider, cierre)
         resultados[lider.key] = cierre

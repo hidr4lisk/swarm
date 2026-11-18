@@ -24,7 +24,7 @@ from django.db import connections
 
 import sys
 
-from enjambre.engine import Enjambre
+from enjambre.engine import Enjambre, es_ruido
 from enjambre.models import Sesion, Tarea, Topologia, WorkerRestart
 from enjambre.workspace import ejecutar_tarea
 
@@ -246,7 +246,17 @@ class Command(BaseCommand):
         # Modo líder: el líder reparte subtareas, las sillas ejecutan y el líder integra.
         # liderar() ya degrada solo (sin líder → plana; @mención → solo esa silla).
         if sesion.topologia == Topologia.LIDER and sesion.lider_id:
-            enj.liderar(texto)
+            resultados = enj.liderar(texto)
         else:
-            enj.responder(texto)              # plana (o mención): responder respeta el @
-        enj.log(f"🏁 turno completo ({time.monotonic() - t0:.1f}s)", nivel='ok')
+            resultados = enj.responder(texto)  # plana (o mención): responder respeta el @
+        segs = time.monotonic() - t0
+        # Un turno NO es «completo» si todas las sillas devolvieron ruido, ni si el líder repartió
+        # y alguna subtarea (o el cierre, o un commit bloqueado) falló: queda a la vista en el log.
+        todo_ruido = (isinstance(resultados, dict) and bool(resultados)
+                      and all(es_ruido(r) for r in resultados.values()))
+        if todo_ruido:
+            enj.log(f"✗ turno sin respuesta válida ({segs:.1f}s)", nivel='error')
+        elif enj.fallo_ejecucion is True:
+            enj.log(f"✗ turno con fallos de ejecución ({segs:.1f}s)", nivel='error')
+        else:
+            enj.log(f"🏁 turno completo ({segs:.1f}s)", nivel='ok')

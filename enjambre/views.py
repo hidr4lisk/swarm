@@ -686,13 +686,17 @@ def mesa_archivo(request, pk):
     # Debe quedar DENTRO de la carpeta de la mesa y no ser parte del repo git interno.
     if base != target and base not in target.parents:
         return HttpResponseForbidden("Ruta fuera de la carpeta de la mesa.")
-    if '.git' in target.relative_to(base).parts:
+    if any(p.lower() == '.git' for p in target.relative_to(base).parts):
         return HttpResponseForbidden("No.")
-    if not target.is_file():
+    # Se abre sin seguir symlinks en ningún tramo (S-02): la silla puede cambiar el archivo por un
+    # enlace entre el `resolve()` de arriba y la apertura, y la web lo serviría desde afuera.
+    from .workspace import abrir_artefacto
+    fd = abrir_artefacto(base, target.relative_to(base))
+    if fd is None:
         raise Http404("No es un archivo.")
     log_event(request.user, 'ENJAMBRE_ARCHIVO_GET', 'enjambre',
               {'sesion': pk, 'path': rel}, request)
-    return FileResponse(open(target, 'rb'), as_attachment=True, filename=target.name)
+    return FileResponse(os.fdopen(fd, 'rb'), as_attachment=True, filename=target.name)
 
 
 @requiere_acceso
@@ -705,7 +709,10 @@ def mesa_zip(request, pk):
     if not _puede_ver_sesion(request, sesion):
         return HttpResponseForbidden("Esta mesa no es tuya.")
     import io
+    import time
     import zipfile
+
+    from .workspace import abrir_artefacto
     base = _mesa_dir_container(pk)
     if not base.exists():
         raise Http404("La carpeta de la mesa todavía no existe.")
@@ -721,9 +728,25 @@ def mesa_zip(request, pk):
                     continue  # no incluir dotfiles en la descarga (coincide con el listado)
                 full = Path(root) / f
                 try:
-                    if full.is_file() and not full.is_symlink():
-                        z.write(full, full.relative_to(base))
-                        n += 1
+                    # Sin seguir symlinks y sobre el fd que se abrió (S-02): mirar y después
+                    # `z.write(path)` dejaba una ventana para cambiarlo por un enlace.
+                    fd = abrir_artefacto(base, full.relative_to(base))
+                    if fd is None:
+                        continue
+                    with os.fdopen(fd, 'rb') as src:
+                        st = os.fstat(src.fileno())
+                        info = zipfile.ZipInfo(full.relative_to(base).as_posix(),
+                                               time.localtime(st.st_mtime)[:6])
+                        info.compress_type = zipfile.ZIP_DEFLATED
+                        # El tamaño va declarado (zipfile decide ZIP64) y se copia exactamente
+                        # ese tamaño: si el archivo crece mientras tanto, no rompe la entrada.
+                        info.file_size = st.st_size
+                        with z.open(info, 'w') as dst:
+                            resto = st.st_size
+                            while resto and (bloque := src.read(min(resto, 1 << 20))):
+                                dst.write(bloque)
+                                resto -= len(bloque)
+                    n += 1
                 except (OSError, ValueError):
                     continue  # archivo transitorio / roto / desaparecido: saltear, no romper el zip
                 if n >= 2000:  # tope defensivo (igual que el listado)
@@ -759,6 +782,7 @@ def mesa_subir(request, pk):
     dest = _mesa_dir_container(pk)
     dest.mkdir(parents=True, exist_ok=True)
     dest_real = str(dest.resolve())
+    from .workspace import abrir_escritura
     guardados, rechazados = [], []
     for f in files:
         name = os.path.basename((f.name or '').strip())
@@ -771,7 +795,11 @@ def mesa_subir(request, pk):
             rechazados.append(name)
             continue
         try:
-            with open(target, 'wb') as out:
+            # Sin seguir symlinks: si la silla dejó un enlace con ese nombre, no se escribe a
+            # través de él; tampoco sobre un FIFO (S-02). Ver `abrir_escritura` (Windows incluido).
+            fd = abrir_escritura(dest_real, name)
+            with os.fdopen(fd, 'wb') as out:
+                out.truncate()
                 for chunk in f.chunks():
                     out.write(chunk)
         except OSError as e:

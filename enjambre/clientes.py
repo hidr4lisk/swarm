@@ -23,10 +23,14 @@ CLIENTES = {
         'comando_trabajo': ['claude', '-p', '--allowedTools', 'Bash', '--permission-mode', 'acceptEdits'],
         'model_flag': '--model',
         'modelos': ['', 'opus', 'sonnet', 'haiku'],  # '' = default del plan
+        # El prompt va por stdin y no por argv (S-04): `claude -p` lee stdin cuando no hay prompt.
+        'prompt_stdin': True,
     },
     'opencode': {
         'label': 'OpenCode (Zen)',
         'comando': ['opencode', 'run'],
+        # Prompt por stdin (S-04): `opencode run` lo lee cuando no hay mensaje en argv.
+        'prompt_stdin': True,
         # Fabricar/operar la máquina: `--auto` auto-aprueba los permisos que opencode pide (es su
         # equivalente del acceptEdits+allowedTools de claude). SIN esto, corriendo sin TTY no puede
         # preguntar y **auto-rechaza**: cualquier acceso fuera del cwd muere con
