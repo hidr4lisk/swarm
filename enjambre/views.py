@@ -686,7 +686,7 @@ def mesa_archivo(request, pk):
     # Debe quedar DENTRO de la carpeta de la mesa y no ser parte del repo git interno.
     if base != target and base not in target.parents:
         return HttpResponseForbidden("Ruta fuera de la carpeta de la mesa.")
-    if '.git' in target.relative_to(base).parts:
+    if any(p.lower() == '.git' for p in target.relative_to(base).parts):
         return HttpResponseForbidden("No.")
     # Se abre sin seguir symlinks en ningún tramo (S-02): la silla puede cambiar el archivo por un
     # enlace entre el `resolve()` de arriba y la apertura, y la web lo serviría desde afuera.
@@ -735,7 +735,7 @@ def mesa_zip(request, pk):
                         continue
                     with os.fdopen(fd, 'rb') as src:
                         st = os.fstat(src.fileno())
-                        info = zipfile.ZipInfo(str(full.relative_to(base)),
+                        info = zipfile.ZipInfo(full.relative_to(base).as_posix(),
                                                time.localtime(st.st_mtime)[:6])
                         info.compress_type = zipfile.ZIP_DEFLATED
                         # El tamaño va declarado (zipfile decide ZIP64) y se copia exactamente

@@ -20,6 +20,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 from django.conf import settings
@@ -204,7 +205,9 @@ def _es_enlace(path):
 
 def _partes_validas(rel):
     partes = [p for p in str(rel).replace('\\', '/').split('/') if p]
-    if not partes or any(p in ('.', '..', '.git') for p in partes):
+    if not partes or any(p in ('.', '..') or p.lower() == '.git' for p in partes):
+        return None
+    if sys.platform == 'win32' and any(':' in p for p in partes):
         return None
     return partes
 
@@ -255,7 +258,8 @@ def abrir_escritura(base, nombre):
     """fd de escritura de `base/nombre` (un solo componente), sin seguir symlinks y solo sobre un
     archivo regular. NO trunca: el llamador lo hace (`fdopen(fd,'wb').truncate()`) cuando ya sabe que
     puede escribir. Levanta OSError si `nombre` es un enlace, un FIFO o algo que no es regular."""
-    if not nombre or os.sep in nombre or '/' in nombre or nombre in ('.', '..'):
+    if (not nombre or os.sep in nombre or '/' in nombre or nombre in ('.', '..')
+            or (sys.platform == 'win32' and ':' in nombre)):
         raise OSError(f'nombre inválido: {nombre!r}')
     if not _CON_DIRFD:
         path = Path(base) / nombre
@@ -263,16 +267,18 @@ def abrir_escritura(base, nombre):
             raise OSError('es un enlace')
         if os.path.lexists(path) and not stat.S_ISREG(os.lstat(path).st_mode):
             raise OSError('no es un archivo regular')
-        return os.open(path, os.O_WRONLY | os.O_CREAT | _O_BINARY, 0o644)
-    dfd = os.open(base, os.O_RDONLY | _O_DIRECTORY)
-    try:
-        fd = os.open(nombre, os.O_WRONLY | os.O_CREAT | _O_NOFOLLOW | _O_NONBLOCK, 0o644, dir_fd=dfd)
-    finally:
-        os.close(dfd)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | _O_BINARY, 0o644)
+    else:
+        dfd = os.open(base, os.O_RDONLY | _O_DIRECTORY)
+        try:
+            fd = os.open(nombre, os.O_WRONLY | os.O_CREAT | _O_NOFOLLOW | _O_NONBLOCK, 0o644, dir_fd=dfd)
+        finally:
+            os.close(dfd)
     if not stat.S_ISREG(os.fstat(fd).st_mode):
         os.close(fd)
         raise OSError('no es un archivo regular')
-    os.set_blocking(fd, True)
+    if _O_NONBLOCK:
+        os.set_blocking(fd, True)
     return fd
 
 
@@ -410,14 +416,20 @@ def huella_git(carpeta):
     `gitdir:` o symlink), `config`, `info/attributes` y cada archivo de `hooks/`."""
     g = Path(carpeta) / '.git'
     h = hashlib.sha256(b'.git:' + _huella_archivo(g))
-    if g.is_dir() and not g.is_symlink():
+    if not _es_enlace(g) and g.is_dir():
         for rel in ('config', 'info/attributes', 'hooks', *_GIT_INDIRECCIONES):
             h.update(f'\0{rel}:'.encode() + _huella_archivo(g / rel))
         hooks = g / 'hooks'
-        if hooks.is_dir() and not hooks.is_symlink():
+        if not _es_enlace(hooks) and hooks.is_dir():
             for p in sorted(hooks.iterdir()):
                 h.update(f'\0hooks/{p.name}:'.encode() + _huella_archivo(p))
     return h.hexdigest()
+
+
+def _es_nombre_git(nombre):
+    if sys.platform in ('win32', 'darwin'):
+        return nombre.lower() == '.git'
+    return nombre == '.git'
 
 
 def _repos_anidados(carpeta):
@@ -436,19 +448,24 @@ def _repos_anidados(carpeta):
 
     for actual, dirs, archivos in os.walk(raiz, onerror=no_se_pudo):
         if Path(actual) == raiz:
-            dirs[:] = [d for d in dirs if d != '.git']
+            dirs[:] = [d for d in dirs if not _es_nombre_git(d)]
             continue
-        if '.git' in dirs or '.git' in archivos:
+        if any(_es_nombre_git(x) for x in dirs) or any(_es_nombre_git(x) for x in archivos):
             hallados.append(f'repo anidado {Path(actual).relative_to(raiz)}/.git')
-            dirs[:] = [d for d in dirs if d != '.git']
+            dirs[:] = [d for d in dirs if not _es_nombre_git(d)]
     return sorted(hallados)
 
 
 def peligros_worktree(carpeta, git_dir):
     """Lo que no puede tener el worktree de una Tarea: claves que ejecutan en la config efectiva
     del repo real y repos anidados en el árbol. Lista de motivos; vacía = limpio."""
-    claves = _git(carpeta, 'config', '--name-only', '--list', check=False, git_dir=git_dir)
-    motivos = [f'config {c}' for c in claves.splitlines() if _CONFIG_EJECUTA.match(c)]
+    motivos = []
+    try:
+        claves = _git(carpeta, 'config', '--name-only', '--list', git_dir=git_dir)
+    except RuntimeError:
+        motivos.append('config ilegible')
+    else:
+        motivos = [f'config {c}' for c in claves.splitlines() if _CONFIG_EJECUTA.match(c)]
     return motivos + _repos_anidados(carpeta)
 
 
@@ -459,20 +476,24 @@ def peligros_git(carpeta):
     alguien limpie su `.git`. En una mesa `.git` es siempre un directorio: un archivo `gitdir:` o un
     symlink es una mesa tocada. Los worktrees de `_ejecutar_repo` usan `peligros_worktree`."""
     g = Path(carpeta) / '.git'
-    if g.is_symlink() or not g.is_dir():
+    if _es_enlace(g) or not g.is_dir():
         return ['.git no es un directorio']
     motivos = [f'.git/{n}' for n in _GIT_INDIRECCIONES if os.path.lexists(g / n)]
     hooks = g / 'hooks'
-    if hooks.is_symlink():
-        motivos.append('.git/hooks es un symlink')
+    if _es_enlace(hooks):
+        motivos.append('.git/hooks es un enlace')
     elif hooks.is_dir():
         motivos += [f'hook {p.name}' for p in sorted(hooks.iterdir()) if not p.name.endswith('.sample')]
     config = g / 'config'
-    if config.is_symlink() or not config.is_file():
+    if _es_enlace(config) or not config.is_file():
         motivos.append('.git/config no es un archivo regular')
     else:
-        claves = _git(carpeta, 'config', '--file', str(config), '--name-only', '--list', check=False)
-        motivos += [f'config {c}' for c in claves.splitlines() if not _CONFIG_PERMITIDA.match(c)]
+        try:
+            claves = _git(carpeta, 'config', '--file', str(config), '--name-only', '--list')
+        except RuntimeError:
+            motivos.append('.git/config ilegible')
+        else:
+            motivos += [f'config {c}' for c in claves.splitlines() if not _CONFIG_PERMITIDA.match(c)]
     return motivos + _repos_anidados(carpeta)
 
 

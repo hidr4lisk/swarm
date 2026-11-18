@@ -2239,6 +2239,25 @@ class GitDelHostTests(TestCase):
         with self.assertRaises(self.ws.GitAlterado):
             self.ws.asegurar_git(self.repo)
 
+    def test_repo_anidado_mayusculas_bloquea_en_windows(self):
+        (self.repo / 'sub').mkdir()
+        (self.repo / 'sub' / '.GIT').mkdir()
+        with mock.patch('enjambre.workspace.sys.platform', 'win32'):
+            self.assertIn('repo anidado sub/.git', self._motivos())
+
+    def test_config_malformada_falla_cerrado(self):
+        (self.repo / '.git' / 'config').write_text('[core\nbroken')
+        self.assertIn('.git/config ilegible', self._motivos())
+        self.assertIn('config ilegible', self.ws.peligros_worktree(self.repo, self.repo / '.git'))
+
+    def test_junction_en_git_o_hooks_bloquea(self):
+        g = self.repo / '.git'
+        with mock.patch('enjambre.workspace.os.path.isjunction', side_effect=lambda p: Path(p) == g):
+            self.assertEqual(self._motivos(), ['.git no es un directorio'])
+        hooks = g / 'hooks'
+        with mock.patch('enjambre.workspace.os.path.isjunction', side_effect=lambda p: Path(p) == hooks):
+            self.assertIn('.git/hooks es un enlace', self._motivos())
+
     def test_git_que_no_es_directorio_bloquea(self):
         shutil.rmtree(self.repo / '.git')
         (self.repo / '.git').write_text('gitdir: /otro/lado\n')
@@ -2345,10 +2364,27 @@ class ArtefactosSinSeguirEnlacesTests(TestCase):
     def test_dot_dot_y_git_no_son_componentes_validos(self):
         (self.base / '.git').mkdir()
         (self.base / '.git' / 'config').write_text('x')
-        for rel in ('../secreto.txt', '.git/config', '.', ''):
+        for rel in ('../secreto.txt', '.git/config', '.GIT/config', '.', ''):
             for _n, via in self._vias():
                 with via:
                     self.assertIsNone(self.ws.abrir_artefacto(self.base, rel), rel)
+
+    def test_dos_puntos_en_windows_se_rechaza(self):
+        with mock.patch('enjambre.workspace.sys.platform', 'win32'):
+            self.assertIsNone(self.ws.abrir_artefacto(self.base, 'C:secreto.txt'))
+            self.assertIsNone(self.ws.abrir_artefacto(self.base, 'a.txt:stream'))
+            with self.assertRaises(OSError):
+                self.ws.abrir_escritura(self.base, 'C:evil.txt')
+            with self.assertRaises(OSError):
+                self.ws.abrir_escritura(self.base, 'a.txt:stream')
+
+    def test_escritura_fallback_tambien_verifica_fstat(self):
+        (self.base / 'x.txt').write_text('ok')
+        fake_st = mock.Mock(st_mode=0o020666)  # S_IFCHR (ej. dispositivo NUL/CON en Windows)
+        with mock.patch.object(self.ws, '_CON_DIRFD', False), \
+                mock.patch('enjambre.workspace.os.fstat', return_value=fake_st):
+            with self.assertRaises(OSError):
+                self.ws.abrir_escritura(self.base, 'x.txt')
 
     def test_directorio_no_es_un_artefacto(self):
         (self.base / 'd').mkdir()
