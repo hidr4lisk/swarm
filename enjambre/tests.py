@@ -2378,6 +2378,27 @@ class ArtefactosSinSeguirEnlacesTests(TestCase):
             with self.assertRaises(OSError):
                 self.ws.abrir_escritura(self.base, 'a.txt:stream')
 
+    def test_windows_descarta_fd_que_termino_fuera_de_base(self):
+        """La carrera lstat→open de Windows (junction cambiada en el medio, reproducida en win11):
+        lo que decide es la ruta FINAL del handle ya abierto."""
+        (self.base / 'sub').mkdir()
+        (self.base / 'sub' / 'a.txt').write_text('ok')
+        (self.base / 'b.txt').write_text('ok')
+        afuera = lambda fd: str(self.secreto)  # noqa: E731
+        en_su_lugar = lambda fd: os.path.join(os.path.realpath(self.base), 'sub', 'a.txt')  # noqa: E731
+        with mock.patch.object(self.ws, '_CON_DIRFD', False), \
+                mock.patch('enjambre.workspace.sys.platform', 'win32'):
+            with mock.patch.object(self.ws, '_ruta_final_fd', side_effect=afuera):
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'sub/a.txt'))
+                with self.assertRaises(OSError):
+                    self.ws.abrir_escritura(self.base, 'b.txt')
+            with mock.patch.object(self.ws, '_ruta_final_fd', return_value=None):
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'sub/a.txt'))  # no saber = no
+            with mock.patch.object(self.ws, '_ruta_final_fd', side_effect=en_su_lugar):
+                fd = self.ws.abrir_artefacto(self.base, 'sub/a.txt')
+                self.assertIsNotNone(fd)
+                os.close(fd)
+
     def test_escritura_fallback_tambien_verifica_fstat(self):
         (self.base / 'x.txt').write_text('ok')
         fake_st = mock.Mock(st_mode=0o020666)  # S_IFCHR (ej. dispositivo NUL/CON en Windows)

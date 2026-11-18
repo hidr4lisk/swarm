@@ -185,14 +185,51 @@ def chown_host(path):
 # por un symlink a `~/.ssh/…` o al `.env` terminaría en el prompt de un modelo o en una descarga.
 # POSIX: se recorre componente por componente con `O_NOFOLLOW` relativo al fd del anterior (ni un
 # cambio entre mirar y abrir se sigue). Windows no tiene `O_NOFOLLOW` ni `dir_fd`: ahí se mira cada
-# componente con `lstat` (symlink o junction = rechazado) y se abre. Queda una ventana mínima entre
-# el `lstat` y el `open` que en POSIX no existe; crear symlinks en Windows exige privilegio.
+# componente con `lstat` (symlink o junction = rechazado), se abre, y después se pregunta al handle
+# abierto su ruta FINAL (`GetFinalPathNameByHandleW`): si no es exactamente `base/rel`, se descarta.
+# Sin esa verificación quedaba una ventana entre el `lstat` y el `open`: una junction (no pide
+# privilegio) cambiada en el medio hacía leer fuera de la mesa (reproducido en win11, 18/11/2026).
 _O_NOFOLLOW = getattr(os, 'O_NOFOLLOW', 0)
 _O_NONBLOCK = getattr(os, 'O_NONBLOCK', 0)
 _O_BINARY = getattr(os, 'O_BINARY', 0)   # solo Windows: sin esto el fd traduce \r\n
 _O_DIRECTORY = getattr(os, 'O_DIRECTORY', 0)
 _CON_DIRFD = bool(_O_NOFOLLOW and _O_DIRECTORY and os.open in os.supports_dir_fd)
 
+
+
+def _ruta_final_fd(fd):
+    """Windows: ruta real del objeto que quedó abierto en `fd`, con symlinks y junctions ya
+    resueltos. None si no se puede saber (o fuera de Windows)."""
+    if sys.platform != 'win32':
+        return None
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    f = ctypes.WinDLL('kernel32', use_last_error=True).GetFinalPathNameByHandleW
+    f.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+    f.restype = wintypes.DWORD
+    buf = ctypes.create_unicode_buffer(32768)
+    try:
+        n = f(msvcrt.get_osfhandle(fd), buf, len(buf), 0)
+    except OSError:
+        return None
+    if not n or n >= len(buf):
+        return None
+    ruta = buf.value
+    if ruta.startswith('\\\\?\\UNC\\'):
+        return '\\\\' + ruta[8:]
+    return ruta[4:] if ruta.startswith('\\\\?\\') else ruta
+
+
+def _fd_en_su_lugar(fd, base, partes):
+    """Sin `dir_fd` (Windows): ¿el fd abierto es `base/partes` y no otra cosa? Se mira el objeto
+    YA abierto, así que un cambio entre el `lstat` y el `open` no pasa. Fuera de Windows (donde
+    no hay forma de preguntarlo) no se verifica; en Windows, no saber = rechazar."""
+    if sys.platform != 'win32':
+        return True
+    real = _ruta_final_fd(fd)
+    esperado = os.path.join(os.path.realpath(base), *partes)
+    return real is not None and os.path.normcase(real) == os.path.normcase(esperado)
 
 def _es_enlace(path):
     """True si `path` es symlink o junction (sin seguirlo). Inexistente → False."""
@@ -231,6 +268,9 @@ def abrir_artefacto(base, rel):
             fd = os.open(path, os.O_RDONLY | _O_BINARY | _O_NONBLOCK)
         except OSError:
             return None
+        if not _fd_en_su_lugar(fd, base, partes):
+            os.close(fd)
+            return None  # algo del camino cambió por un enlace entre mirar y abrir
     else:
         try:
             dfd = os.open(base, os.O_RDONLY | _O_DIRECTORY)
@@ -268,6 +308,9 @@ def abrir_escritura(base, nombre):
         if os.path.lexists(path) and not stat.S_ISREG(os.lstat(path).st_mode):
             raise OSError('no es un archivo regular')
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | _O_BINARY, 0o644)
+        if not _fd_en_su_lugar(fd, base, [nombre]):
+            os.close(fd)
+            raise OSError('cambió por un enlace entre mirar y abrir')
     else:
         dfd = os.open(base, os.O_RDONLY | _O_DIRECTORY)
         try:
