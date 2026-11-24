@@ -1,0 +1,14 @@
+# Dependencias de la RUTA PORTÁTIL / NATIVA (SQLite, sin Docker, sin Postgres).
+# El bundle del pendrive instala esto en runtime/{linux,win}/site-packages por SO.
+# Diferencia con requirements.txt: sin psycopg2-binary (Postgres es solo del modo Docker) y sin
+# gevent (el SSE usa time.sleep bajo el runserver threaded). Livianísimo: Django + Fernet.
+Django==5.1.6
+dj-database-url==2.3.0
+cryptography==49.0.0
+# tzdata: la base IANA de zonas horarias. En Linux la aporta el SO, pero el Python portátil de
+# Windows NO la trae → sin esto, TIME_ZONE=America/Argentina/... revienta con ZoneInfoNotFoundError
+# en cualquier página que renderice una fecha (localtime). Puro-Python, universal, liviano.
+tzdata==2026.3
+# certifi: bundle de CA de Mozilla. El Python portátil de Windows no trae CA del sistema →
+# sin esto TODO HTTPS a proveedores (OpenRouter/OpenAI/Anthropic) falla con CERTIFICATE_VERIFY_FAILED.
+certifi==2026.6.17

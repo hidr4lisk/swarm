@@ -1,0 +1,1672 @@
+"""
+enjambre/engine.py — motor del Enjambre.
+
+Heredado del prototipo enjambre.py: dispatch de CLIs por subprocess, contexto
+compartido y filtro de "ruido". Ahora persistido en el ORM (Sesion/Mensaje/Participante)
+en vez de historia.jsonl. La topología (plana ↔ líder) se resuelve en topologia.py.
+
+Los CLIs se invocan directo del PATH (`resolver_bin` los encuentra aunque la shell no
+haya cargado su rc). El dispatch acá es el punto único que usa el worker.
+"""
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import time
+import urllib.error
+import urllib.request
+import uuid
+from pathlib import Path
+
+from django.conf import settings
+from django.utils import timezone
+
+from .clientes import CLIENTES
+from .models import Mensaje
+
+_DIAS = ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
+_MESES = ('enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+          'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre')
+
+
+def hoy_str():
+    """Fecha actual de la máquina (hora local) en español — ancla temporal para las sillas, que si
+    no asumen su fecha de entrenamiento (~2025) y razonan sobre versiones/actualidad como si
+    estuvieran en un año anterior. Se recalcula en cada turno (barato)."""
+    d = timezone.localtime(timezone.now())
+    return f"{_DIAS[d.weekday()]} {d.day} de {_MESES[d.month - 1]} de {d.year}"
+
+
+MAX_CONTEXTO = 30  # últimos N mensajes (no-ruido) reinyectados como contexto
+# Topes del contexto reinyectado (palanca de costo): sin esto, el líder re-lee toda la mesa en
+# cada llamada y los tokens crecen sin techo a medida que la conversación se alarga.
+CONTEXTO_MSG_MAX = 1500     # máx caracteres por mensaje (el completo sigue en el chat)
+CONTEXTO_TOTAL_MAX = 12000  # presupuesto total de caracteres del contexto (~3k tokens)
+AUTO_MAX_ITER = 15  # tope DURO de iteraciones del modo --auto (safety: corta aunque no haya tope $)
+
+# Piso de timeout para turnos de FABRICAR (editar archivos de verdad). Fabricar tarda MUCHO más
+# que charlar: el techo de charla (sesion.timeout, ~180s) mataba el subprocess a mitad y se perdía
+# el trabajo ya escrito en disco (verificado en mesa 105: Saul y Jesse matados a 180s). Para
+# fabricar usamos max(sesion.timeout, este piso). 10 min cubre tareas reales sin colgar el worker.
+FABRICAR_TIMEOUT_MIN = 600
+
+# Marcadores que SIEMPRE son ruido: los generamos NOSOTROS al degradar (ejecutar_cli/http),
+# siempre como mensaje COMPLETO que ARRANCA así: «(❌ …)», «(⏰ timeout …)», «(sin respuesta)».
+# Por eso cuentan solo como PREFIJO: una respuesta legítima puede traer ❌/⏰ en el medio —
+# en la mesa 131 Jesse describió un scoreboard «✅❌📊» y su integración quedó marcada error.
+RUIDO_PROPIO = ("(❌", "(⏰", "(sin respuesta)")
+# Marcadores de error de PROVEEDOR (límites de sesión, JSON de error de opencode/Zen). Estos SÍ
+# pueden aparecer como substring dentro de una respuesta legítima y larga — p.ej. una mesa de
+# pentesting explicando "el endpoint tiene rate limiting". Por eso solo cuentan como ruido si la
+# salida es CORTA (un error real es breve; un párrafo que los menciona, no). Ver mesa 127.
+# «no provider available» / «no model available» los tira opencode cuando el modelo de la silla
+# no está disponible (visto en la mesa 4 del pendrive): sin esto se guardaban como RESPUESTA de la
+# silla y entraban al contexto de las demás como si fueran un aporte válido.
+ERROR_MARKERS = ("session limit", "hit your", "unknownerror", "unexpected server error",
+                 "internal server error", "rate limit", "overloaded", "bad request",
+                 "upstream request failed", "error from provider", "streaming response failed",
+                 "no provider available", "no model available", "provider error",
+                 # Modelos no disponibles en la cuenta; respaldo para CLIs que salen con exit 0.
+                 "not supported when using codex", "model is not supported")
+# Tope de largo para que un marker de proveedor cuente como ruido (errores reales son breves).
+RUIDO_MAX_LEN = 300
+
+# ── Limpieza de la salida de los CLIs ──────────────────────────────────────────
+# Cada turno corre en un contenedor FRESCO (seed-copy efímero), así que algunos CLIs
+# re-inicializan su estado y lo cuentan por stdout (opencode re-migra su DB interna y
+# imprime su banner «> build · modelo»), con códigos ANSI incluidos. Nada de eso es la
+# respuesta: se limpia ANTES de persistir. Visto en el primer beta real (mesa Test).
+ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+PREAMBULOS_CLI = (
+    'performing one time database migration',
+    'sqlite-migration:',
+    'database migration complete',
+    '> build ·', '> plan ·',
+)
+
+# Credencial del CLI vencida. Sin esto la silla contesta «(sin respuesta)» y el humano no tiene
+# forma de saber que lo único que pasa es que hay que re-loguear el CLI en su terminal.
+# ⚠️ Markers MUY específicos de auth de CLI/proveedor: NO usar "401"/"unauthorized" sueltos —
+# una mesa de pentesting los menciona legítimamente y toda la mesa quedaría marcada como error.
+AUTH_EXPIRED_MARKERS = (
+    'invalid authentication credentials', 'oauth token has expired', 'authentication_error',
+    'invalid x-api-key', 'please run `claude', 'token has expired or is invalid',
+)
+
+
+def _parece_401(texto):
+    """True si la salida del CLI delata credencial caducada (auth, no contenido de la mesa)."""
+    t = (texto or '').lower()
+    return any(m in t for m in AUTH_EXPIRED_MARKERS)
+
+
+# Bloque de razonamiento de los modelos «thinking» (deepseek, qwen y varios de los free): no es la
+# respuesta, es su cocina — en la mesa se ve como un chorro de texto en primera persona antes de lo
+# que la silla quiso decir.
+THINK_RE = re.compile(r'<think\b[^>]*>.*?</think>', re.DOTALL | re.IGNORECASE)
+
+
+def quitar_think(texto):
+    """Saca los bloques <think>…</think>. Si quedó uno ABIERTO sin cerrar (corte por timeout),
+    tira todo desde el <think> (no hay respuesta útil después)."""
+    t = THINK_RE.sub('', texto or '')
+    idx = t.lower().find('<think>')
+    if idx != -1:
+        t = t[:idx]
+    return t.strip()
+
+
+def quitar_autoprefijo(texto, participante):
+    """Saca el auto-prefijo con el propio nombre que algunas sillas anteponen por mimetismo del
+    transcripto (que ven como '[Nombre]: texto'). Solo AL INICIO y solo si es el nombre de ESA
+    silla; el cuerpo no se toca. Cubre 'Nombre:', '[Nombre]:', '**Nombre:**'. La UI ya muestra el
+    nombre en su etiqueta → sin esto queda duplicado."""
+    if not participante or not texto:
+        return texto
+    nombre = re.escape((participante.nombre or '').strip())
+    if not nombre:
+        return texto
+    # El '\**' final cubre el negrita que cierra DESPUÉS del ':' (ej. '**Arquimedes:**').
+    patron = r'^\s*\**\s*\[?\s*' + nombre + r'\s*\]?\s*\**\s*:\s*\**\s*'
+    nuevo = re.sub(patron, '', texto, count=1, flags=re.IGNORECASE)
+    return nuevo if nuevo.strip() else texto
+
+
+def limpiar_salida(texto):
+    """Saca los códigos ANSI, el bloque <think> de los reasoning models y el preámbulo de
+    arranque del CLI (líneas conocidas, solo AL INICIO de la salida). El cuerpo no se toca."""
+    t = quitar_think(ANSI_RE.sub('', texto or ''))
+    lineas = t.splitlines()
+    i = 0
+    while i < len(lineas):
+        ln = lineas[i].strip().lower()
+        if not ln or any(ln.startswith(p) for p in PREAMBULOS_CLI):
+            i += 1
+            continue
+        break
+    return '\n'.join(lineas[i:]).strip()
+
+
+def es_ruido(texto):
+    low = (texto or "").strip().lower()
+    if low.startswith(RUIDO_PROPIO):
+        return True
+    if len(low) <= RUIDO_MAX_LEN and any(m in low for m in ERROR_MARKERS):
+        return True
+    return False
+
+
+# ── Comandos de mesa (se tipean en el mensaje, sin botones) ──────────────────────
+# Solo CONTROL los dispara; para CONSULTA se ignora el verbo y queda como charla.
+TRIGGERS_BUILD = ('/armar', '/build', '🔨')  # fabricar/editar en la carpeta de la mesa (agéntico)
+TRIGGER_UNDO = '/deshacer'                   # revertir el último turno de /armar (git reset)
+TRIGGER_VOLVER = '/volver'                   # rebobinar la carpeta a un commit dado (rollback granular)
+TRIGGER_DEBATE = '/debate'                   # N rondas donde las sillas se refutan (solo texto)
+TRIGGER_ALTO = '/alto'                       # kill-switch: este turno NO dispatcha sillas
+TRIGGER_CONTINUO = '/continuo'               # arranca el modo continuo con un objetivo
+TRIGGERS_SEGUI = ('/seguí', '/segui')        # corre la próxima iteración hacia el objetivo
+TRIGGER_AUTO = '/auto'                        # pasa un continuo en curso a automático
+TRIGGER_CERRAR = '/cerrar'                     # cierra la mesa con un resumen (qué se hizo + costo)
+TRIGGER_LIBRE = '/libre'                       # este turno NO se ordena en la carpeta de la mesa
+
+# Rutas absolutas que el humano puede nombrar en su pedido (POSIX, `~/…` y Windows). Piden al
+# menos DOS tramos para no confundir un comando de mesa («/armar») con una ruta.
+RUTA_RE = re.compile(r'(?:~|(?:[A-Za-z]:[\\/]))[\w .\-]+[\\/][\w .\-]+'
+                     r'|/[\w.\-]+(?:/[\w .\-]+)+'
+                     # UNC de Windows (\\servidor\recurso\...). Sin esto, un pedido como
+                     # «arreglá \\FS01\web\config\nginx.conf» NO se detectaba como ruta
+                     # absoluta: el turno quedaba "ordenado" y el trabajo aterrizaba en la
+                     # carpeta de la mesa, ignorando el pedido explícito y sin avisar.
+                     r'|\\\\[\w.\-]+\\[\w .\-]+(?:\\[\w .\-]+)*')
+
+# Centinela de _comando_control: "este texto NO era un comando de control, seguí con build/charla".
+# Se distingue de {} (resultado vacío legítimo de un comando ya manejado, ej. /alto).
+_SIN_MANEJAR = object()
+
+
+def parse_comando(texto):
+    """Devuelve (comando, texto_limpio). comando ∈ {'build','undo','debate','alto','continuo',
+    'segui',None}. El verbo va al inicio del texto (ya sin @mención)."""
+    t = (texto or '').lstrip()
+    low = t.lower()
+    for trig in TRIGGERS_BUILD:
+        if low.startswith(trig):
+            return 'build', t[len(trig):].lstrip()
+    if low.startswith(TRIGGER_VOLVER):
+        return 'volver', t[len(TRIGGER_VOLVER):].lstrip()
+    if low.startswith(TRIGGER_UNDO):
+        return 'undo', t[len(TRIGGER_UNDO):].lstrip()
+    if low.startswith(TRIGGER_DEBATE):
+        return 'debate', t[len(TRIGGER_DEBATE):].lstrip()
+    if low.startswith(TRIGGER_ALTO):
+        return 'alto', t[len(TRIGGER_ALTO):].lstrip()
+    if low.startswith(TRIGGER_CONTINUO):
+        return 'continuo', t[len(TRIGGER_CONTINUO):].lstrip()
+    if low.startswith(TRIGGER_AUTO):
+        return 'auto', t[len(TRIGGER_AUTO):].lstrip()
+    if low.startswith(TRIGGER_CERRAR):
+        return 'cerrar', t[len(TRIGGER_CERRAR):].lstrip()
+    for trig in TRIGGERS_SEGUI:
+        if low.startswith(trig):
+            return 'segui', t[len(trig):].lstrip()
+    return None, texto
+
+
+# ── Prompts del modo LÍDER ────────────────────────────────────────────────────
+def _prompt_plan(pedido, workers, editar):
+    """Prompt con el que el líder descompone el pedido en subtareas dirigidas. El formato
+    «@alias: subtarea» es el contrato que consume _parse_asignaciones."""
+    roster = "\n".join(
+        f"  @{w.alias} — {w.etiqueta}" + (f" — {w.especialidad}" if w.especialidad else "")
+        for w in workers
+    )
+    if editar:
+        modo = ("Los trabajadores van a EDITAR ARCHIVOS de verdad en la carpeta de la mesa, "
+                "así que cada subtarea tiene que ser una acción de construcción concreta "
+                "(qué archivo, qué cambio). Varias líneas para el mismo alias se agrupan en "
+                "UNA sola llamada con un único presupuesto de ejecución compartido; NO son "
+                "subtareas despachadas por separado. Si el trabajo es extenso, encargá al trabajador "
+                "que persista el avance en los archivos de la mesa y que no prometa completar todo "
+                "el lote en un turno.")
+    else:
+        modo = ("Esto es trabajo de ANÁLISIS/CHARLA (no se editan archivos): cada subtarea es "
+                "algo para pensar, investigar o responder.")
+    return (
+        f"Sos el LÍDER de esta mesa de trabajo. El humano pidió:\n\n«{pedido}»\n\n"
+        f"Tu equipo (usá EXACTAMENTE estos alias):\n{roster}\n\n"
+        f"Descomponé el pedido en subtareas y asigná cada una a UN miembro del equipo, "
+        f"UNA POR LÍNEA, con el formato exacto:\n@alias: subtarea concreta\n\n"
+        f"{modo} Podés darle varias subtareas a la misma silla (una por línea). "
+        f"Arrancá con una frase breve de plan y después las líneas «@alias:». "
+        f"NO ejecutes vos las subtareas ni respondas vos el pedido: solo planificá y repartí "
+        f"(vos cerrás al final, cuando el equipo entregue). "
+        f"La lectura inicial es RECONOCIMIENTO, no la ejecución del encargo: para PDFs "
+        f"comprobá qué archivos hay y si tienen texto; si son escaneos, encargá el OCR y la "
+        f"lectura completa al trabajador. NO hagas el OCR de todo el lote ni pruebes cómo "
+        f"generar PDFs antes de repartir. No inventes consignas que todavía no leíste: "
+        f"indicá que el trabajador debe extraerlas y conservarlas."
+    )
+
+
+def _prompt_integracion(pedido, resumen):
+    """Prompt de cierre: el líder integra lo que entregó el equipo en una respuesta final."""
+    return (
+        f"Sos el LÍDER de la mesa. El humano había pedido:\n\n«{pedido}»\n\n"
+        f"Tu equipo entregó:\n\n{resumen}\n\n"
+        f"Cerrá vos: integrá los aportes en una respuesta final para el humano — qué quedó "
+        f"hecho, qué falta y cualquier conflicto entre los trabajadores. Conciso y claro."
+    )
+
+
+# Decoración markdown al inicio de línea: título (`###`), cita (`>`), viñeta, numeración y los
+# marcadores de negrita/código que envuelven al alias. Se saca SOLO para reconocer la cabecera del
+# reparto: el líder escribe «### **@sabueso**:» y eso es un reparto igual.
+_RX_DECORACION = re.compile(r'^\s*(?:[#>]+\s*)*(?:[-*+•]\s+|\d+[.)]\s+)?[*_`]*\s*')
+# Corte de bloque: separador horizontal o título que NO es una cabecera de silla → lo que sigue ya
+# no es detalle de la subtarea anterior (si no, la conclusión del líder se le pega a la última silla).
+_RX_CORTE = re.compile(r'^\s*(?:[-*_=]{3,}\s*$|#{1,6}\s+\S)')
+
+
+def _sin_decoracion(linea):
+    return _RX_DECORACION.sub('', linea).strip()
+
+
+def _corta_bloque(linea):
+    return bool(_RX_CORTE.match(linea))
+
+
+# ── Estado efímero y config del CLI por turno ────────────────────────────────────
+# Config que Swarm le impone a opencode en CADA invocación. Va por env (`OPENCODE_CONFIG_CONTENT`)
+# y no por archivo: escribir en el `~/.config/opencode/` del cliente sería dejar rastro en una
+# máquina que el modo sin rastro promete no tocar.
+#
+# `agent.title.disable`: además del modelo de la silla, opencode corre un agente interno `title`
+# para autotitular la sesión, y su `small_model` por default (gpt-5.4-nano) NO es free → cada
+# turno de cada silla dispara una llamada paga que muere con "No payment method" (66 en un día,
+# medido en jarvis). El título es cosmético: se apaga.
+# ⚠️ El arreglo NO es apuntar `small_model` a un modelo free: eso cambia una llamada paga que
+# falla SIN COSTO por una llamada REAL contra la cuota gratuita, o sea DUPLICA el consumo del
+# único recurso escaso (medido: 1 llamada free por corrida pasó a 2).
+# Verificado (2026-08-12, opencode del bundle): la env se lee y se VALIDA (una clave desconocida
+# corta con "Configuration is invalid at OPENCODE_CONFIG_CONTENT" → si la clave desapareciera se
+# notaría al arrancar, no en silencio); se MERGEA con el config del usuario en vez de pisarlo
+# (un config global roto sigue reportándose) y GANA sobre él (con `disable:false` en el global,
+# el log no registra un solo `agent=title`).
+OPENCODE_CONFIG = {'agent': {'title': {'disable': True}}}
+
+
+def _dir_efimero(participante):
+    """Carpeta descartable para el estado del CLI en ESTE turno, o None si no se pudo crear.
+
+    Las sillas corren una atrás de otra en la MISMA máquina y con el mismo HOME, así que sin esto
+    comparten la base SQLite de opencode y su lock (`<state>/opencode/locks/<hash>.lock`, mismo
+    hash siempre): una silla matada por timeout deja el lock tomado y cuelga a la siguiente.
+    Cuelga de la carpeta de datos de Swarm (no del temp del sistema) para no dejar rastro fuera.
+    """
+    try:
+        from .workspace import mesas_dir
+        base = Path(mesas_dir()).parent / 'tmp'
+        d = base / f"cli-{participante.key}-{uuid.uuid4().hex[:8]}"
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None  # sin aislamiento se trabaja igual (el estado va al HOME, como antes)
+    # Barrido de restos: el turno borra su carpeta al terminar, pero si a Swarm lo matan a lo
+    # bruto (o se corta la luz) queda tirada — y en un pendrive eso se acumula sin techo. Se
+    # limpian las de más de 6 h, que no pueden ser de un turno vivo (el techo es FABRICAR_TIMEOUT_MIN).
+    limite = time.time() - 6 * 3600
+    for viejo in base.glob('cli-*'):
+        try:
+            if viejo != d and viejo.stat().st_mtime < limite:
+                shutil.rmtree(viejo, ignore_errors=True)
+        except OSError:
+            continue
+    return d
+
+
+def _env_opencode(env, tmp):
+    """Aísla el estado de opencode en `tmp` y le impone la config de Swarm. Muta `env`.
+
+    ⚠️ Las CREDENCIALES no se tocan: `auth.json` NO vive bajo `XDG_DATA_HOME` — opencode lo lee
+    de `~/.local/share/opencode/auth.json` fijo. Verificado (2026-08-12): con las tres XDG
+    redirigidas a carpetas vacías la silla autentica y responde igual, y la db/lock/caché sí
+    aterrizan en las nuevas. Si algún día dejara de autenticar, el sospechoso es esto.
+    """
+    env['OPENCODE_CONFIG_CONTENT'] = json.dumps(OPENCODE_CONFIG)
+    if tmp:
+        env['XDG_DATA_HOME'] = str(tmp / 'data')
+        env['XDG_STATE_HOME'] = str(tmp / 'state')
+        env['XDG_CACHE_HOME'] = str(tmp / 'cache')
+
+
+def _barrer_por_marca(marca):
+    """Mata a los descendientes que se ESCAPARON del grupo de procesos del CLI (Linux).
+
+    Medido en jarvis (2026-08-12) con `opencode run --auto` y un turno vencido a propósito: cada
+    comando que la silla corre con su toolbelt queda en **su propia sesión** (ppid=1, pgid propio),
+    así que matar el grupo del CLI NO lo alcanza — quedaron dos `sleep 300` vivos, uno por corrida.
+    Como los hijos heredan el `env` que le pasamos al CLI, se los reconoce por una marca única del
+    turno. Se recorre /proc porque no hay dependencias externas en el bundle (nada de psutil).
+    """
+    if not marca or not os.path.isdir('/proc'):
+        return
+    objetivo = f'SWARM_TURNO_ID={marca}'.encode()
+    for entry in os.scandir('/proc'):
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(f'/proc/{entry.name}/environ', 'rb') as fh:
+                if objetivo not in fh.read():
+                    continue
+            os.kill(int(entry.name), signal.SIGKILL)
+        except OSError:
+            continue  # el proceso ya murió, o no es nuestro: nada que hacer
+
+
+def _matar_arbol(proc, marca=''):
+    """Mata el CLI Y a sus hijos cuando vence el turno.
+
+    `Popen.kill()` (lo que hace `subprocess.run(timeout=)`) mata SOLO al hijo directo, y los CLIs
+    de silla son Node/Bun: paren shells, servidores LSP y demás. Los nietos sobreviven al turno,
+    siguen quemando cuota contra la API con la mesa ya dándolos por muertos, y en Windows dejan
+    el pendrive tomado (no se puede expulsar). En hidralisk se midieron 3 huérfanos, ~1,1 GB, el
+    más viejo de 44 minutos.
+
+    ⚠️ Y acá era PEOR que en hidralisk, porque no hay contenedor que se lleve todo puesto: los
+    nietos heredan las pipes de stdout/stderr, así que el `communicate()` que sigue al kill se
+    queda esperando a que se cierren y **el turno no vuelve nunca** — no es que quede basura, es
+    que se cuelga el worker. Medido con un control negativo el 2026-08-12: sin este matar, la
+    llamada no retornó (se cortó a los 25 s desde afuera) y dejó 3 procesos vivos por corrida.
+    Best-effort igual: un fallo acá nunca puede tumbar el turno.
+
+    Dos redes, porque una sola no alcanza: el grupo de procesos (los hijos que se portan bien) y
+    el barrido por marca (los que se hicieron sesión propia, ver _barrer_por_marca).
+    ⚠️ En Windows queda solo la primera: `taskkill /T` recorre el árbol por parentesco, así que un
+    proceso que ya perdió a su padre no lo agarra. Sin dependencias nuevas no hay mejor (lo
+    correcto sería un Job Object por ctypes).
+    """
+    try:
+        if os.name == 'nt':
+            # taskkill /T recorre el árbol por PID padre; /F es SIGKILL. Built-in de Windows.
+            subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)],
+                           capture_output=True, timeout=30)
+        else:
+            # `start_new_session=True` hizo al CLI líder de sesión ⇒ su pgid == su pid.
+            os.killpg(proc.pid, signal.SIGKILL)
+    except Exception:  # noqa: BLE001 — limpieza best-effort (ProcessLookupError, permisos, …)
+        pass
+    try:
+        proc.kill()
+    except Exception:  # noqa: BLE001
+        pass
+    if os.name != 'nt':
+        _barrer_por_marca(marca)
+
+
+def ejecutar_http(participante, prompt, timeout):
+    """Silla de MODELO LOCAL: POST a la API Ollama del endpoint. Devuelve (salida, ruido).
+
+    No usa subprocess/runner: el worker llega directo por HTTP al box Ollama.
+    Si el box está apagado/inalcanzable, devuelve un marcador de ruido → la silla queda
+    muda y la mesa sigue (degradación)."""
+    url = participante.endpoint_url.rstrip('/') + '/api/generate'
+    body = json.dumps({
+        'model': participante.endpoint_model,
+        'prompt': prompt,
+        'stream': False,
+        # Refuerzo anti-loop: un modelo chico tiende a copiar sus propias respuestas del
+        # contexto de la mesa. repeat_penalty + ventana amplia + algo de temperatura lo evitan.
+        'options': {'temperature': 0.7, 'repeat_penalty': 1.3, 'repeat_last_n': 256},
+    }).encode()
+    req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        salida = quitar_think(data.get('response') or '') or '(sin respuesta)'
+    except urllib.error.URLError as e:
+        # apagado / fuera de red / timeout del socket → degradar, no romper la mesa
+        salida = f"(❌ {participante.nombre} no responde: {getattr(e, 'reason', e)})"
+    except Exception as e:  # noqa: BLE001
+        salida = f"(❌ error: {e})"
+    return salida, es_ruido(salida)
+
+
+def ejecutar_api(participante, provider, prompt, timeout, sesion=None):
+    """Silla por API KEY: llama la API HTTP del proveedor (anthropic/openai/openrouter) con la key
+    del vault. Devuelve (salida, ruido). No usa subprocess ni runner → es la ruta PORTABLE (sin
+    binarios).
+
+    Si el TOOLBELT está habilitado y hay `sesion`, corre con el loop de tool-use sobre el sistema
+    real (F3: inspect/read_file/system_report auto, apply_fix con aprobación). Si no, charla plana (F2).
+
+    La key sale del vault DESBLOQUEADO (runtime 0600). Si la bóveda está bloqueada o no hay key,
+    el proveedor devuelve un marcador (❌ …) → la silla queda muda y la mesa sigue (degradación)."""
+    from . import providers, vault, toolbelt
+    from .clientes import modelo_de
+    # base_url configurable solo para el proveedor openai-compat (Groq/DeepSeek/…); anthropic y
+    # openrouter tienen endpoint fijo.
+    base = getattr(settings, 'SWARM_OPENAI_BASE_URL', '') if provider == 'openai' else ''
+    key, modelo = vault.get_key(provider), modelo_de(participante)
+    if sesion is not None and toolbelt.habilitado():
+        salida = providers.chat_agentic(provider, modelo, prompt, key, timeout,
+                                        sesion, participante, base_url=base)
+    else:
+        salida = providers.chat(provider, modelo, prompt, key, timeout, base_url=base)
+    return salida, es_ruido(salida)
+
+
+# Entorno que hereda el subprocess de una silla CLI (S-04). Lista blanca, no `os.environ.copy()`:
+# el proceso de Swarm puede traer claves que no le sirven a un CLI que ejecuta texto escrito por un
+# modelo (`SWARM_SECRET_KEY`, rutas de la bóveda, tokens de otras herramientas: GITHUB_TOKEN, AWS_*…).
+# Se compara en MAYÚSCULAS porque Windows no distingue el caso de los nombres.
+#  · Base del SO y de la shell, en Linux/macOS y en Windows: sin `SystemRoot`/`ComSpec`/`PATHEXT`
+#    ni `APPDATA`/`USERPROFILE` un CLI Node/Bun en Windows no arranca ni encuentra su login.
+#  · Lo que cada CLI de silla usa para su credencial y su config (prefijos de su fabricante y de su
+#    runtime), y proxy/certificados para salir a internet.
+#  · NO entra ningún `SWARM_*` ni `ENJAMBRE_*` del proceso: el motor agrega los del turno aparte
+#    (`ENJAMBRE_WORKDIR`, `SWARM_TURNO_ID`). Para una variable que falte (otro proveedor de opencode,
+#    p. ej. `GROQ_API_KEY`) está `SWARM_SILLA_ENV`: nombres o prefijos con `*`, separados por comas.
+# El toolbelt (modo máquina) NO usa esto: opera la máquina del humano a propósito (ver toolbelt._env).
+_ENV_SILLA = frozenset((
+    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TZ', 'TERM', 'COLORTERM',
+    'NO_COLOR', 'TMPDIR', 'TEMP', 'TMP', 'DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS',
+    # Windows
+    'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'APPDATA', 'LOCALAPPDATA',
+    'USERPROFILE', 'USERNAME', 'USERDOMAIN', 'HOMEDRIVE', 'HOMEPATH', 'PROGRAMDATA', 'PROGRAMFILES',
+    'PROGRAMFILES(X86)', 'PROGRAMW6432', 'COMMONPROGRAMFILES', 'COMMONPROGRAMFILES(X86)',
+    'COMMONPROGRAMW6432', 'PUBLIC', 'ALLUSERSPROFILE', 'COMPUTERNAME', 'OS', 'SESSIONNAME',
+    'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'PROCESSOR_LEVEL',
+    'PROCESSOR_REVISION', 'DRIVERDATA',
+    # red
+    'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+    'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+))
+_ENV_SILLA_PREFIJOS = (
+    'LC_', 'XDG_',
+    'ANTHROPIC_', 'CLAUDE_',                     # claude
+    'OPENCODE_', 'BUN_',                         # opencode
+    'CODEX_', 'OPENAI_',                         # codex
+    'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_',  # agy
+    'NODE_',                                     # runtime de los CLIs (NODE_EXTRA_CA_CERTS…)
+)
+
+
+def _env_silla():
+    """Entorno del CLI de una silla: solo lo permitido por `_ENV_SILLA` (+ `SWARM_SILLA_ENV`)."""
+    extra = [x.strip().upper() for x in (os.environ.get('SWARM_SILLA_ENV') or '').split(',')
+             if x.strip()]
+    extra_exactos = {x for x in extra if not x.endswith('*')}
+    extra_prefijos = tuple(x[:-1] for x in extra if x.endswith('*') and len(x) > 1)
+    env = {}
+    for k, v in os.environ.items():
+        ku = k.upper()
+        if (ku in _ENV_SILLA or ku in extra_exactos
+                or ku.startswith(_ENV_SILLA_PREFIJOS + extra_prefijos)):
+            env[k] = v
+    return env
+
+
+def ejecutar_cli(participante, prompt, timeout, workdir=None, comando=None,
+                 sesion=None, cwd_maquina=None):
+    """Corre la silla con el prompt dado. Devuelve (salida, ruido).
+
+    Sillas de modelo local (endpoint_url seteado) van por HTTP (ejecutar_http); las sillas por API
+    key (api-*) van por HTTP al proveedor (ejecutar_api); el resto son CLIs por subprocess. Si
+    `workdir` está dado (la carpeta de la mesa), el CLI fabrica ahí: es el cwd y se exporta
+    ENJAMBRE_WORKDIR. `comando` permite override (ej: el de fabricación vs el de charla).
+
+    `cwd_maquina` (modo máquina, toolbelt ON): corre sobre el equipo real desde esa carpeta, sin
+    exportar ENJAMBRE_WORKDIR — no queremos encerrar la silla en la carpeta de la mesa.
+    """
+    if participante.endpoint_url and not comando:
+        return ejecutar_http(participante, prompt, timeout)
+    from .clientes import api_de
+    prov = api_de(participante)
+    if prov:  # silla por API key → HTTP directo al proveedor (+ toolbelt si está habilitado)
+        return ejecutar_api(participante, prov, prompt, timeout, sesion=sesion)
+    env = _env_silla()
+    # La silla también corre git por su cuenta dentro de la carpeta de la mesa, y esa carpeta
+    # suele estar en el pendrive (exFAT, sin dueño) → «dubious ownership». Ver env_git_safe.
+    from .workspace import env_git_safe
+    env_git_safe(env)
+    cwd = None
+    if cwd_maquina:
+        cwd = str(cwd_maquina)
+    elif workdir:
+        env['ENJAMBRE_WORKDIR'] = str(workdir)
+        cwd = str(workdir)
+    argv = list(comando or participante.comando)
+    cli = os.path.basename(argv[0]) if argv else ''
+    if os.name == 'nt' and cli.lower().endswith(('.exe', '.cmd', '.bat')):
+        cli = cli[:-4]   # `codex.cmd` → `codex` (el comando puede venir ya resuelto con extensión)
+    if argv:
+        # El CLI se invoca directo: si el binario no está en el PATH del proceso (arranque por
+        # doble-clic, sin el rc de la shell), resolver_bin lo busca en los dirs típicos.
+        from .conexiones import resolver_bin
+        ruta = resolver_bin(argv[0])
+        if ruta:
+            argv[0] = ruta
+    # Estado del CLI aislado por turno (ver _dir_efimero) + config propia de Swarm.
+    tmp = _dir_efimero(participante)
+    if cli == 'opencode':
+        _env_opencode(env, tmp)
+    # Marca del turno: la heredan TODOS los descendientes del CLI y es lo único que permite
+    # reconocerlos si se hicieron sesión propia (ver _barrer_por_marca).
+    marca = env['SWARM_TURNO_ID'] = uuid.uuid4().hex
+    # Prompt por stdin siempre que el CLI lo lea (S-04): por argv lo ve cualquiera con `ps`/el
+    # Administrador de tareas y en Windows topa con el límite de ~32 k de la línea de comandos.
+    # codex pide `-` como argumento; claude y opencode leen stdin si no hay prompt. `agy` sigue por
+    # argv (`-p <prompt>`): su stdin no está verificado. Ver `prompt_stdin` en clientes.py.
+    por_stdin = (cli == 'codex') or bool(CLIENTES.get(cli, {}).get('prompt_stdin'))
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            argv + (['-'] if cli == 'codex' else [] if por_stdin else [prompt]),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=cwd,
+            # encoding EXPLÍCITO: sin esto `text=True` decodifica con la codificación del SO
+            # (`locale.getpreferredencoding`), que en Windows es cp1252 — y los CLIs de silla
+            # (opencode/claude/agy, todos Node/Bun) emiten UTF-8 en cualquier plataforma. El
+            # resultado era mojibake en la mesa: «Â¡Emanuel!», «arquitecto â€”», «sÃ³lidos»
+            # (bug real, Windows 11, 2026-08-07). `errors=replace` para que un byte suelto no
+            # tire el turno entero: mejor un «�» que perder la respuesta.
+            encoding='utf-8', errors='replace',
+            # stdin explícito: sin esto el CLI HEREDA el stdin del server. Rompe de dos maneras
+            # reales: si el server arrancó con el fd 0 abierto de solo-escritura (pasa con
+            # `nohup … >log 2>&1 &`), `opencode run --auto` muere al leerlo con "EBADF: bad file
+            # descriptor, read" y /armar no fabrica nada; y si arrancó desde una terminal, la
+            # silla se come las teclas del humano. Un subprocess de silla nunca lee de ahí.
+            stdin=subprocess.PIPE if por_stdin else subprocess.DEVNULL,
+            # Sesión propia ⇒ pgid == pid ⇒ al vencer el turno se puede matar el ÁRBOL entero
+            # (ver _matar_arbol). En Windows no existe: ahí el árbol lo recorre `taskkill /T`.
+            **({} if os.name == 'nt' else {'start_new_session': True}),
+        )
+        try:
+            if por_stdin:
+                out, err = proc.communicate(input=prompt, timeout=timeout)
+            else:
+                out, err = proc.communicate(timeout=timeout)
+            codex_sandbox = (re.search(r'^sandbox:\s*(\S+)', ANSI_RE.sub('', err or ''), re.MULTILINE)
+                             if cli == 'codex' else None)
+            # Codex reserva stdout para la respuesta final; stderr contiene progreso/MCP.
+            # Un proceso fallido nunca puede entrar al contexto como un aporte válido.
+            if proc.returncode:
+                detalle = limpiar_salida(err) or limpiar_salida(out)
+                salida = (f"(❌ {participante.nombre}: {cli} terminó con código {proc.returncode})"
+                          + (f"\n{detalle}" if detalle else ''))
+            elif (cli == 'codex'
+                  and ('--sandbox', 'workspace-write') in zip(argv, argv[1:])
+                  and codex_sandbox and codex_sandbox[1] == 'read-only'):
+                # Windows sin backend nativo seleccionado degrada workspace-write a read-only
+                # y sale con exit 0. No contar esa negativa como fabricación exitosa.
+                salida = (f"(❌ {participante.nombre}: Codex arrancó en solo lectura aunque se pidió "
+                          "escritura. Revisá sus permisos; en Windows configurá el sandbox nativo "
+                          "[windows].sandbox en config.toml antes de usar /armar.)")
+            else:
+                salida = (limpiar_salida(out)
+                          or (limpiar_salida(err) if cli != 'codex' else '')
+                          or "(sin respuesta)")
+            if _parece_401((out or '') + '\n' + (err or '')):
+                # Credencial vencida: sin esto la silla contesta «(sin respuesta)» y el humano no
+                # tiene cómo saber que solo hay que re-loguear el CLI en su terminal.
+                from .conexiones import CLIS
+                login = (CLIS.get(cli) or {}).get('login', f'volvé a loguear {cli}')
+                salida = (f"(❌ {participante.nombre}: la credencial de {cli} está vencida. "
+                          f"Re-logueá en tu terminal con:  {login})")
+        except subprocess.TimeoutExpired:
+            _matar_arbol(proc, marca)
+            proc.communicate()  # drena las pipes del muerto (si no, quedan fds abiertos)
+            salida = f"(⏰ timeout tras {timeout}s)"
+    except FileNotFoundError:
+        salida = f"(❌ {participante.nombre} no instalado)"
+    except Exception as e:  # noqa: BLE001 — cualquier fallo del CLI es ruido, no rompe la mesa
+        salida = f"(❌ error: {e})"
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return salida, es_ruido(salida)
+
+
+class Enjambre:
+    """Mesa de trabajo multi-agente sobre una Sesion. (antes 'Concilio')"""
+
+    def __init__(self, sesion):
+        self.sesion = sesion
+        # `liderar()` lo deja en True si el reparto o la ejecución de alguna silla falló. El worker
+        # lo lee al cerrar el turno: sin esto un turno con subtareas caídas se cerraba como «completo».
+        self.fallo_ejecucion = False
+
+    # ── Persistencia ──────────────────────────────────────────────────────────
+    def sillas(self):
+        """Sillas de ESTA mesa (∩ globalmente activas). Vacío = ninguna silla sentada: la
+        mesa queda muda y avisa (ver responder())."""
+        return list(self.sesion.participantes.filter(activo=True).order_by('orden', 'key'))
+
+    def guardar(self, emisor, texto, participante=None, ruido=False, sistema=False,
+                tokens=0, costo=0):
+        # Sacar el auto-prefijo del nombre (solo respuestas de silla, no mensajes de sistema/UI):
+        # la etiqueta de la UI ya muestra el nombre → sin esto queda 'Nombre: Nombre: …'.
+        if participante is not None and not sistema:
+            texto = quitar_autoprefijo(texto, participante)
+        return Mensaje.objects.create(
+            sesion=self.sesion, emisor=emisor, participante=participante,
+            texto=texto, es_ruido=ruido, es_sistema=sistema,
+            tokens=tokens, costo=costo,
+        )
+
+    def log(self, texto, nivel='info', detalle=''):
+        """Escribe una línea en el LOG DE ACTIVIDAD de la mesa (drawer en vivo, SSE aparte).
+
+        Es feature de CONTROL: en mesas de CONSULTA no se traza (el flujo técnico es del dueño).
+        Best-effort: un fallo de log NUNCA debe tumbar un turno. `detalle` = texto expandible al
+        hacer hover (p.ej. el diff completo de un commit)."""
+        if self._es_consulta():
+            return
+        try:
+            from .models import LogMesa
+            LogMesa.objects.create(sesion=self.sesion, texto=str(texto)[:500],
+                                   nivel=nivel, detalle=detalle or '')
+        except Exception:  # noqa: BLE001 — el log es accesorio
+            pass
+
+    def contexto(self):
+        """Contexto reinyectado a las sillas: la CONVERSACIÓN reciente (sin ruido ni mensajes de
+        sistema/UI), cada mensaje recortado y con tope TOTAL de caracteres. Acota los tokens de
+        entrada (palanca de costo): el líder re-lee esto en CADA llamada y, sin tope, crece con
+        la mesa. El mensaje completo sigue en el chat; sólo se recorta lo que se reinyecta."""
+        qs = (self.sesion.mensajes.filter(es_ruido=False, es_sistema=False)
+              .order_by('-creado_at', '-pk')[:MAX_CONTEXTO])
+        msgs = list(reversed(qs))
+
+        def fmt(m):
+            t = m.texto or ''
+            if len(t) > CONTEXTO_MSG_MAX:
+                t = t[:CONTEXTO_MSG_MAX].rstrip() + ' …[recortado]'
+            return f"[{m.emisor}]: {t}"
+
+        lineas = [fmt(m) for m in msgs]
+        # Tope total: descartar los MÁS VIEJOS hasta entrar en el presupuesto (preserva lo reciente).
+        total = sum(len(x) + 1 for x in lineas)
+        while len(lineas) > 1 and total > CONTEXTO_TOTAL_MAX:
+            total -= len(lineas.pop(0)) + 1
+        return "\n".join(lineas)
+
+    def _nombre_humano(self):
+        """Cómo se llama el humano en esta mesa = emisor del último mensaje humano (participante
+        nulo, no-sistema). Sirve para que las sillas no lo confundan con una silla más."""
+        m = (self.sesion.mensajes.filter(participante__isnull=True, es_sistema=False)
+             .order_by('-id').first())
+        return m.emisor if m else 'el humano'
+
+    # ── Dispatch a una silla ────────────────────────────────────────────────────
+    def _es_consulta(self):
+        """Rango del CONTEXTO de la mesa = rango del creador (el dispatch corre en el worker
+        sin request). Decide la variante de persona (A control / B consulta).
+        Resolver pluggable: settings.ENJAMBRE_ROLE_RESOLVER = callable(creador) -> rango;
+        None (el default de Swarm, single-user) = todo es `control`."""
+        resolver = getattr(settings, 'ENJAMBRE_ROLE_RESOLVER', None)
+        rol = resolver(self.sesion.creador) if callable(resolver) else 'control'
+        return rol == 'consulta'
+
+    def _turno_libre(self, texto=''):
+        """True si ESTE turno NO se ordena en la carpeta de la mesa.
+
+        Prolijidad por default: si nadie dijo dónde, lo que las sillas produzcan aterriza en la
+        carpeta de la mesa (queda junto, versionado y descargable). El turno queda LIBRE si:
+          · la mesa tiene el orden apagado (`sesion.confinar = False`), o
+          · el humano escribió `/libre`, o
+          · el humano nombró una ruta absoluta que NO está bajo la carpeta de la mesa (pidió
+            trabajar en otro lado: soporte sobre la máquina, editar un repo suyo, etc.).
+        Mira el pedido del turno y el último mensaje humano — con líder, la silla recibe un
+        encargo reescrito y la ruta original queda solo en el mensaje del humano."""
+        if not self.sesion.confinar:
+            return True
+        ultimo = (self.sesion.mensajes.filter(participante__isnull=True, es_sistema=False)
+                  .order_by('-id').first())
+        pedido = f"{texto or ''}\n{ultimo.texto if ultimo else ''}"
+        if TRIGGER_LIBRE in pedido.lower():
+            return True
+        from .workspace import mesas_dir
+        base = os.path.abspath(mesas_dir())
+        for m in RUTA_RE.findall(pedido):
+            p = os.path.abspath(os.path.expanduser(m.rstrip('.,;:)')))
+            if not p.startswith(base):
+                return True
+        return False
+
+    def construir_prompt(self, participante, texto, editar=False, maquina=False,
+                         cli=True, carpeta=None):
+        ctx = self.contexto()
+        sillas = self.sillas()
+        roster = ", ".join(s.nombre for s in sillas)
+        otras = ", ".join(s.nombre for s in sillas if s.key != participante.key) or "ninguna otra"
+        humano = self._nombre_humano()
+        if editar:
+            encuadre = (
+                "IMPORTANTE: tu DIRECTORIO ACTUAL es la CARPETA DE TRABAJO de esta mesa — un sandbox "
+                "git aislado (el árbol desplegado NUNCA se toca). Podés leer, crear y editar archivos "
+                "ahí. Hay un `NOTAS.md` que es la MEMORIA COMPARTIDA de la mesa: leélo antes de "
+                "trabajar y dejá ahí decisiones/TODOs/contexto para los próximos turnos. Hacé lo que "
+                "la mesa acordó y al final contá CONCRETAMENTE qué archivos tocaste. No afirmes "
+                "cambios que no hiciste."
+            )
+        elif maquina:
+            from . import toolbelt
+            # CLI: el encuadre completo va en el prompt (es lo único que recibe el subprocess).
+            # API: las reglas ya viajan como `system` (toolbelt.system_prompt() en chat_agentic),
+            # así que acá solo se agrega lo que el system NO puede saber — si este turno es un
+            # `/armar`, en qué carpeta de la mesa tiene que dejar el trabajo.
+            if cli:
+                encuadre = toolbelt.encuadre_cli(carpeta)
+            elif carpeta:
+                encuadre = toolbelt.encuadre_api_mesa(carpeta)
+            else:
+                encuadre = toolbelt.encuadre_api()
+        else:
+            encuadre = (
+                "IMPORTANTE: esto es CHARLA (respondés con texto). La mesa TIENE una carpeta de "
+                "trabajo propia; cuando el dueño pide construir/editar algo con el comando «/armar», "
+                "las sillas de trabajo la editan de verdad. En este turno NO estás editando archivos: "
+                "no inventes que creaste o corriste algo."
+            )
+        return (
+            f"{participante.persona_para(self._es_consulta())}\n\n"
+            f"UBICACIÓN TEMPORAL: hoy es {hoy_str()}. Esa es la fecha real de HOY; ignorá tu fecha "
+            f"de entrenamiento. Si buscás información o razonás sobre fechas/versiones/actualidad, "
+            f"tomá ésta como el presente y no asumas que estás en un año anterior.\n\n"
+            f"Estás en una MESA DE TRABAJO multi-agente del Enjambre. En la mesa hay "
+            f"{len(sillas)} silla(s): {roster}. VOS sos {participante.nombre}; las otras son {otras}. "
+            f"El humano se llama {humano} y NO es una silla: hace pedidos, no vota ni cuenta como un "
+            f"agente más (no digas «los tres coincidimos» sumándolo). "
+            f"Lo de abajo es la conversación de la mesa EN VIVO — incluye lo que YA dijeron los "
+            f"demás agentes en este mismo turno. Leélos: podés responderles, coincidir, refutar o "
+            f"construir sobre lo que dijeron, como en una charla real entre colegas.\n\n"
+            f"--- Conversación de la mesa ---\n{ctx}\n\n"
+            f"--- Último mensaje a responder ---\n{texto}\n\n"
+            f"{encuadre}\n\n"
+            f"Respondé como {participante.nombre}, dirigiéndote a la mesa (podés nombrar a los otros). "
+            f"RECORDÁ TU ESTILO: {participante.recordatorio}"
+        )
+
+    def enviar(self, participante, texto, editar=False):
+        """Dispatch a una silla y persiste su respuesta. Devuelve el texto crudo.
+
+        Si `editar` y la silla puede (control + CLI), corre en modo AGÉNTICO con la carpeta de la
+        mesa como cwd: lee/crea/edita archivos ahí; después se commitea y se postea el diff."""
+        from .clientes import es_cli, puede_actuar
+        from . import toolbelt
+        # UN SOLO PERMISO para tocar cosas: el switch del toolbelt (ver clientes.puede_actuar).
+        # Apagado, todas las sillas quedan en charla. Encendido, el backend decide POR DÓNDE actúa:
+        #   · CLI en `/armar` → fabrica en la carpeta git de la mesa (el taller de entregables),
+        #     con su cmd_trabajo y commit al final;
+        #   · CLI fuera de `/armar` → MODO MÁQUINA: opera el equipo real con sus propias herramientas;
+        #   · API (siempre) → modo máquina vía el toolbelt interceptado de `chat_agentic`. No monta
+        #     workdir porque sus herramientas escriben por RUTA ABSOLUTA, no por cwd: para que
+        #     fabrique en la mesa hay que DECIRLE la carpeta (`carpeta`, más abajo).
+        # El LÍDER no es un caso aparte: como el modo líder exige el toolbelt (ver `liderar`), el
+        # líder siempre puede actuar → entra a modo máquina y coordina desde ahí con acceso completo
+        # (antes iba en un modo lee-RO de la carpeta que se auto-rechazaba al tocar la máquina real).
+        actua = puede_actuar(participante)
+        cli = es_cli(participante)
+        puede = editar and not self._es_consulta() and actua and cli
+        maquina = not puede and not self._es_consulta() and actua
+        # API a la que se le pidió `/armar`: opera la máquina, pero apuntada a la carpeta de la mesa.
+        fabrica_api = maquina and not cli and editar and not self._es_consulta()
+        workdir = comando = base = huella = None
+        cwd_maq = carpeta = commit_dir = None
+        timeout = self.sesion.timeout
+        if maquina:
+            # Prolijidad por default: salvo que el turno sea libre (ver _turno_libre), la silla
+            # ATERRIZA en la carpeta de la mesa — es su cwd y es lo que se le nombra en el prompt.
+            # Sigue alcanzando toda la máquina (el toolbelt es el permiso); lo que cambia es dónde
+            # deja lo que produce. Antes el líder en modo máquina arrancaba en $HOME y su entrega
+            # quedaba fuera de la mesa, sin commit y sin que nadie la viera (mesa 4 del pendrive).
+            from .workspace import _git, huella_git, mesa_workspace
+            raiz = None if self._turno_libre(texto) else str(mesa_workspace(self.sesion))
+            cwd_maq = raiz or toolbelt.cwd_maquina()
+            comando = participante.cmd_trabajo() if cli else None  # agéntico: lee, edita y ejecuta
+            timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
+            if fabrica_api or raiz:
+                workdir = str(mesa_workspace(self.sesion))
+                carpeta = raiz or workdir   # va al prompt: dónde dejar el trabajo
+                commit_dir = workdir if (fabrica_api or raiz) else None
+                base = _git(workdir, 'rev-parse', 'HEAD', check=False)
+                huella = huella_git(workdir)   # testigo de `.git`: se compara antes de commitear
+        elif puede:
+            from .workspace import _git, huella_git, mesa_workspace
+            workdir = commit_dir = str(mesa_workspace(self.sesion))
+            comando = participante.cmd_trabajo()
+            base = _git(workdir, 'rev-parse', 'HEAD', check=False)
+            huella = huella_git(workdir)
+            # Fabricar tarda más que charlar: subir el techo para no matar el turno a mitad.
+            timeout = max(self.sesion.timeout, FABRICAR_TIMEOUT_MIN)
+        prompt = self.construir_prompt(participante, texto, editar=puede,
+                                       maquina=maquina, cli=cli, carpeta=carpeta)
+        modo = ('fabrica en la mesa (API)' if fabrica_api else
+                'opera la máquina' if maquina else
+                'fabrica' if puede else 'charla')
+        if maquina and carpeta:
+            modo += ' · ordenado en la mesa'
+        self.log(f"▶ {participante.nombre} · {modo} (timeout {timeout}s)", nivel='paso')
+        t0 = time.monotonic()
+        # `usar_carpeta` es lo que ve el toolbelt de las sillas por API key: con carpeta, sus
+        # write_file/apply_fix se ordenan ahí (fuera avisa y pide confirmación en la mesa).
+        with toolbelt.usar_carpeta(carpeta if maquina else None):
+            salida, ruido = ejecutar_cli(participante, prompt, timeout,
+                                         workdir=workdir, comando=comando,
+                                         sesion=self.sesion, cwd_maquina=cwd_maq)
+        dt = time.monotonic() - t0
+        # Velocímetro: estimación uniforme tokens ≈ len/4; costo notional por tarifa de la
+        # silla (local = $0). No es la factura real, es referencia para ver y topear el gasto.
+        from .clientes import precio_silla
+        p_in, p_out = precio_silla(participante)
+        tok_in, tok_out = len(prompt) // 4, len(salida) // 4
+        tokens = tok_in + tok_out
+        costo = round(tok_in / 1e6 * p_in + tok_out / 1e6 * p_out, 6)
+        self.guardar(participante.nombre, salida, participante=participante, ruido=ruido,
+                     tokens=tokens, costo=costo)
+        gasto = '$0 (gratis)' if costo == 0 else f"${costo:.4f}"
+        if ruido:
+            self.log(f"✗ {participante.nombre} sin respuesta / error ({dt:.1f}s · ~{tokens} tok · {gasto})",
+                     nivel='error', detalle=salida)
+        else:
+            self.log(f"✓ {participante.nombre} respondió ({dt:.1f}s · ~{tokens} tok · {gasto})",
+                     nivel='ok')
+        # Rescate: en modo fabricar commiteamos SIEMPRE lo que haya quedado en disco, aunque el
+        # turno haya dado timeout/error — el agente pudo escribir archivos antes de que lo mataran.
+        # comitear() no hace nada si no hubo cambios, así que es seguro llamarlo igual.
+        # `fabrica_api` también commitea: la silla API escribió en la carpeta con write_file (por
+        # ruta absoluta), así que el resultado hay que versionarlo igual que el de una silla CLI.
+        # También commitea el turno de modo máquina ORDENADO (líder incluido): si aterrizó en la
+        # carpeta de la mesa, lo que dejó ahí se versiona igual que lo de una silla que fabrica.
+        if commit_dir:
+            self._comitear_y_postear(participante, commit_dir, base, parcial=ruido, huella=huella)
+        # Modo máquina CLI: el turno entero queda en la Bitácora — es donde el equipo ve trabajar a
+        # la silla (qué CLI corrió, en qué carpeta y qué contó que hizo). Nunca rompe el turno.
+        # Las sillas API NO pasan por acá: el toolbelt ya anotó cada herramienta una por una.
+        if maquina and cli:
+            try:
+                toolbelt.log_cli(self.sesion, participante,
+                                 comando or participante.comando, cwd_maq, salida)
+            except Exception as e:  # noqa: BLE001 — la bitácora no puede tumbar la mesa
+                self.log(f"no se pudo registrar el turno en la bitácora: {e}", nivel='error')
+        return salida
+
+    def _comitear_y_postear(self, participante, workdir, base, parcial=False, huella=None):
+        """Tras un turno agéntico: commitea la carpeta de la mesa. En el CHAT postea solo la
+        línea corta + el stat (para no ensuciarlo); el diff completo va al LOG DE ACTIVIDAD,
+        desplegable al hacer hover sobre el commit. Si no hubo cambios, no postea nada.
+
+        `parcial`: el turno se cortó (timeout/error) pero quedó trabajo en disco — se rescata y se
+        marca como parcial para que se sepa que NO es una entrega completa."""
+        from .workspace import GitAlterado, _git, comitear, diff_stat
+        marca = ' (PARCIAL · turno cortado)' if parcial else ''
+        try:
+            sha = comitear(workdir, f"Enjambre · mesa {self.sesion.id}: {participante.nombre}{marca}",
+                           huella=huella)
+        except GitAlterado as e:
+            # A la vista en la mesa: el `.git` cambió durante el turno o trae algo que ejecuta.
+            self.fallo_ejecucion = True
+            self.guardar("Enjambre", f"{e}. Turno de {participante.nombre}.", sistema=True)
+            self.log(f"🛑 .git alterado · {participante.nombre} · sin commit", nivel='error',
+                     detalle=str(e))
+            return
+        except Exception:  # noqa: BLE001 — un fallo de git no debe tumbar el turno
+            return
+        if not sha:
+            return
+        stat = diff_stat(workdir, base) if base else ''
+        diff = (_git(workdir, 'diff', '--no-ext-diff', '--no-textconv', f'{base}..HEAD', check=False)
+                if base else '')
+        # Chat: corto (commit + stat), sin volcar el diff entero.
+        if parcial:
+            cuerpo = f"⏰ Rescatado (commit {sha[:7]}) — el turno se cortó por timeout; se guardó lo que alcanzó a escribir"
+        else:
+            cuerpo = f"📝 Guardado (commit {sha[:7]})"
+        if stat:
+            cuerpo += f":\n{stat}"
+        self.guardar(participante.nombre, cuerpo, participante=participante)
+        # Flujo: entrada de commit con el diff COMPLETO en el detalle (hover lo despliega).
+        detalle = "\n\n".join(p for p in (stat, diff) if p).strip()
+        etiqueta = '⏰ commit parcial' if parcial else '✓ commit'
+        self.log(f"{etiqueta} {sha[:7]} · {participante.nombre}", nivel='ok', detalle=detalle)
+
+    def _git_sano(self, dest):
+        """`reset --hard` corre los filtros `smudge` de la config: con un `.git` tocado no se
+        rebobina (S-01). Si no está sano lo dice en la mesa y devuelve False."""
+        from .workspace import GitAlterado, asegurar_git
+        try:
+            asegurar_git(dest)
+        except GitAlterado as e:
+            self.guardar("Enjambre", f"{e}. No rebobino la carpeta.", sistema=True)
+            return False
+        return True
+
+    def deshacer(self):
+        """Revierte el último turno de /armar: git reset --hard al commit anterior de la carpeta
+        de la mesa. Guard: nunca pasa el commit init (se conserva al menos 1 commit)."""
+        from .workspace import mesa_workspace, _git
+        dest = str(mesa_workspace(self.sesion))
+        if not self._git_sano(dest):
+            return
+        n = _git(dest, 'rev-list', '--count', 'HEAD', check=False)
+        if not n.isdigit() or int(n) < 2:
+            self.guardar("Enjambre", "↩️ No hay nada que deshacer todavía.", sistema=True)
+            return
+        actual = _git(dest, 'log', '-1', '--format=%s', check=False)
+        _git(dest, 'reset', '--hard', 'HEAD~1', check=False)
+        nuevo = _git(dest, 'rev-parse', '--short', 'HEAD', check=False)
+        nuevo_msg = _git(dest, 'log', '-1', '--format=%s', check=False)
+        self.guardar("Enjambre",
+                     f"↩️ Deshecho «{actual}». La carpeta volvió a {nuevo} «{nuevo_msg}».",
+                     sistema=True)
+
+    def volver(self, arg=''):
+        """Rebobina la carpeta de la mesa a un commit anterior (git reset --hard <sha>), SIN tocar
+        el historial de mensajes. Granular (a diferencia de /deshacer, que vuelve solo 1). Sin sha:
+        lista los commits recientes para que el humano elija. El sha debe ser ancestro de HEAD."""
+        from .workspace import mesa_workspace, _git
+        dest = str(mesa_workspace(self.sesion))
+        sha = (arg or '').strip().split()[0] if (arg or '').strip() else ''
+        if not sha:
+            log = _git(dest, 'log', '--oneline', '--no-decorate', '-20', check=False)
+            if not log.strip():
+                self.guardar("Enjambre", "🕰️ Todavía no hay commits en la carpeta de la mesa.",
+                             sistema=True)
+            else:
+                self.guardar("Enjambre", "🕰️ Commits de la mesa (el de arriba es el más nuevo). "
+                             "Rebobiná con «/volver <sha>»:\n" + log, sistema=True)
+            return
+        # Validar: el sha tiene que resolver a un commit Y ser ancestro de HEAD (no "volver" adelante).
+        full = _git(dest, 'rev-parse', '--verify', f'{sha}^{{commit}}', check=False)
+        ancestros = _git(dest, 'rev-list', 'HEAD', check=False).split()
+        if not full or full not in ancestros:
+            self.guardar("Enjambre", f"⚠️ No encuentro el commit «{sha}» en el historial de la mesa. "
+                         "Usá «/volver» (sin nada) para ver la lista.", sistema=True)
+            return
+        if not self._git_sano(dest):
+            return
+        actual = _git(dest, 'rev-parse', '--short', 'HEAD', check=False)
+        _git(dest, 'reset', '--hard', full, check=False)
+        nuevo = _git(dest, 'rev-parse', '--short', 'HEAD', check=False)
+        nuevo_msg = _git(dest, 'log', '-1', '--format=%s', check=False)
+        self.log(f"↩️ /volver {actual} → {nuevo}", nivel='paso')
+        self.guardar("Enjambre", f"↩️ Rebobiné la carpeta a {nuevo} «{nuevo_msg}» (estaba en {actual}). "
+                     "El historial de mensajes de la mesa queda intacto.", sistema=True)
+
+    def detener(self):
+        """Kill-switch de la mesa (/alto): este turno NO se dispatcha a ninguna silla. Es el
+        primitivo de control de daños que el modo continuo honra para frenar la iteración. Hoy, sin continuo, su efecto es confirmar y NO despertar a las sillas.
+        OJO: un turno YA en curso NO se corta a mitad — el worker es sincrónico y recién ve el
+        /alto cuando termina el dispatch actual."""
+        self.log("🛑 /alto — la mesa no dispatcha este turno", nivel='paso')
+        self.guardar("Enjambre", "🛑 Alto. La mesa quedó detenida: no se llamó a ninguna silla. "
+                     "(Si había un turno en curso, ese no se corta a mitad.)", sistema=True)
+
+    # ── Freno de mano (/alto cooperativo) ───────────────────────────────────────
+    def _hay_alto(self):
+        """Re-lee de la DB la señal de freno. La web la prende mientras el worker corre un turno;
+        el engine la chequea ENTRE sillas para abortar lo que falta. Re-query (no cache) a propósito:
+        el flag lo setea OTRO proceso (web) después de que este turno arrancó."""
+        from .models import Sesion
+        return Sesion.objects.filter(pk=self.sesion.pk, detener_solicitado=True).exists()
+
+    def limpiar_alto(self):
+        """Apaga la señal. Se llama al arrancar cada turno (no arrastrar un /alto viejo) y al abortar."""
+        from .models import Sesion
+        Sesion.objects.filter(pk=self.sesion.pk).update(detener_solicitado=False)
+
+    def _abortar_alto(self, pendientes=''):
+        """Consume la señal, apaga el modo continuo y avisa qué quedó sin hacer. /alto = stop duro."""
+        from .models import Sesion
+        Sesion.objects.filter(pk=self.sesion.pk).update(detener_solicitado=False, continuo=False, auto=False)
+        self.sesion.continuo = self.sesion.auto = False
+        extra = f" Quedó sin hacer: {pendientes}." if pendientes else ""
+        self.log("🛑 /alto — corté el turno a pedido", nivel='error')
+        self.guardar("Enjambre", f"🛑 Corté la mesa por /alto.{extra} "
+                     "(La silla que estaba corriendo terminó; el resto se salteó.) Modo continuo apagado.",
+                     sistema=True)
+        return True
+
+    # ── Modo continuo (default conservador) ──────────────────────────────────────────
+    def _costo_acumulado(self):
+        from django.db.models import Sum
+        return self.sesion.mensajes.aggregate(c=Sum('costo'))['c'] or 0
+
+    def _tope_excedido(self):
+        tope = self.sesion.costo_tope or 0
+        return tope > 0 and self._costo_acumulado() >= tope
+
+    def _iterar_objetivo(self, on_respuesta=None, ajuste=''):
+        """Corre UNA iteración de fabricación hacia self.sesion.objetivo, reutilizando todo el flujo
+        (líder/plana, filtro de locales, freno /alto). Inyecta el ESTADO REAL de la carpeta (archivos
+        + NOTAS.md) para que el líder NO planifique a ciegas ni alucine «arranquemos de cero». `ajuste`
+        = corrección puntual del humano para esta iteración (lo que escribe junto a /seguí). No chequea
+        tope ni postea pausa: eso es del caller (manual /seguí o el loop --auto)."""
+        from .models import Topologia
+        obj = (self.sesion.objetivo or '').strip()
+        extra = (f"\n\n⚠️ AJUSTE que pide el humano para ESTA iteración (priorizalo): {ajuste.strip()}"
+                 if ajuste.strip() else "")
+        framing = (
+            f"/armar {obj}\n\n"
+            f"ESTADO ACTUAL DE LA CARPETA — esto YA está construido y PERSISTE en disco; NO empieces "
+            f"de cero, construí ENCIMA de lo que existe:\n{self._estado_carpeta()}\n\n"
+            f"[ITERACIÓN DE TRABAJO CONTINUO hacia ese objetivo] Hacé el PRÓXIMO incremento concreto "
+            f"sobre lo ya hecho (no lo rehagas) y dejá en NOTAS.md qué quedó y qué falta.{extra}")
+        self.log(f"🔁 iteración continua → {obj[:60]}" + (f" · ajuste: {ajuste.strip()[:40]}" if ajuste.strip() else ""),
+                 nivel='paso')
+        if self.sesion.topologia == Topologia.LIDER and self.sesion.lider_id:
+            return self.liderar(framing, on_respuesta=on_respuesta)
+        return self.responder(framing, on_respuesta=on_respuesta)
+
+    def _continuo_iteracion(self, comando, arg, on_respuesta=None):
+        """«/continuo [--auto] <obj>» fija el objetivo y arranca; «/seguí» corre la próxima hacia el
+        MISMO objetivo; «/auto» pasa un continuo en curso a automático. Manual = corre 1 iteración y
+        PAUSA esperando /seguí. --auto/auto = lo configura y lo maneja el worker (ver auto_paso)."""
+        from .models import Sesion
+        if self._es_consulta():
+            return self.responder(arg or (self.sesion.objetivo or ''), on_respuesta=on_respuesta)
+        ajuste = ''  # corrección puntual del humano (texto que va junto a /seguí)
+        if comando == 'continuo':
+            obj = (arg or '').strip()
+            auto = False
+            if obj.startswith('--auto'):
+                auto, obj = True, obj[len('--auto'):].strip()
+            if not obj:
+                self.guardar("Enjambre", "ℹ️ Usá «/continuo <objetivo>» (o «/continuo --auto <objetivo>»).",
+                             sistema=True)
+                return {}
+            Sesion.objects.filter(pk=self.sesion.pk).update(
+                continuo=True, objetivo=obj, auto=auto, auto_iter=0)
+            self.sesion.continuo, self.sesion.objetivo, self.sesion.auto = True, obj, auto
+            if auto:
+                self.guardar("Enjambre", f"🤖 Modo AUTO ON. Objetivo: «{obj}». Itero solo hasta el tope "
+                             f"de costo, {AUTO_MAX_ITER} iteraciones, o que tires /alto. Arranco…",
+                             sistema=True)
+                return {}  # el worker maneja las iteraciones (auto_paso)
+            self.guardar("Enjambre", f"🔁 Modo continuo ON. Objetivo: «{obj}». Corro una iteración y "
+                         "freno para que revises; seguí con /seguí o cerrá con /alto.", sistema=True)
+        elif comando == 'auto':
+            self.sesion.refresh_from_db(fields=['continuo', 'objetivo'])
+            if not self.sesion.continuo or not (self.sesion.objetivo or '').strip():
+                self.guardar("Enjambre", "ℹ️ No hay objetivo continuo activo. Arrancá con "
+                             "«/continuo --auto <objetivo>».", sistema=True)
+                return {}
+            Sesion.objects.filter(pk=self.sesion.pk).update(auto=True, auto_iter=0)
+            self.guardar("Enjambre", f"🤖 Paso a AUTO: sigo solo hasta el tope, {AUTO_MAX_ITER} "
+                         "iteraciones, o /alto.", sistema=True)
+            return {}  # el worker toma desde acá
+        else:  # segui
+            self.sesion.refresh_from_db(fields=['continuo', 'objetivo', 'costo_tope'])
+            obj = (self.sesion.objetivo or '').strip()
+            if not self.sesion.continuo or not obj:
+                self.guardar("Enjambre", "ℹ️ No hay objetivo continuo activo. Arrancá con "
+                             "«/continuo <objetivo>».", sistema=True)
+                return {}
+            ajuste = (arg or '').strip()  # «/seguí <instrucción>» = corrección puntual de esta iteración
+            if ajuste:
+                self.guardar("Enjambre", f"↪️ Ajuste para esta iteración: {ajuste}", sistema=True)
+        # Tope de costo: antes de gastar.
+        if self._tope_excedido():
+            self.guardar("Enjambre", f"💸 Tope de ${self.sesion.costo_tope} alcanzado "
+                         f"(acumulado ${self._costo_acumulado():.4f}). No gasté más: subí el tope (⚙) "
+                         "o cerrá con /alto.", sistema=True)
+            return {}
+        res = self._iterar_objetivo(on_respuesta=on_respuesta, ajuste=ajuste)
+        # Pausa conservadora (salvo que /alto haya cerrado el modo en el medio).
+        self.sesion.refresh_from_db(fields=['continuo'])
+        if self.sesion.continuo and not self._hay_alto():
+            self.guardar("Enjambre", f"⏸️ Iteración hecha (acumulado ${self._costo_acumulado():.4f}). "
+                         "Revisá y seguí con /seguí, o cerrá con /alto.", sistema=True)
+        return res
+
+    # ── Modo --auto: el worker itera solo ──────────────────────────
+    def auto_paso(self):
+        """Una iteración del modo --auto, disparada por el WORKER (no el humano). Chequea límites
+        (tope de costo, máx de iteraciones), corre la iteración y decide seguir o frenar. Devuelve
+        True si iteró. /alto la corta entre sillas (apaga continuo+auto vía _abortar_alto)."""
+        from .models import Sesion
+        self.sesion.refresh_from_db()
+        if not (self.sesion.continuo and self.sesion.auto):
+            return False
+        if self._tope_excedido():
+            self._auto_stop(f"tope de ${self.sesion.costo_tope} alcanzado "
+                            f"(acumulado ${self._costo_acumulado():.4f})")
+            return False
+        if self.sesion.auto_iter >= AUTO_MAX_ITER:
+            self._auto_stop(f"llegué al máximo de {AUTO_MAX_ITER} iteraciones automáticas")
+            return False
+        self.limpiar_alto()  # turno fresco
+        Sesion.objects.filter(pk=self.sesion.pk).update(auto_iter=self.sesion.auto_iter + 1)
+        self.sesion.auto_iter += 1
+        self.log(f"🤖 auto-iteración {self.sesion.auto_iter}/{AUTO_MAX_ITER}", nivel='paso')
+        self._iterar_objetivo()
+        # Tras la iteración: si /alto la cortó, _abortar_alto ya apagó continuo+auto.
+        self.sesion.refresh_from_db(fields=['continuo', 'auto'])
+        if not (self.sesion.continuo and self.sesion.auto):
+            return True
+        # ¿El objetivo ya está cumplido? Si sí, el modo se cierra solo (auto-detección de fin).
+        cumplido, razon = self._objetivo_cumplido()
+        if cumplido:
+            self._auto_fin(razon)
+            return True
+        self.guardar("Enjambre", f"🤖 Auto-iteración {self.sesion.auto_iter} hecha "
+                     f"(acumulado ${self._costo_acumulado():.4f}). Sigo… (/alto para frenar)",
+                     sistema=True)
+        return True
+
+    def _auto_stop(self, motivo):
+        """Apaga el modo automático (deja continuo ON para seguir a mano con /seguí)."""
+        from .models import Sesion
+        Sesion.objects.filter(pk=self.sesion.pk).update(auto=False)
+        self.sesion.auto = False
+        self.log(f"⏸️ auto detenido: {motivo}", nivel='paso')
+        self.guardar("Enjambre", f"⏸️ Pausé el modo automático: {motivo}. El objetivo sigue activo: "
+                     "subí el tope y /auto para reanudar solo, seguí a mano con /seguí, o cerrá con /alto.",
+                     sistema=True)
+
+    def _auto_fin(self, razon):
+        """El evaluador dictaminó objetivo CUMPLIDO: cierra auto + continuo y postea el resumen (F4)."""
+        from .models import Sesion
+        n = self.sesion.auto_iter
+        Sesion.objects.filter(pk=self.sesion.pk).update(auto=False, continuo=False)
+        self.sesion.auto = self.sesion.continuo = False
+        self.log("✅ objetivo cumplido — modo continuo cerrado", nivel='ok')
+        self.resumen_cierre(f"✅ objetivo cumplido tras {n} iteración(es) — {razon}")
+
+    # ── Cierre y promoción (F4) ─────────────────────────────────────────────────
+    def cerrar(self, motivo=''):
+        """«/cerrar»: termina la mesa con un resumen. Apaga el modo continuo/auto si estaba activo.
+        No destruye nada: la carpeta persiste y se baja con 📁 (zip) o se rebobina con /volver."""
+        from .models import Sesion
+        Sesion.objects.filter(pk=self.sesion.pk).update(continuo=False, auto=False)
+        self.sesion.continuo = self.sesion.auto = False
+        self.resumen_cierre(motivo.strip() or 'cierre a pedido')
+
+    def resumen_cierre(self, motivo=''):
+        """Resumen de cierre (F4.1): objetivo, commits, archivos y COSTO TOTAL real (+ por silla).
+        Reusa git y el velocímetro. Apunta al 📁 para bajar el resultado. Best-effort."""
+        from django.db.models import Sum
+        from .workspace import mesa_workspace, _git
+        try:
+            dest = str(mesa_workspace(self.sesion))
+            files = _git(dest, 'ls-files', check=False) or ''
+            n_files = len([x for x in files.splitlines() if x.strip()])
+            n_commits = _git(dest, 'rev-list', '--count', 'HEAD', check=False) or '0'
+            commits = _git(dest, 'log', '--oneline', '--no-decorate', '-8', check=False) or '(sin commits)'
+        except Exception:  # noqa: BLE001
+            files, n_files, n_commits, commits = '', 0, '0', '(carpeta no disponible)'
+        agg = self.sesion.mensajes.aggregate(c=Sum('costo'), t=Sum('tokens'))
+        costo, toks = agg['c'] or 0, agg['t'] or 0
+        porsilla = (self.sesion.mensajes.filter(tokens__gt=0).values('emisor')
+                    .annotate(c=Sum('costo'), t=Sum('tokens')).order_by('-c', '-t'))
+        lineas = "\n".join(
+            f"  · {g['emisor']}: {g['t']} tok · {('$%.4f' % g['c']) if g['c'] else '$0'}"
+            for g in porsilla)
+        obj = (self.sesion.objetivo or '').strip()
+        cuerpo = (
+            f"🏁 CIERRE DE LA MESA{(' — ' + motivo) if motivo else ''}\n"
+            + (f"Objetivo: «{obj}»\n" if obj else "")
+            + f"Commits: {n_commits} · Archivos: {n_files} · Costo total estimado: ${costo:.4f} · {toks} tok\n"
+            + (f"Gasto por silla:\n{lineas}\n" if lineas else "")
+            + (f"\nArchivos:\n{files}\n" if files else "")
+            + f"\nÚltimos commits:\n{commits}\n\n"
+            "📥 Bajá todo con 📁 → «⬇ Descargar todo (.zip)». Nada se borra: la carpeta persiste "
+            "(podés rebobinar con /volver o seguir con /armar)."
+        )
+        self.guardar("Enjambre", cuerpo, sistema=True)
+        self.log("🏁 cierre — resumen posteado", nivel='ok')
+
+    # ── Auto-detección de "objetivo cumplido" ───────────────────────
+    def _juez(self):
+        """Silla que evalúa si el objetivo está cumplido. Prefiere una GRATIS (local o modelo free)
+        para no encarecer la evaluación; si no, el líder; si no, la primera silla."""
+        from .clientes import precio_silla
+        sillas = self.sillas()
+        for s in sillas:
+            if precio_silla(s) == (0.0, 0.0):
+                return s
+        return self.sesion.lider or (sillas[0] if sillas else None)
+
+    def _estado_carpeta(self):
+        """Resumen del estado de la carpeta de la mesa para el evaluador: archivos EN DISCO +
+        NOTAS.md (la memoria compartida donde las sillas anotan qué falta).
+
+        Lista el disco (no `git ls-files`) a propósito: así incluye también los archivos que el
+        humano sube a mitad de trabajo y todavía no están commiteados — el worker los commitea
+        sola al cerrar el turno, pero las sillas tienen que VERLOS desde el turno en que aparecen."""
+        from .workspace import mesa_workspace
+        dest = str(mesa_workspace(self.sesion))
+        listado = []
+        for root, dirs, files in os.walk(dest):
+            # Excluir .git, runtime de las CLIs (dot-dirs) y __pycache__.
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__']
+            for f in files:
+                if f.startswith('.'):
+                    continue
+                rel = os.path.relpath(os.path.join(root, f), dest)
+                listado.append(rel)
+                if len(listado) >= 2000:
+                    break
+            if len(listado) >= 2000:
+                break
+        listado.sort(key=str.lower)
+        files_txt = '\n'.join(listado) if listado else '(sin archivos)'
+        # Sin seguir symlinks y acotado: ver `leer_artefacto` (S-02).
+        from .workspace import leer_artefacto
+        notas = leer_artefacto(dest, 'NOTAS.md', 8000)[:2000]
+        return f"Archivos en la carpeta:\n{files_txt}\n\nNOTAS.md (memoria de la mesa):\n{notas or '(vacío)'}"
+
+    def _objetivo_cumplido(self):
+        """Le pregunta a una silla gratis si el objetivo ya está cumplido (mirando archivos+NOTAS).
+        Devuelve (cumplido: bool, razon: str). Best-effort: ante ruido/duda devuelve False (seguir
+        iterando, acotado por el máximo, es más seguro que cortar de más)."""
+        obj = (self.sesion.objetivo or '').strip()
+        juez = self._juez()
+        if not obj or juez is None:
+            return False, ''
+        prompt = (
+            f"Sos un EVALUADOR estricto pero realista. El objetivo de trabajo es:\n«{obj}»\n\n"
+            f"{self._estado_carpeta()}\n\n"
+            "¿El objetivo está COMPLETAMENTE cumplido con lo que hay (sin exigir extras no pedidos)? "
+            "Respondé EXACTAMENTE en este formato:\n"
+            "Línea 1: CUMPLIDO o PENDIENTE\n"
+            "Línea 2: una frase corta justificando."
+        )
+        try:
+            salida, ruido = ejecutar_cli(juez, prompt, min(self.sesion.timeout, 90))
+        except Exception:  # noqa: BLE001
+            return False, ''
+        if ruido or not (salida or '').strip():
+            return False, ''
+        lineas = salida.strip().splitlines()
+        veredicto = lineas[0].strip().upper()
+        cumplido = veredicto.startswith('CUMPLIDO') and 'PENDIENTE' not in veredicto
+        razon = (lineas[1].strip() if len(lineas) > 1 else salida.strip())[:200]
+        self.log(f"🔎 evaluación de objetivo: {'CUMPLIDO' if cumplido else 'PENDIENTE'}",
+                 nivel='info', detalle=salida.strip()[:500])
+        return cumplido, razon
+
+    def debatir(self, texto, on_respuesta=None):
+        """Como debate() pero SIN re-guardar el turno del humano (ya persistido por la vista).
+        N rondas (sesion.rondas): en cada ronda cada silla ve lo que dijeron las otras. Solo texto."""
+        sillas = self.sillas()
+        nombres = ", ".join(s.nombre for s in sillas)
+        self.guardar("Enjambre",
+                     f"💬 Debate entre {len(sillas)} silla(s) ({nombres}) · {self.sesion.rondas} rondas.",
+                     sistema=True)
+        respuestas = {}
+        for ronda in range(1, self.sesion.rondas + 1):
+            for silla in sillas:
+                if self._hay_alto():
+                    self._abortar_alto(f"resto del debate (ronda {ronda}+)")
+                    return respuestas
+                if ronda == 1:
+                    prompt = texto
+                else:
+                    otras = "\n".join(
+                        f"- {s.nombre}: {respuestas[s.key]}"
+                        for s in sillas if s.key != silla.key and s.key in respuestas
+                    )
+                    prompt = (
+                        f"{texto}\n\nRespuestas de otros agentes:\n{otras}\n\n"
+                        f"Teniendo en cuenta lo que dijeron los otros, ¿qué aportás o refutás?"
+                    )
+                resp = self.enviar(silla, prompt)
+                respuestas[silla.key] = resp
+                if on_respuesta:
+                    on_respuesta(silla, resp)
+        return respuestas
+
+    # ── Topología LÍDER ───────────────────────────────────────────────────────
+    def _parse_asignaciones(self, plan, workers):
+        """Extrae el reparto del plan del líder. Devuelve [(silla, subtarea)] en orden de
+        aparición; junta varias subtareas de la misma silla. Solo matchea workers.
+
+        DOS PASES. Primero el ESTRICTO, el contrato que se le pide («@alias: subtarea»). Si no
+        encontró NADA (el modelo delegó en lenguaje natural — «Sabueso, investigá …», sin @ ni
+        dos puntos → la mesa quedaba muda con el plan sin ejecutar), un pase TOLERANTE que
+        reconoce el nombre de una silla conocida al inicio de línea + separador (`, : -`); las
+        líneas siguientes sin cabecera se pegan como detalle de esa subtarea (listas numeradas).
+        El tolerante SOLO corre si el estricto vino vacío → cero cambio para lo que ya andaba.
+
+        Las cabeceras se buscan sobre la línea SIN decoración markdown (`_sin_decoracion`): el
+        líder suele escribir el reparto como títulos («### **@neo**:» y la subtarea abajo) y eso
+        no es «no repartió», es el mismo contrato maquillado."""
+        by_alias = {}
+        for w in workers:
+            by_alias.setdefault(w.alias.lower(), w)
+            by_alias.setdefault(w.key.lower(), w)
+        lineas = (plan or '').splitlines()
+
+        estricto = re.compile(r'@(\S+?)[*_`]*\s*[:：\-–—]\s*(.*)$')
+        asig = self._asignaciones_por_regex(lineas, by_alias, estricto, continuar=False)
+        if asig or not by_alias:
+            return asig
+
+        alias_alt = '|'.join(re.escape(a) for a in sorted(by_alias, key=len, reverse=True))
+        tolerante = re.compile(rf'({alias_alt})\b[*_`]*\s*[,:：\-–—]\s*(.*)$', re.IGNORECASE)
+        return self._asignaciones_por_regex(lineas, by_alias, tolerante, continuar=True)
+
+    def _asignaciones_por_regex(self, lineas, by_alias, rx, continuar):
+        """Recorre las líneas con `rx` (grupo1=alias, grupo2=subtarea) y agrupa por silla.
+
+        La cabecera se matchea contra la línea limpia de decoración markdown. Dos formas de dar el
+        detalle: en la MISMA línea («@neo: hacé X») o DEBAJO (cabecera sin texto, estilo título) —
+        en ese caso las líneas siguientes se anexan hasta que corta un separador/título (`---`,
+        `## …`) o la cabecera de otra silla. Con continuar=True (pase tolerante) también se anexan
+        las líneas de detalle de una cabecera que SÍ traía texto (listas numeradas debajo). Se
+        anexa la línea original, no la limpia: el detalle conserva su formato."""
+        orden, agrupado, actual, anexar = [], {}, None, False
+        for linea in lineas:
+            limpia = _sin_decoracion(linea)
+            m = rx.match(limpia)
+            if m:
+                alias = m.group(1).lower().rstrip('.,:;!?*_`')
+                silla = by_alias.get(alias)
+                if not silla:
+                    actual, anexar = None, False
+                    continue
+                if silla.key not in agrupado:
+                    agrupado[silla.key] = (silla, [])
+                    orden.append(silla.key)
+                cuerpo = m.group(2).strip()
+                if cuerpo:
+                    agrupado[silla.key][1].append(cuerpo)
+                # cabecera sin texto = la subtarea viene abajo → hay que anexar sí o sí
+                actual, anexar = silla.key, (continuar or not cuerpo)
+            elif _corta_bloque(linea):
+                actual, anexar = None, False
+            elif anexar and actual and linea.strip():
+                agrupado[actual][1].append(linea.strip())
+        return [(agrupado[k][0], "\n".join(agrupado[k][1]))
+                for k in orden if agrupado[k][1]]
+
+    def _comando_control(self, comando, limpio, texto, on_respuesta=None):
+        """Comandos de mesa comunes a las DOS topologías (líder y plana): undo/volver/alto/cerrar/
+        continuo/debate. Único punto de verdad de estos triggers → líder y plana no divergen.
+
+        Devuelve el dict de resultado si el comando se manejó acá; `_SIN_MANEJAR` si no es un
+        comando de control (build y charla los resuelve cada topología a su manera)."""
+        if comando == 'undo':
+            self.deshacer()
+            return {}
+        if comando == 'volver':
+            self.volver(limpio)
+            return {}
+        if comando == 'alto':
+            self.detener()
+            return {}
+        if comando == 'cerrar':
+            self.cerrar(limpio)
+            return {}
+        if comando in ('continuo', 'segui', 'auto'):
+            return self._continuo_iteracion(comando, limpio, on_respuesta=on_respuesta)
+        if comando == 'debate':
+            return self.debatir(limpio or texto, on_respuesta=on_respuesta)
+        return _SIN_MANEJAR
+
+    def liderar(self, texto, on_respuesta=None):
+        """Modo LÍDER (NO guarda el turno del humano: ya persistido por la web/REPL).
+
+        El líder descompone el pedido en subtareas «@silla: …», cada silla ejecuta la suya
+        (agéntica en la carpeta de la mesa si es /armar y puede), y el líder integra y reporta.
+        Secuencial a propósito: cada silla ve en su contexto lo que dejaron las anteriores.
+
+        Degrada solo: sin líder válido → plana; @mención → solo esa silla; /deshacer y /debate
+        los maneja el líder como en plana; consulta nunca fabrica (el verbo queda como charla)."""
+        self.fallo_ejecucion = False
+        lider = self.sesion.lider
+        lider_sentado = lider is not None and lider.pk in {s.pk for s in self.sillas()}
+        # Líder caído (desactivado) o no sentado en la mesa: la mesa está marcada como LÍDER
+        # pero corre plana (misma regla que ya aplica guardar_config: el líder tiene que estar
+        # SENTADO para dirigir). Avisamos UNA vez (mensaje de sistema) para que no parezca que el
+        # líder trabajó. La @mención no avisa: es una desviación deliberada de un turno puntual,
+        # no una degradación de la topología.
+        if lider is not None and (not lider.activo or not lider_sentado) and self.mencion(texto) is None:
+            motivo_log = "inactivo" if not lider.activo else "no sentado"
+            self.log(f"⚠️ líder {lider.nombre} {motivo_log} — la mesa corre PLANA", nivel='error')
+            # Dedupe: si el último mensaje de sistema YA es este aviso, no lo repetimos en cada
+            # turno (sería spam). Vuelve a aparecer solo si algún otro sistema lo "tapó" en el medio.
+            ult_sis = (self.sesion.mensajes.filter(es_sistema=True).order_by('-id')
+                       .values_list('texto', flat=True).first() or '')
+            if 'modo PLANO' not in ult_sis:
+                detalle = "está desactivado" if not lider.activo else "no está sentado en la mesa"
+                self.guardar("Enjambre", f"⚠️ El líder de esta mesa ({lider.nombre}) {detalle}: "
+                             "este turno corre en modo PLANO (todas las sillas responden, sin reparto). "
+                             "Reactivá esa silla o asigná otro líder en ⚙ para recuperar el modo líder.",
+                             sistema=True)
+        if lider is None or not lider.activo or not lider_sentado or self.mencion(texto) is not None:
+            return self.responder(texto, on_respuesta=on_respuesta)
+
+        # El líder SOLO tiene sentido con el toolbelt ENCENDIDO. Apagado, todas las sillas solo
+        # hablan (no construyen), así que un líder que "coordina charla" no aporta nada que plana no
+        # dé — y encima el modo lee-RO de la carpeta se auto-rechazaba. Con el toolbelt off la mesa
+        # líder corre PLANA (misma degradación graceful que el líder inactivo): al prenderlo, el
+        # líder vuelve solo. Ver la nota del switch en Conexiones.
+        from . import toolbelt
+        if not toolbelt.habilitado():
+            self.log("⚠️ toolbelt apagado — la mesa líder corre PLANA (solo charla)", nivel='error')
+            ult_sis = (self.sesion.mensajes.filter(es_sistema=True).order_by('-id')
+                       .values_list('texto', flat=True).first() or '')
+            if 'toolbelt' not in ult_sis.lower():
+                self.guardar("Enjambre", "ℹ️ El modo LÍDER necesita el TOOLBELT encendido (sin él las "
+                             "sillas solo responden texto, no hay trabajo que coordinar). Esta mesa "
+                             "corre PLANA por ahora; prendé el toolbelt en Conexiones para que el "
+                             f"líder ({lider.nombre}) tome la posta.", sistema=True)
+            return self.responder(texto, on_respuesta=on_respuesta)
+
+        comando, limpio = parse_comando(texto)
+        if comando and self._es_consulta():
+            comando, limpio = None, texto  # consulta: el verbo no fabrica, es charla
+        if comando:
+            r = self._comando_control(comando, limpio, texto, on_respuesta=on_respuesta)
+            if r is not _SIN_MANEJAR:
+                return r  # undo/volver/alto/cerrar/continuo/debate → ya resuelto
+        editar = (comando == 'build')
+        pedido = limpio if comando else texto
+
+        workers = [s for s in self.sillas() if s.key != lider.key]
+        if editar:
+            # fabricar de verdad: solo sillas que pueden tocar archivos — con el toolbelt encendido,
+            # tanto CLI como api:*. Las de modelo local (HTTP) quedan fuera (no tienen filesystem).
+            from .clientes import puede_actuar
+            workers = [w for w in workers if puede_actuar(w)]
+
+        modo_txt = 'fabricar' if editar else 'charla'
+        self.log(f"👑 Modo líder ({lider.nombre}) · {modo_txt} · {len(workers)} trabajador(es)",
+                 nivel='paso')
+
+        # 1) El líder planifica y reparte (si está solo, responde/fabrica el pedido directo).
+        #    Con workers, el líder no fabrica en la carpeta (editar=False) pero igual entra a modo
+        #    máquina (el toolbelt está ON por el gate de arriba): coordina y puede mirar la máquina.
+        plan = self.enviar(lider, _prompt_plan(pedido, workers, editar) if workers else pedido,
+                           editar=(editar and not workers))
+        if on_respuesta:
+            on_respuesta(lider, plan)
+        resultados = {lider.key: plan}
+        if workers and es_ruido(plan):
+            # Un plan caído (timeout, error del CLI) NO se parsea ni se reparte: antes el texto del
+            # error se leía como un plan sin reparto y el aviso decía «formato», no «falló».
+            self.fallo_ejecucion = True
+            aviso = "⚠️ el líder no pudo responder; no se repartieron ni ejecutaron subtareas"
+            self.log(aviso, nivel='error')
+            self.guardar("Enjambre", aviso, sistema=True)
+            return resultados
+        if not workers:
+            return resultados
+
+        # 2) Parsear las asignaciones del plan.
+        asignaciones = self._parse_asignaciones(plan, workers)
+        if not asignaciones:
+            if editar:
+                self.fallo_ejecucion = True   # se pidió fabricar y nadie fabricó
+            self.log("⚠️ El líder no repartió subtareas (formato «@silla: …»)", nivel='error')
+            self.guardar("Enjambre", "ℹ️ El líder no repartió subtareas con el formato «@silla: …»; "
+                         "su mensaje queda como respuesta de la mesa.", sistema=True)
+            return resultados
+        reparto = ", ".join(f"{s.alias}×{len(sub.splitlines()) or 1}" for s, sub in asignaciones)
+        self.log(f"✓ plan repartido · {len(asignaciones)} silla(s): {reparto}", nivel='ok',
+                 detalle=plan)
+
+        # 3) Cada silla ejecuta su subtarea (secuencial: ve lo anterior en el contexto).
+        for i, (silla, subtarea) in enumerate(asignaciones):
+            if self._hay_alto():
+                rest = ", ".join(s.nombre for s, _ in asignaciones[i:])
+                self._abortar_alto(f"{rest} + integración del líder" if rest else "integración del líder")
+                return resultados
+            encargo = f"[Encargo de {lider.nombre} (líder)]: {subtarea}"
+            try:
+                resp = self.enviar(silla, encargo, editar=editar)
+            except Exception as e:  # noqa: BLE001
+                resp = f"(❌ error: {e})"
+            if es_ruido(resp):
+                self.fallo_ejecucion = True
+            resultados[silla.key] = resp
+            if on_respuesta:
+                on_respuesta(silla, resp)
+
+        # 4) El líder integra y reporta (salvo que pidieran /alto recién terminada la última silla).
+        if self._hay_alto():
+            self._abortar_alto("integración del líder")
+            return resultados
+        self.log(f"👑 {lider.nombre} integrando los aportes…", nivel='paso')
+        resumen = "\n\n".join(
+            f"@{s.alias} ({s.nombre}):\n{resultados.get(s.key, '(sin respuesta)')}"
+            for s, _ in asignaciones
+        )
+        cierre = self.enviar(lider, _prompt_integracion(pedido, resumen))
+        if es_ruido(cierre):
+            self.fallo_ejecucion = True
+        if on_respuesta:
+            on_respuesta(lider, cierre)
+        resultados[lider.key] = cierre
+        return resultados
+
+    def mencion(self, texto):
+        """Si el mensaje arranca con @alias de una silla de la mesa, devuelve esa silla
+        (para dirigirle SOLO a ella). Si no hay @ o no matchea, devuelve None."""
+        t = (texto or '').lstrip()
+        if not t.startswith('@'):
+            return None
+        token = t[1:].split(None, 1)[0].lower().rstrip('.,:;!?') if len(t) > 1 else ''
+        if not token:
+            return None
+        for silla in self.sillas():
+            if silla.alias == token or silla.key == token:
+                return silla
+        return None
+
+    @staticmethod
+    def _sin_mencion(texto):
+        """Saca el '@alias' del arranque para que la silla reciba la pregunta limpia."""
+        t = (texto or '').lstrip()
+        if t.startswith('@'):
+            partes = t[1:].split(None, 1)
+            return partes[1] if len(partes) > 1 else ''
+        return texto
+
+    # ── Topología PLANA ─────────────────────────────────────────────────────────
+    def responder(self, texto, on_respuesta=None):
+        """Dispatch SECUENCIAL a las sillas activas, SIN guardar el mensaje del humano
+        (ya persistido). Lo usa el worker para contestar una pregunta de la web.
+
+        Secuencial a propósito: cada silla persiste su respuesta antes de la siguiente, así
+        la próxima la ve en su contexto y la mesa "se lee" entre sí dentro del mismo turno.
+        El líder (si está) va primero por orden de sillas().
+
+        Si el mensaje menciona a una silla con @alias, SOLO esa responde (la pregunta le
+        llega sin el @). Los comandos (/armar, /deshacer, /debate) solo los honra CONTROL;
+        para consulta se ignora el verbo y todo cae a charla."""
+        objetivo = self.mencion(texto)
+        if objetivo is not None:
+            destinatarias = [objetivo]
+            texto = self._sin_mencion(texto)
+        else:
+            destinatarias = self.sillas()
+        if not destinatarias:
+            self.guardar("Enjambre", "⚠️ Esta mesa no tiene sillas sentadas: tildá las que "
+                         "quieras en el listado de mesas o en ⚙ y volvé a escribir.", sistema=True)
+            return {}
+        # Comando de mesa (tras sacar la @mención). Gate de rango: consulta = solo charla.
+        comando, limpio = parse_comando(texto)
+        editar = False
+        if comando:
+            if self._es_consulta():
+                texto = limpio  # consulta: ignorar el verbo, tratar como charla
+            else:
+                r = self._comando_control(comando, limpio, texto, on_respuesta=on_respuesta)
+                if r is not _SIN_MANEJAR:
+                    return r  # undo/volver/alto/cerrar/continuo/debate → ya resuelto
+                if comando == 'build':
+                    texto, editar = limpio, True
+                    # /armar = trabajo real: solo las sillas que PUEDEN tocar archivos. Con el toolbelt
+                    # encendido son las CLI y las api:*; las de modelo local (HTTP) nunca (no tienen
+                    # filesystem) → se saltean para que no "actúen" que fabricaron (un modelo tiende a
+                    # alucinar que escribió). Con el toolbelt apagado no fabrica nadie: ese es el candado.
+                    from . import toolbelt
+                    from .clientes import puede_actuar
+                    capaces = [s for s in destinatarias if puede_actuar(s)]
+                    saltadas = [s for s in destinatarias if not puede_actuar(s)]
+                    if not capaces:
+                        if not toolbelt.habilitado():
+                            # Causa más probable, y la que el usuario puede resolver en un clic.
+                            self.guardar("Enjambre", "⚠️ El TOOLBELT está apagado: sin él las sillas solo "
+                                         "responden texto, no editan archivos ni tocan la máquina. "
+                                         "Prendelo para usar /armar.", sistema=True)
+                        else:
+                            self.guardar("Enjambre", "⚠️ Ninguna silla de la mesa puede fabricar: las de "
+                                         "modelo local (HTTP) no tienen acceso a archivos. Sentá una silla "
+                                         "CLI (claude/opencode) o por API key para usar /armar.",
+                                         sistema=True)
+                        return {}
+                    if saltadas:
+                        nombres = ", ".join(s.nombre for s in saltadas)
+                        self.guardar("Enjambre", f"ℹ️ {nombres} no edita archivos (modelo local); queda "
+                                     "fuera de este /armar.", sistema=True)
+                    destinatarias = capaces
+        resultados = {}
+        for i, silla in enumerate(destinatarias):
+            if self._hay_alto():
+                self._abortar_alto(", ".join(s.nombre for s in destinatarias[i:]))
+                break
+            try:
+                resp = self.enviar(silla, texto, editar=editar)
+            except Exception as e:  # noqa: BLE001
+                resp = f"(❌ error: {e})"
+            resultados[silla.key] = resp
+            if on_respuesta:
+                on_respuesta(silla, resp)
+        return resultados
+
+    def broadcast(self, texto, on_respuesta=None):
+        """Plana: guarda el turno del humano y dispatcha a todas las sillas."""
+        self.guardar("Humano", texto)
+        return self.responder(texto, on_respuesta=on_respuesta)
+
+    def debate(self, texto, on_respuesta=None):
+        """Plana multi-ronda: en cada ronda cada silla ve lo que dijeron las otras."""
+        self.guardar("Humano", texto)
+        sillas = self.sillas()
+        respuestas = {}
+        for ronda in range(1, self.sesion.rondas + 1):
+            for silla in sillas:
+                if self._hay_alto():
+                    self._abortar_alto(f"resto del debate (ronda {ronda}+)")
+                    return respuestas
+                if ronda == 1:
+                    prompt = texto
+                else:
+                    otras = "\n".join(
+                        f"- {s.nombre}: {respuestas[s.key]}"
+                        for s in sillas if s.key != silla.key and s.key in respuestas
+                    )
+                    prompt = (
+                        f"{texto}\n\nRespuestas de otros agentes:\n{otras}\n\n"
+                        f"Teniendo en cuenta lo que dijeron los otros, ¿qué aportás o refutás?"
+                    )
+                resp = self.enviar(silla, prompt)
+                respuestas[silla.key] = resp
+                if on_respuesta:
+                    on_respuesta(silla, resp, ronda)
+        return respuestas

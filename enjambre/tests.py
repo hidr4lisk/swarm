@@ -1,0 +1,2766 @@
+"""
+enjambre/tests.py — la suite del módulo. Correr con: python manage.py test enjambre
+
+Cubre lo que protege de verdad:
+- es_ruido / parse_comando: la semántica fina del filtro y los comandos de mesa.
+- El contrato del líder («@alias: subtarea») que consume _parse_asignaciones.
+- La degradación de sillas (CLI inexistente, timeout, endpoint HTTP caído): la mesa
+  nunca se rompe, la silla queda muda con su marcador.
+- Las vistas con el test client: el flujo real del usuario (mesas, sillas, /alto).
+- Conexiones: detección por existencia y rutas colapsadas a ~ (sin usuario del host).
+- El workspace git de la mesa (idempotente, NOTAS.md, commit inicial).
+
+Sin mocks de red ni servicios externos: los CLIs no se invocan (se prueban los caminos
+de error, que son los nuestros); git sí se usa de verdad sobre un tmpdir.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from django.conf import settings
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from django.utils import translation
+
+from .clientes import CLIENTES, build_comando
+from . import conexiones as conexiones_mod
+from .conexiones import detectar, resolver_bin, ruta_corta
+from . import engine as engine_mod
+from .engine import (
+    Enjambre, ejecutar_cli, ejecutar_http, es_ruido, limpiar_salida, parse_comando,
+)
+from .models import Accion, Mensaje, Participante, Sesion
+from . import toolbelt as toolbelt_mod
+from .workspace import mesa_workspace
+
+
+def proceso_falso(stdout='', stderr='', returncode=0, timeout=False):
+    """Doble del `Popen` del CLI. `timeout=True` hace que el primer `communicate()` venza (el
+    segundo, el que drena las pipes del muerto, devuelve normal — igual que el real)."""
+    proc = mock.Mock(pid=4242, returncode=returncode)
+    if timeout:
+        proc.communicate.side_effect = [
+            subprocess.TimeoutExpired(cmd='cli', timeout=1), (stdout, stderr)]
+    else:
+        proc.communicate.return_value = (stdout, stderr)
+    return proc
+
+
+class EsRuidoTests(TestCase):
+    """Los marcadores propios cuentan solo como PREFIJO; los de proveedor, solo en salidas cortas."""
+
+    def test_marcadores_propios_al_inicio_son_ruido(self):
+        self.assertTrue(es_ruido("(❌ claude no instalado)"))
+        self.assertTrue(es_ruido("(⏰ timeout tras 180s)"))
+        self.assertTrue(es_ruido("(sin respuesta)"))
+        self.assertTrue(es_ruido("  (❌ error: x)  "))  # con espacios alrededor
+
+    def test_marcador_propio_en_el_medio_no_es_ruido(self):
+        # Regresión mesa 131: una respuesta legítima describía un scoreboard «✅❌📊»
+        # y quedaba marcada como error.
+        self.assertFalse(es_ruido("El scoreboard quedó así: ✅❌📊 con 3 pasadas verdes."))
+
+    def test_marcador_de_proveedor_corto_es_ruido(self):
+        self.assertTrue(es_ruido("Rate limit exceeded. Try again later."))
+        self.assertTrue(es_ruido("API error: Overloaded"))
+
+    def test_error_de_provider_de_opencode_es_ruido(self):
+        # Regresión mesa 4 (pendrive): «Error: No provider available» se guardaba como si fuera
+        # la respuesta de la silla y entraba al contexto de las demás.
+        self.assertTrue(es_ruido("Error: No provider available"))
+        self.assertTrue(es_ruido("no model available for opencode/big-pickle"))
+
+    def test_marcador_de_proveedor_en_texto_largo_no_es_ruido(self):
+        # Regresión mesa 127: una respuesta larga puede MENCIONAR "rate limit" sin ser un error.
+        texto = ("El endpoint aplica rate limiting agresivo, así que conviene cachear. " * 10)
+        self.assertFalse(es_ruido(texto))
+
+    def test_texto_normal_y_vacio(self):
+        self.assertFalse(es_ruido("Listo, el script quedó en ordenar.sh"))
+        self.assertFalse(es_ruido(""))
+        self.assertFalse(es_ruido(None))
+
+
+class LimpiarSalidaTests(TestCase):
+    """Regresiones del primer beta real: el contenedor fresco hace que el CLI re-inicialice
+    su estado y lo cuente por stdout; nada de eso es la respuesta."""
+
+    def test_saca_ansi_y_preambulo_de_opencode(self):
+        crudo = (
+            "Performing one time database migration, may take a few minutes...\n"
+            "sqlite-migration:done\n"
+            "Database migration complete.\n"
+            "\x1b[0m\n> build · big-pickle\n\x1b[0m\n"
+            "Hola Humano. Acá funcionando con big-pickle."
+        )
+        self.assertEqual(limpiar_salida(crudo), "Hola Humano. Acá funcionando con big-pickle.")
+
+    def test_preambulo_sin_respuesta_queda_vacio(self):
+        # turno de Nahuel donde opencode solo migró y mostró el banner, sin contestar
+        crudo = "sqlite-migration:done\n\x1b[0m\n> build · big-pickle\n\x1b[0m"
+        self.assertEqual(limpiar_salida(crudo), "")  # → ejecutar_cli cae a "(sin respuesta)"
+
+    def test_no_toca_el_cuerpo_de_la_respuesta(self):
+        texto = "El script usa sqlite-migration: como key del config.\nFin."
+        self.assertEqual(limpiar_salida(texto), texto)  # el marker NO está al inicio
+
+    def test_error_de_proveedor_corto_es_ruido(self):
+        # opencode logueado con cuenta ChatGPT y modelo no permitido → Bad Request crudo
+        self.assertTrue(es_ruido(
+            'Error: Bad Request: {"detail":"The model is not supported..."}'))
+
+    def test_cli_que_no_esta_instalado_no_rompe_la_mesa(self):
+        # Silla activada sin tener el CLI: subprocess tira FileNotFoundError y eso tiene que
+        # llegar a la mesa como marcador de ruido, no como excepción.
+        p = Participante.objects.create(key='sin-cli', nombre='Pelado',
+                                        comando=['binario-que-no-existe', '-p'])
+        with mock.patch('enjambre.engine.subprocess.Popen', side_effect=FileNotFoundError()):
+            salida, ruido = ejecutar_cli(p, 'hola', timeout=5)
+        self.assertTrue(ruido)
+        self.assertIn('no instalado', salida)
+        self.assertTrue(salida.startswith('(❌ Pelado'))
+
+
+class ParseComandoTests(TestCase):
+    def test_todos_los_verbos(self):
+        casos = {
+            '/armar un script': ('build', 'un script'),
+            '/build algo': ('build', 'algo'),
+            '🔨 algo': ('build', 'algo'),
+            '/deshacer': ('undo', ''),
+            '/volver a1b2c3': ('volver', 'a1b2c3'),
+            '/debate tabs vs espacios': ('debate', 'tabs vs espacios'),
+            '/alto': ('alto', ''),
+            '/continuo armar un blog': ('continuo', 'armar un blog'),
+            '/seguí': ('segui', ''),
+            '/segui': ('segui', ''),
+            '/auto': ('auto', ''),
+            '/cerrar': ('cerrar', ''),
+        }
+        for texto, esperado in casos.items():
+            self.assertEqual(parse_comando(texto), esperado, msg=texto)
+
+    def test_sin_verbo_y_case_insensitive(self):
+        self.assertEqual(parse_comando('hola mesa'), (None, 'hola mesa'))
+        self.assertEqual(parse_comando('/ARMAR algo'), ('build', 'algo'))
+        self.assertEqual(parse_comando('  /alto'), ('alto', ''))
+        self.assertEqual(parse_comando(None), (None, None))
+
+
+class ComandoControlTests(TestCase):
+    """El dispatch de los comandos de mesa comunes vive en UN solo lugar (_comando_control),
+    compartido por las dos topologías (líder y plana). Estos tests blindan esa unificación:
+    cada verbo delega en su método, y build/charla NO los maneja el helper (los resuelve cada
+    topología)."""
+
+    def setUp(self):
+        from .engine import _SIN_MANEJAR
+        self.SIN_MANEJAR = _SIN_MANEJAR
+        self.enj = Enjambre(Sesion.objects.create(nombre='m'))
+
+    def test_cada_verbo_delega_en_su_metodo(self):
+        casos = {
+            'undo': 'deshacer',
+            'volver': 'volver',
+            'alto': 'detener',
+            'cerrar': 'cerrar',
+            'continuo': '_continuo_iteracion',
+            'debate': 'debatir',
+        }
+        for comando, metodo in casos.items():
+            with mock.patch.object(Enjambre, metodo, return_value={'ok': comando}) as m:
+                r = self.enj._comando_control(comando, 'arg', 'texto crudo')
+            self.assertTrue(m.called, msg=f'{comando} no llamó a {metodo}')
+            self.assertIsNot(r, self.SIN_MANEJAR, msg=comando)
+
+    def test_segui_y_auto_tambien_van_a_continuo(self):
+        for comando in ('segui', 'auto'):
+            with mock.patch.object(Enjambre, '_continuo_iteracion', return_value={}) as m:
+                self.enj._comando_control(comando, '', 'x')
+            self.assertTrue(m.called, msg=comando)
+
+    def test_build_y_charla_no_los_maneja_el_helper(self):
+        # build y un texto sin verbo devuelven _SIN_MANEJAR → cada topología sigue su camino
+        self.assertIs(self.enj._comando_control('build', 'algo', '/armar algo'), self.SIN_MANEJAR)
+        self.assertIs(self.enj._comando_control(None, 'hola', 'hola'), self.SIN_MANEJAR)
+
+
+class ParticipanteTests(TestCase):
+    def test_alias_es_la_primera_palabra_limpia(self):
+        p = Participante(key='claude', nombre='Claude Code')
+        self.assertEqual(p.alias, 'claude')
+        p = Participante(key='oc-1', nombre='Zerg-Ling! veloz')
+        self.assertEqual(p.alias, 'zergling')
+        p = Participante(key='x9', nombre='')
+        self.assertEqual(p.alias, 'x9')  # sin nombre cae al key
+
+    def test_motor_prioriza_endpoint_y_lee_el_model_del_comando(self):
+        self.assertEqual(Participante(key='q', endpoint_model='qwen2.5:3b').motor, 'qwen2.5:3b')
+        p = Participante(key='oc-bp', comando=['opencode', 'run', '--model', 'opencode/big-pickle'])
+        self.assertEqual(p.motor, 'big-pickle')
+        self.assertEqual(Participante(key='claude', comando=['claude', '-p']).motor, 'Claude Code')
+
+    def test_cmd_trabajo_cae_al_comando_de_charla(self):
+        p = Participante(comando=['opencode', 'run'], comando_trabajo=[])
+        self.assertEqual(p.cmd_trabajo(), ['opencode', 'run'])
+        p.comando_trabajo = ['opencode', 'run', '--agent', 'build']
+        self.assertEqual(p.cmd_trabajo(), ['opencode', 'run', '--agent', 'build'])
+
+    def test_persona_para_rango(self):
+        p = Participante(persona='A', persona_consulta='B')
+        self.assertEqual(p.persona_para(es_consulta=False), 'A')
+        self.assertEqual(p.persona_para(es_consulta=True), 'B')
+        p.persona_consulta = '   '
+        self.assertEqual(p.persona_para(es_consulta=True), 'A')  # B vacía cae a A
+
+
+class BuildComandoTests(TestCase):
+    def test_claude_con_y_sin_modelo(self):
+        cmd, cmdt = build_comando('claude', '')
+        self.assertEqual(cmd, ['claude', '-p', '--output-format', 'text'])
+        cmd, _ = build_comando('claude', 'opus')
+        self.assertEqual(cmd[-2:], ['--model', 'opus'])
+
+    def test_agy_inserta_el_modelo_antes_del_p_final(self):
+        # En agy el prompt va inmediatamente después de -p: «-p --model X <prompt>» se rompería.
+        cmd, _ = build_comando('agy', 'Gemini 3.1 Pro (High)')
+        self.assertEqual(cmd[-1], '-p')
+        self.assertEqual(cmd[-3:-1], ['--model', 'Gemini 3.1 Pro (High)'])
+
+    def test_codex_exec_no_interactivo(self):
+        """Sandbox explícito y sin aprobaciones interactivas; --full-auto fue retirado."""
+        cmd, cmdt = build_comando('codex', 'modelo-de-la-cuenta')
+        self.assertEqual(cmd[:2], ['codex', 'exec'])
+        self.assertIn('--skip-git-repo-check', cmd)
+        self.assertEqual(cmd[cmd.index('--sandbox') + 1], 'read-only')
+        self.assertNotIn('--full-auto', cmd)
+        self.assertNotIn('--full-auto', cmdt)
+        self.assertEqual(cmdt[cmdt.index('--sandbox') + 1], 'workspace-write')
+        for comando in (cmd, cmdt):
+            self.assertIn('approval_policy="never"', comando)
+        self.assertEqual(cmd[-2:], ['--model', 'modelo-de-la-cuenta'])
+        self.assertTrue(CLIENTES['codex'].get('experimental'))
+        self.assertIn('codex', conexiones_mod.CLIS)
+
+    def test_ollama_es_http_sin_comando(self):
+        self.assertEqual(build_comando('ollama', 'qwen2.5:3b'), ([], []))
+        self.assertEqual(build_comando('no-existe', ''), ([], []))
+
+    def test_los_cli_que_trabajan_llevan_su_flag_de_permisos(self):
+        """Sin el flag de auto-aprobación, un CLI corriendo sin TTY no puede pedir permiso y
+        AUTO-RECHAZA: la silla no llega ni a leer /etc aunque el toolbelt esté encendido. El
+        permiso lo da el switch; esto es lo que hace que el CLI lo respete. Bug real, Parrot."""
+        _, cmdt = build_comando('opencode', '')
+        self.assertIn('--auto', cmdt)
+        _, cmdt = build_comando('claude', '')
+        self.assertIn('--allowedTools', cmdt)
+        # En charla no va: ahí la silla no toca nada.
+        cmd, _ = build_comando('opencode', '')
+        self.assertNotIn('--auto', cmd)
+
+
+class ParseAsignacionesTests(TestCase):
+    """El contrato del modo líder: extraer «@alias: subtarea» del plan, en orden, agrupando."""
+
+    def setUp(self):
+        self.sesion = Sesion.objects.create(nombre='t')
+        self.w1 = Participante.objects.create(key='w-oc', nombre='Opencito', comando=['opencode', 'run'])
+        self.w2 = Participante.objects.create(key='w-muta', nombre='Mutalisco', comando=['opencode', 'run'])
+        self.enj = Enjambre(self.sesion)
+
+    def test_extrae_agrupa_y_respeta_el_orden(self):
+        plan = (
+            "Plan de trabajo:\n"
+            "- @opencito: escribir el script base\n"
+            "* @mutalisco: armar los tests\n"
+            "- @opencito: documentar el uso\n"
+            "- @fantasma: esto se ignora (no es worker)\n"
+        )
+        asignaciones = self.enj._parse_asignaciones(plan, [self.w1, self.w2])
+        self.assertEqual([s.key for s, _ in asignaciones], ['w-oc', 'w-muta'])
+        self.assertIn('escribir el script base', asignaciones[0][1])
+        self.assertIn('documentar el uso', asignaciones[0][1])  # agrupó las 2 del mismo worker
+        self.assertEqual(asignaciones[1][1], 'armar los tests')
+
+    def test_plan_sin_asignaciones(self):
+        self.assertEqual(self.enj._parse_asignaciones("charla sin arrobas", [self.w1]), [])
+
+    def test_cabecera_titulo_con_subtarea_debajo(self):
+        """El líder reparte como títulos markdown y pone la subtarea en la línea de abajo. Eso no
+        es «no repartió»: es el mismo contrato maquillado, y antes dejaba la mesa muda."""
+        plan = ("Equipo, esto es lo que necesito:\n\n"
+                "### **@opencito**:\n"
+                "Investigá los datos y guardalos en `DATOS.md`\n\n"
+                "### **@mutalisco**:\n"
+                "Creá el `ANALISIS.md`\n\n"
+                "---\n\n"
+                "## Conclusión\n"
+                "Mi pronóstico es que sale bien.")
+        asign = self.enj._parse_asignaciones(plan, [self.w1, self.w2])
+        self.assertEqual([s.key for s, _ in asign], ['w-oc', 'w-muta'])
+        self.assertIn('DATOS.md', asign[0][1])
+        # el cierre del líder NO se le pega a la última silla (corta en el `---`)
+        self.assertNotIn('pronóstico', asign[1][1])
+
+    def test_cabecera_vacia_sin_cuerpo_no_asigna(self):
+        # «@opencito:» y nada más no es una subtarea → no mandamos un encargo vacío
+        self.assertEqual(self.enj._parse_asignaciones("@opencito:\n\n---", [self.w1]), [])
+
+    def test_lenguaje_natural_rescatado(self):
+        """Pase tolerante: el líder delega hablando («Opencito, investigá…», sin @ ni dos puntos)
+        y la mesa se quedaba con el plan escrito y nadie ejecutando."""
+        plan = ("Opencito, investigá el trámite y los costos\n"
+                "1. Trámite exacto\n"
+                "2. Costos aproximados")
+        asign = self.enj._parse_asignaciones(plan, [self.w1, self.w2])
+        self.assertEqual(len(asign), 1)
+        silla, subtarea = asign[0]
+        self.assertEqual(silla.key, 'w-oc')
+        self.assertIn('investigá el trámite', subtarea)
+        self.assertIn('Trámite exacto', subtarea)   # el detalle numerado se anexó
+
+    def test_estricto_gana_sobre_tolerante(self):
+        # con «@alias:» presente, el tolerante NO corre → un nombre suelto no se cuela
+        asign = self.enj._parse_asignaciones(
+            "@mutalisco: hacé X\nOpencito ya sabe de esto, no le pidas nada", [self.w1, self.w2])
+        self.assertEqual([s.key for s, _ in asign], ['w-muta'])
+
+    def test_nombre_sin_separador_no_es_asignacion(self):
+        # «Opencito dijo que…» no es un reparto (falta separador , : -)
+        self.assertEqual(
+            self.enj._parse_asignaciones("Opencito dijo que ya está listo", [self.w1]), [])
+
+
+class SalidaLimpiaTests(TestCase):
+    """Dos ruidos que se veían crudos en la mesa: el <think> de los modelos de razonamiento y el
+    auto-prefijo con el propio nombre que las sillas copian del transcripto."""
+
+    def test_quita_bloque_think(self):
+        from .engine import quitar_think
+        self.assertEqual(quitar_think('<think>me pregunto…</think>\nLa respuesta es 4.'),
+                         'La respuesta es 4.')
+
+    def test_think_sin_cerrar_no_deja_cocina(self):
+        # cortado por timeout: después del <think> abierto no hay respuesta útil
+        from .engine import quitar_think
+        self.assertEqual(quitar_think('Voy a pensarlo.\n<think>a ver, si el usuario…'),
+                         'Voy a pensarlo.')
+
+    def test_quita_autoprefijo_propio(self):
+        from .engine import quitar_autoprefijo
+        p = Participante.objects.create(key='arq', nombre='Arquimedes', comando=['opencode', 'run'])
+        for crudo in ('Arquimedes: listo', '[Arquimedes]: listo', '**Arquimedes:** listo'):
+            self.assertEqual(quitar_autoprefijo(crudo, p), 'listo', crudo)
+        # el nombre de OTRA silla no se toca (es una respuesta dirigida, no un prefijo)
+        self.assertEqual(quitar_autoprefijo('Neo: ojo con eso', p), 'Neo: ojo con eso')
+
+    def test_autoprefijo_solo_no_vacia_el_mensaje(self):
+        from .engine import quitar_autoprefijo
+        p = Participante.objects.create(key='neo2', nombre='Neo', comando=['opencode', 'run'])
+        self.assertEqual(quitar_autoprefijo('Neo:', p), 'Neo:')
+
+
+class DegradacionSillasTests(TestCase):
+    """Cualquier fallo de una silla es un marcador de ruido, nunca una excepción que rompa la mesa."""
+
+    def test_cli_inexistente(self):
+        p = Participante.objects.create(key='rota', nombre='Rota', comando=['cli-inexistente-xyz'])
+        salida, ruido = ejecutar_cli(p, 'hola', timeout=5)
+        self.assertTrue(ruido)
+        self.assertIn('no instalado', salida)
+
+    def test_timeout(self):
+        p = Participante.objects.create(key='lenta', nombre='Lenta', comando=['sleep'])
+        salida, ruido = ejecutar_cli(p, '5', timeout=1)  # corre `sleep 5` con techo de 1s
+        self.assertTrue(ruido)
+        self.assertIn('timeout', salida)
+
+    def test_endpoint_http_caido(self):
+        p = Participante.objects.create(
+            key='local', nombre='Local', endpoint_url='http://127.0.0.1:9', endpoint_model='x')
+        salida, ruido = ejecutar_http(p, 'hola', timeout=2)
+        self.assertTrue(ruido)
+        self.assertIn('❌', salida)
+
+
+class ConexionesTests(TestCase):
+    def test_ruta_corta_colapsa_el_home(self):
+        self.assertEqual(ruta_corta('/home/pepe/.claude/.credentials.json'), '~/.claude/.credentials.json')
+        self.assertEqual(ruta_corta('/root/.gemini/antigravity-cli'), '~/.gemini/antigravity-cli')
+        self.assertEqual(ruta_corta('/srv/creds/x.json'), '/srv/creds/x.json')  # fuera del home, intacta
+        self.assertEqual(ruta_corta('/home/pepe'), '~')
+
+    def test_ruta_corta_colapsa_el_home_windows(self):
+        self.assertEqual(ruta_corta(r'C:\Users\Fede\.local\share\opencode\auth.json'),
+                         r'~\.local\share\opencode\auth.json')
+        self.assertEqual(ruta_corta('C:/Users/Fede/.claude/.credentials.json'),
+                         '~/.claude/.credentials.json')
+        self.assertEqual(ruta_corta(r'D:\Users\Fede'), '~')                     # otra unidad, también home
+        self.assertEqual(ruta_corta(r'C:\Users'), r'C:\Users')                  # sin usuario, intacta
+        self.assertEqual(ruta_corta(r'C:\ProgramData\x.json'), r'C:\ProgramData\x.json')  # fuera del home
+        self.assertEqual(ruta_corta(r'C:\Users\Fede2024\creds'), r'~\creds')    # usuario alfanumérico
+
+    def test_detectar_por_existencia(self):
+        with tempfile.NamedTemporaryFile() as f:
+            env = {
+                'SWARM_CLAUDE_CREDS': f.name,                       # existe
+                'SWARM_OPENCODE_CREDS': '/no/existe/auth.json',     # no existe
+                'SWARM_AGY_CREDS': '/no/existe/antigravity-cli',
+            }
+            with mock.patch.dict('os.environ', env):
+                estados = detectar()
+        self.assertTrue(estados['claude'])
+        self.assertFalse(estados['opencode'])
+        self.assertFalse(estados['agy'])
+
+    def test_resolver_bin_path_primero(self):
+        self.assertTrue(resolver_bin('sh'))  # en PATH → lo devuelve de ahí
+
+    def test_resolver_bin_fallback_a_dirs_tipicos(self):
+        # Binario fuera del PATH pero en un dir típico de instalación (el caso
+        # doble-clic del pendrive: el rc de la shell no cargó su export PATH).
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / 'clifantasma'
+            fake.write_text('#!/bin/sh\n')
+            fake.chmod(0o755)
+            with mock.patch.object(conexiones_mod, '_DIRS_BIN', [d]):
+                self.assertEqual(resolver_bin('clifantasma'), str(fake))
+        self.assertIsNone(resolver_bin('clifantasma'))  # sin ese dir, no está
+
+
+class VistasTests(TestCase):
+    """El flujo real del usuario, con el test client (sin login: single-user)."""
+
+    def test_seeds_vienen_apagadas_y_sin_keys(self):
+        # Los CLIs siguen apagados (requieren login). Chispa se retiró (0008: murió el tier anónimo
+        # de Pollinations) → una instalación de fábrica NO tiene ninguna silla activa.
+        sillas = {p.key: p for p in Participante.objects.all()}
+        self.assertIn('claude', sillas)
+        self.assertIn('opencode', sillas)
+        self.assertFalse(sillas['claude'].activo)
+        self.assertFalse(sillas['opencode'].activo)
+        self.assertNotIn('chispa', sillas)     # retirada por la migración 0008
+        activas = [p.key for p in sillas.values() if p.activo]
+        self.assertEqual(activas, [])
+
+    def test_paginas_principales_responden(self):
+        for nombre in ('enjambre:home', 'enjambre:gestionar_sillas',
+                       'enjambre:conexiones', 'enjambre:ayuda'):
+            resp = self.client.get(reverse(nombre))
+            self.assertEqual(resp.status_code, 200, msg=nombre)
+
+    def test_boton_de_idioma_cambia_la_ui(self):
+        # default: español
+        self.assertContains(self.client.get(reverse('enjambre:home')), 'Nueva mesa')
+        # el botón EN postea al set_language de Django (cookie) → la UI pasa a inglés
+        self.client.post('/i18n/setlang/', {'language': 'en'})
+        resp = self.client.get(reverse('enjambre:home'))
+        self.assertContains(resp, 'New table')
+        self.assertNotContains(resp, 'Nueva mesa')
+
+    def test_conexiones_no_expone_el_usuario_del_host(self):
+        resp = self.client.get(reverse('enjambre:conexiones'))
+        self.assertNotIn(b'/home/', resp.content)  # rutas colapsadas a ~
+
+    def test_ciclo_de_una_mesa(self):
+        # crear
+        self.client.post(reverse('enjambre:crear_sesion'), {'nombre': 'mi mesa'})
+        sesion = Sesion.objects.get(nombre='mi mesa')
+        # renombrar
+        self.client.post(reverse('enjambre:renombrar_sesion', args=[sesion.pk]), {'nombre': 'otra'})
+        sesion.refresh_from_db()
+        self.assertEqual(sesion.nombre, 'otra')
+        # fijar (toggle)
+        self.client.post(reverse('enjambre:fijar_sesion', args=[sesion.pk]))
+        sesion.refresh_from_db()
+        self.assertTrue(sesion.fijada)
+        # preguntar encola el mensaje del humano (participante nulo)
+        self.client.post(reverse('enjambre:preguntar', args=[sesion.pk]), {'texto': 'hola mesa'})
+        self.assertTrue(Mensaje.objects.filter(
+            sesion=sesion, participante__isnull=True, texto='hola mesa').exists())
+        # borrar (cascada)
+        self.client.post(reverse('enjambre:borrar_sesion', args=[sesion.pk]))
+        self.assertFalse(Sesion.objects.filter(pk=sesion.pk).exists())
+
+    def test_alto_prende_la_senal_sin_encolar_el_verbo(self):
+        sesion = Sesion.objects.create(nombre='m')
+        self.client.post(reverse('enjambre:preguntar', args=[sesion.pk]), {'texto': '/alto'})
+        sesion.refresh_from_db()
+        self.assertTrue(sesion.detener_solicitado)
+        # el /alto NO queda como mensaje humano (quedaría enterrado); va un ack de sistema
+        self.assertFalse(Mensaje.objects.filter(sesion=sesion, texto='/alto').exists())
+        self.assertTrue(Mensaje.objects.filter(sesion=sesion, es_sistema=True).exists())
+
+    def test_ciclo_de_una_silla(self):
+        # crear
+        self.client.post(reverse('enjambre:crear_silla'), {'nombre': 'Mi Silla'})
+        silla = Participante.objects.get(nombre='Mi Silla')
+        self.assertTrue(silla.activo)
+        # guardar: cliente+modelo derivan el comando (el usuario no edita JSON)
+        self.client.post(reverse('enjambre:guardar_silla', args=[silla.key]), {
+            'nombre': 'Mi Silla', 'cliente': 'opencode', 'modelo': 'opencode/big-pickle',
+            'persona_a': 'Sos breve.', 'rango': 'control', 'activo': 'on', 'orden': '3',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        silla.refresh_from_db()
+        self.assertEqual(silla.comando, ['opencode', 'run', '--model', 'opencode/big-pickle'])
+        self.assertEqual(silla.orden, 3)
+        # modelo LIBRE: cualquier ID de proveedor vale, no solo los sugeridos (regresión
+        # del beta: el <select> cerrado no dejaba elegir gemini/gpt de la cuenta propia)
+        self.client.post(reverse('enjambre:guardar_silla', args=[silla.key]), {
+            'nombre': 'Mi Silla', 'cliente': 'opencode', 'modelo': 'google/gemini-3-pro',
+            'persona_a': 'x', 'rango': 'control', 'activo': 'on', 'orden': '3',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        silla.refresh_from_db()
+        self.assertEqual(silla.comando, ['opencode', 'run', '--model', 'google/gemini-3-pro'])
+        # clonar: misma config, key nueva
+        self.client.post(reverse('enjambre:clonar_silla', args=[silla.key]))
+        self.assertEqual(Participante.objects.filter(nombre__startswith='Mi Silla').count(), 2)
+        # borrar
+        self.client.post(reverse('enjambre:borrar_silla', args=[silla.key]))
+        self.assertFalse(Participante.objects.filter(key=silla.key).exists())
+
+    def test_guardar_sin_campos_del_origen_no_los_pisa(self):
+        """El form ya no manda `rango` ni `persona_b` (Swarm es single-user: no hay rango
+        consulta). Un guardado normal no tiene que blanquear esos campos heredados."""
+        silla = Participante.objects.create(
+            key='x', nombre='X', permitir_consulta=True, persona_consulta='B')
+        self.client.post(reverse('enjambre:guardar_silla', args=['x']), {
+            'nombre': 'X', 'cliente': 'opencode', 'modelo': '', 'persona_a': 'A',
+            'activo': 'on', 'orden': '1',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        silla.refresh_from_db()
+        self.assertEqual(silla.persona, 'A')
+        self.assertTrue(silla.permitir_consulta)
+        self.assertEqual(silla.persona_consulta, 'B')
+
+
+class MesaSinSillasTests(TestCase):
+    """Vacío = ninguna silla (no «todas las activas»): una mesa nueva nace muda y lo dice."""
+
+    def setUp(self):
+        self.a = Participante.objects.create(key='sa', nombre='A', comando=['true'], activo=True)
+        self.b = Participante.objects.create(key='sb', nombre='B', comando=['true'], activo=True)
+
+    def test_mesa_nueva_nace_sin_sillas(self):
+        self.client.post(reverse('enjambre:crear_sesion'), {'nombre': 'muda'})
+        sesion = Sesion.objects.get(nombre='muda')
+        self.assertEqual(sesion.participantes.count(), 0)
+        self.assertEqual(Enjambre(sesion).sillas(), [])
+
+    def test_mesa_vacia_avisa_y_no_despacha(self):
+        sesion = Sesion.objects.create(nombre='muda')
+        with mock.patch.object(engine_mod, 'ejecutar_cli') as cli:
+            r = Enjambre(sesion).responder('hola')
+        self.assertEqual(r, {})
+        cli.assert_not_called()
+        self.assertTrue(sesion.mensajes.filter(
+            es_sistema=True, texto__contains='no tiene sillas sentadas').exists())
+
+    def test_sillas_son_solo_las_sentadas(self):
+        sesion = Sesion.objects.create(nombre='una')
+        sesion.participantes.set([self.a])
+        self.assertEqual([s.key for s in Enjambre(sesion).sillas()], ['sa'])
+
+    def test_lider_no_sentado_corre_plana_y_avisa(self):
+        sesion = Sesion.objects.create(nombre='lider', topologia='lider', lider=self.a)
+        sesion.participantes.set([self.b])
+        e = Enjambre(sesion)
+        with mock.patch.object(Enjambre, 'responder', return_value={}) as resp:
+            e.liderar('hola')
+        resp.assert_called_once()
+        self.assertTrue(sesion.mensajes.filter(
+            es_sistema=True, texto__contains='no está sentado en la mesa').exists())
+
+    def test_config_no_acepta_lider_no_sentado(self):
+        sesion = Sesion.objects.create(nombre='cfg')
+        self.client.post(reverse('enjambre:guardar_config', args=[sesion.pk]),
+                         {'sillas': ['sb'], 'topologia': 'lider', 'lider': 'sa'})
+        sesion.refresh_from_db()
+        self.assertIsNone(sesion.lider)
+        self.assertEqual(sesion.topologia, 'plana')
+
+    def test_listado_no_tilda_sillas_de_una_mesa_vacia(self):
+        Sesion.objects.create(nombre='vacia')
+        html = self.client.get(reverse('enjambre:home')).content.decode()
+        self.assertIn('data-todas', html)   # botón ✓✓
+        self.assertNotRegex(html, r'value="sa"[^>]*checked')
+
+
+class WorkerParaleloTests(TestCase):
+    """SWARM_WORKER_PARALELO: default 1 = secuencial de siempre; N > 1 atiende en paralelo mesas
+    que no comparten silla, y una silla nunca tiene dos turnos en vuelo."""
+
+    def setUp(self):
+        from .management.commands.enjambre_worker import Command
+        self.cmd = Command()
+        self.a = Participante.objects.create(key='pa', nombre='A', comando=['true'], activo=True)
+        self.b = Participante.objects.create(key='pb', nombre='B', comando=['true'], activo=True)
+
+    def _mesa(self, nombre, sillas):
+        sesion = Sesion.objects.create(nombre=nombre)
+        sesion.participantes.set(sillas)
+        Mensaje.objects.create(sesion=sesion, emisor='Humano', texto=f'hola {nombre}')
+        return sesion
+
+    def test_default_es_secuencial_sin_hilos(self):
+        self._mesa('m1', [self.a])
+        self._mesa('m2', [self.b])
+        self.assertEqual(self.cmd._paralelo(), 1)
+        with mock.patch.object(self.cmd, '_responder') as resp, \
+                mock.patch('concurrent.futures.ThreadPoolExecutor') as pool:
+            self.cmd._tick()
+        self.assertEqual(resp.call_count, 2)
+        pool.assert_not_called()
+
+    @override_settings(SWARM_WORKER_PARALELO='2')
+    def test_mesas_sin_silla_en_comun_corren_a_la_vez(self):
+        import threading
+        self._mesa('m1', [self.a])
+        self._mesa('m2', [self.b])
+        # Barrera de 2: si el worker corriera secuencial, el primer turno esperaría solo y la
+        # barrera se rompería por timeout → el test falla (no alcanza con «no explotó»).
+        barrera = threading.Barrier(2, timeout=5)
+        with mock.patch.object(self.cmd, '_responder', side_effect=lambda *a: barrera.wait()), \
+                mock.patch('enjambre.management.commands.enjambre_worker.connections'):
+            self.cmd._tick()
+        self.assertFalse(barrera.broken)
+
+    @override_settings(SWARM_WORKER_PARALELO='4')
+    def test_silla_compartida_espera_al_tick_siguiente(self):
+        m1 = self._mesa('m1', [self.a])
+        m2 = self._mesa('m2', [self.a, self.b])
+        with mock.patch.object(self.cmd, '_responder') as resp, \
+                mock.patch('enjambre.management.commands.enjambre_worker.connections'):
+            self.cmd._tick()
+            # Comparten la silla A: en este tick responde UNA sola; la otra queda sin tocar.
+            self.assertEqual(resp.call_count, 1)
+            primera = resp.call_args.args[0].pk
+            otra = m2 if primera == m1.pk else m1
+            otra.refresh_from_db()
+            self.assertEqual(otra.ultimo_humano_respondido, 0)   # watermark intacto
+            self.cmd._tick()
+        self.assertEqual({c.args[0].pk for c in resp.call_args_list}, {m1.pk, m2.pk})
+
+    @override_settings(SWARM_WORKER_PARALELO='basura')
+    def test_valor_invalido_cae_a_secuencial(self):
+        self.assertEqual(self.cmd._paralelo(), 1)
+
+
+class WorkspaceTests(TestCase):
+    def test_mesa_workspace_idempotente(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                sesion = Sesion.objects.create(nombre='ws')
+                dest = mesa_workspace(sesion)
+                self.assertTrue((dest / '.git').exists())
+                self.assertTrue((dest / 'NOTAS.md').exists())
+                sesion.refresh_from_db()
+                self.assertEqual(sesion.workspace_dir, str(dest))
+                # segunda llamada: misma carpeta, no re-inicializa ni re-commitea
+                self.assertEqual(mesa_workspace(sesion), dest)
+                self.assertEqual(Path(dest, 'NOTAS.md').read_text()[:7], '# NOTAS')
+
+    def test_commit_roto_deja_la_tarea_en_error_y_no_tumba_el_worker(self):
+        """Si `comitear()` explota, la Tarea queda en ERROR con el motivo a la vista.
+
+        Sin esto pasaban dos cosas: quedaba clavada en EN_CURSO para siempre (nadie la reintenta
+        ni la marca) y la excepción subía al worker —que no envuelve esta llamada— llevándose el
+        tick entero, así que las tareas de atrás tampoco corrían. Las DOS rutas (worktree y mesa
+        persistente) tienen que fallar igual: divergir es cómo se cuela un zombi en una sola."""
+        from .models import Tarea
+        from . import workspace as ws_mod
+        p = Participante.objects.create(key='w-neo', nombre='Neo', comando=['opencode', 'run'])
+
+        # 1) ruta persistente (la carpeta de la mesa)
+        with tempfile.TemporaryDirectory() as tmp, override_settings(ENJAMBRE_MESAS_DIR=tmp):
+            s = Sesion.objects.create(nombre='m')
+            t = Tarea.objects.create(sesion=s, participante=p, titulo='t', ordenes='hacelo',
+                                     persistente=True)
+            with mock.patch.object(ws_mod, 'ejecutar_cli', return_value=('lo hice', False)), \
+                    mock.patch.object(ws_mod, 'comitear', side_effect=RuntimeError('git roto')):
+                ws_mod.ejecutar_tarea(t, timeout=1)     # NO propaga
+            t.refresh_from_db()
+            self.assertEqual(t.estado, Tarea.Estado.ERROR)
+            self.assertTrue(t.salida.startswith('lo hice'))   # el trabajo no se pierde
+            self.assertIn('git roto', t.salida)               # y se ve POR QUÉ falló
+
+        # 2) ruta de worktree (modo repo)
+        with tempfile.TemporaryDirectory() as repo:
+            t2 = Tarea.objects.create(participante=p, titulo='t2', ordenes='hacelo',
+                                      repo_path=repo)
+            with mock.patch.object(ws_mod, 'crear_worktree', return_value='abc123'), \
+                    mock.patch.object(ws_mod, 'ejecutar_cli', return_value=('lo hice', False)), \
+                    mock.patch.object(ws_mod, '_git', return_value=''), \
+                    mock.patch.object(ws_mod, 'comitear', side_effect=RuntimeError('git roto')), \
+                    mock.patch.object(ws_mod, 'remover_worktree'):
+                ws_mod.ejecutar_tarea(t2, timeout=1)
+        t2.refresh_from_db()
+        self.assertEqual(t2.estado, Tarea.Estado.ERROR)
+        self.assertIn('git roto', t2.salida)
+
+    def test_mesa_nueva_trae_gitignore(self):
+        """`comitear()` hace `git add -A`: sin .gitignore, un venv o un .env que deje una silla
+        queda versionado en la mesa y viaja en el zip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                dest = mesa_workspace(Sesion.objects.create(nombre='ig'))
+                texto = Path(dest, '.gitignore').read_text()
+                for regla in ('__pycache__/', 'node_modules/', '.env', '*.pem'):
+                    self.assertIn(regla, texto)
+
+
+class ToolbeltTests(TestCase):
+    """Los frenos del toolbelt: la bóveda no se lee, y las banderas escritoras de find no pasan."""
+
+    def test_read_file_no_lee_la_boveda(self):
+        from .toolbelt import _read_file
+        with tempfile.TemporaryDirectory() as tmp:
+            secreto = Path(tmp) / '.secrets.runtime.json'
+            secreto.write_text('{"anthropic": "sk-no-deberia-verse"}')
+            out = _read_file(str(secreto))
+            self.assertIn('⛔', out)
+            self.assertNotIn('sk-no-deberia-verse', out)
+            out = _read_file(str(Path(tmp) / 'secrets.enc'))
+            self.assertIn('⛔', out)
+
+    def test_inspect_no_menciona_la_boveda(self):
+        from .toolbelt import _correr_readonly
+        out, err = _correr_readonly('cat /algun/lado/.secrets.runtime.json')
+        self.assertIsNone(out)
+        self.assertIn('bóveda', err)
+        out, err = _correr_readonly('grep -r clave secrets.enc')
+        self.assertIsNone(out)
+        self.assertIn('bóveda', err)
+
+    def test_find_okdir_bloqueado(self):
+        from .toolbelt import _correr_readonly
+        for flag in ('-okdir', '-exec', '-delete'):
+            out, err = _correr_readonly(f'find /tmp {flag} rm {{}} ;')
+            self.assertIsNone(out, flag)
+            self.assertIn(flag, err)
+
+    def test_lecturas_normales_siguen_pasando(self):
+        from .toolbelt import _correr_readonly
+        out, err = _correr_readonly('pwd')
+        self.assertIsNone(err)
+        self.assertTrue(out)
+
+    def test_write_file_crea_y_sobrescribe(self):
+        from .toolbelt import _write_file
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = Path(tmp) / 'sub' / 'nuevo.txt'   # el subdir no existe: se crea
+            out, ok = _write_file(str(destino), 'hola')
+            self.assertTrue(ok, out)
+            self.assertEqual(destino.read_text(), 'hola')
+            self.assertIn('Creado', out)
+            out, ok = _write_file(str(destino), 'chau')
+            self.assertTrue(ok, out)
+            self.assertEqual(destino.read_text(), 'chau')
+            self.assertIn('Sobrescrito', out)
+
+    def test_write_file_no_toca_la_boveda(self):
+        """Simétrico a la lectura: sobrescribir secrets.enc borraría todas las API keys."""
+        from .toolbelt import _write_file
+        with tempfile.TemporaryDirectory() as tmp:
+            for nombre in ('secrets.enc', '.secrets.runtime.json'):
+                objetivo = Path(tmp) / nombre
+                objetivo.write_text('ORIGINAL')
+                out, ok = _write_file(str(objetivo), 'pisado')
+                self.assertFalse(ok, nombre)
+                self.assertIn('⛔', out)
+                self.assertEqual(objetivo.read_text(), 'ORIGINAL')
+
+    def test_mutaciones_corren_en_el_momento_y_quedan_en_bitacora(self):
+        """El cambio de contrato de esta versión: con el toolbelt encendido apply_fix NO encola
+        un pendiente, ejecuta. Si esto vuelve a dar PENDIENTE, el switch dejó de ser el permiso."""
+        from .models import Accion, Mensaje, Sesion
+        from .toolbelt import ejecutar_tool
+        sesion = Sesion.objects.create(nombre='t')
+        with tempfile.TemporaryDirectory() as tmp:
+            marca = Path(tmp) / 'corrio.txt'
+            out = ejecutar_tool('apply_fix', {'comando': f'echo ok > {marca}', 'motivo': 'test'},
+                                sesion, None)
+            self.assertTrue(marca.exists(), f'apply_fix no ejecutó: {out}')
+        acc = Accion.objects.get(herramienta='apply_fix')
+        self.assertEqual(acc.estado, Accion.Estado.EJECUTADA)
+        self.assertTrue(acc.es_mutacion)
+        self.assertNotEqual(acc.estado, Accion.Estado.PENDIENTE)
+        # Sin gate previo, el aviso en la mesa es la red que queda: el humano lo ve pasar.
+        self.assertTrue(Mensaje.objects.filter(sesion=sesion, es_sistema=True).exists())
+
+
+class RutasVedadasTests(TestCase):
+    """Credenciales del SISTEMA, no solo la bóveda de Swarm. Antes el chequeo era por NOMBRE de
+    archivo: `~/.ssh/id_rsa` pasaba libre y su contenido podía terminar en el chat de la mesa."""
+
+    def test_ssh_y_shadow_no_se_leen(self):
+        from .toolbelt import _es_ruta_vedada
+        self.assertTrue(_es_ruta_vedada(str(Path.home() / '.ssh' / 'id_rsa')))
+        self.assertTrue(_es_ruta_vedada(str(Path.home() / '.gnupg' / 'secring.gpg')))
+        self.assertTrue(_es_ruta_vedada('/etc/shadow'))
+        self.assertFalse(_es_ruta_vedada(str(Path.home() / 'notas.md')))
+
+    def test_list_dir_tampoco_lista_credenciales(self):
+        """Inconsistencia vieja: read_file frenaba y list_dir no, así que los nombres de las
+        claves (y su existencia) se filtraban igual."""
+        from .toolbelt import _list_dir
+        out = _list_dir(str(Path.home() / '.ssh'))
+        self.assertIn('⛔', out)
+
+    # ── Regresión de la auditoría 2026-08 ──────────────────────────────────────
+    # Estos tres huecos sobrevivieron a una suite de 148 tests porque ninguno
+    # ejercitaba el CAMINO de `inspect` (`_correr_readonly`): se probaba
+    # `_es_ruta_vedada` en aislamiento y sobre `_list_dir`, y ahí daba verde.
+    # La lección es que hay que testear la puerta, no la cerradura.
+
+    def test_inspect_no_lee_credenciales(self):
+        """`_es_ruta_vedada` protegía read_file/list_dir/write_file pero NO inspect,
+        y con `cat`/`grep` en la allowlist las llaves salían al transcript de la mesa."""
+        from .toolbelt import _correr_readonly
+        for cmd in (f'cat {Path.home()}/.ssh/id_rsa',
+                    f'grep -r . {Path.home()}/.aws',
+                    'cat /etc/shadow'):
+            out, err = _correr_readonly(cmd)
+            self.assertIsNone(out, f'{cmd} devolvió salida')
+            self.assertIn('protegidas', err or '', f'{cmd} no fue bloqueado')
+
+    def test_inspect_no_ejecuta_arbitrario_por_env(self):
+        """`env` estaba en la allowlist read-only: `env sh -c '...'` ejecutaba
+        cualquier cosa, porque el gate sólo mira el basename del PRIMER token."""
+        from .toolbelt import _correr_readonly
+        out, err = _correr_readonly("env sh -c 'id -un'")
+        self.assertIsNone(out)
+        self.assertIn('allowlist', err or '')
+
+    def test_deny_flags_no_se_evaden_con_comillas(self):
+        """El filtro corría sobre el string crudo (`cmd.lower().split()`) mientras el
+        argv se armaba con shlex: `find . '-delete'` pasaba el gate y borraba."""
+        from .toolbelt import _correr_readonly
+        for cmd in ("find . '-delete'", 'find . "-delete"', 'find . -delete'):
+            out, err = _correr_readonly(cmd)
+            self.assertIsNone(out, f'{cmd} devolvió salida')
+            self.assertIn('-delete', err or '', f'{cmd} no fue bloqueado')
+
+    def test_inspect_sigue_sirviendo_para_lo_legitimo(self):
+        """Contrapeso: los fixes no pueden romper el uso normal de la herramienta."""
+        from .toolbelt import _correr_readonly
+        for cmd in ('ls /tmp', 'printenv HOME', 'uname -a'):
+            out, err = _correr_readonly(cmd)
+            self.assertIsNone(err, f'{cmd} quedó bloqueado de más: {err}')
+            self.assertIsNotNone(out)
+
+
+class ReadFilePaginadoTests(TestCase):
+    """Mesa 7: un README de 87 KB dejó a la silla a mitad de camino, sin forma de pedir el resto."""
+
+    def test_archivo_grande_dice_como_seguir(self):
+        from .toolbelt import MAX_FILE, _read_file
+        with tempfile.TemporaryDirectory() as tmp:
+            grande = Path(tmp) / 'largo.txt'
+            grande.write_text('A' * (MAX_FILE + 500))
+            out = _read_file(str(grande))
+            self.assertIn('desde=', out)
+            self.assertIn(str(MAX_FILE), out)
+            cola = _read_file(str(grande), desde=MAX_FILE)
+            self.assertIn('A' * 100, cola)
+            self.assertIn('fin del archivo', cola)
+
+    def test_archivo_chico_no_agrega_ruido(self):
+        from .toolbelt import _read_file
+        with tempfile.TemporaryDirectory() as tmp:
+            chico = Path(tmp) / 'chico.txt'
+            chico.write_text('hola')
+            self.assertEqual(_read_file(str(chico)), 'hola')
+
+
+class CarpetaDeLaMesaTests(TestCase):
+    """Orden por default: sin ruta pedida, lo que las sillas producen aterriza en la mesa."""
+
+    def test_write_file_fuera_de_la_carpeta_avisa_y_no_escribe(self):
+        from .toolbelt import _write_file, usar_carpeta
+        with tempfile.TemporaryDirectory() as tmp:
+            mesa = Path(tmp) / 'mesa-1'
+            mesa.mkdir()
+            afuera = Path(tmp) / 'suelto.md'
+            with usar_carpeta(str(mesa)):
+                out, ok = _write_file(str(afuera), 'informe')
+                self.assertFalse(ok)
+                self.assertIn(str(mesa), out)
+                self.assertFalse(afuera.exists())
+                out, ok = _write_file(str(mesa / 'informe.md'), 'informe')
+                self.assertTrue(ok, out)
+            # Fuera del turno ordenado, la escritura libre sigue funcionando igual que siempre.
+            out, ok = _write_file(str(afuera), 'informe')
+            self.assertTrue(ok, out)
+
+    def test_apply_fix_corre_en_la_carpeta_de_la_mesa(self):
+        """Las rutas RELATIVAS del comando caen en la mesa (antes caían en el cwd del proceso)."""
+        from .toolbelt import ejecutar_tool, usar_carpeta
+        sesion = Sesion.objects.create(nombre='cwd')
+        with tempfile.TemporaryDirectory() as tmp:
+            with usar_carpeta(tmp):
+                ejecutar_tool('apply_fix', {'comando': 'echo hecho > relativo.txt',
+                                            'motivo': 'test'}, sesion, None)
+            self.assertTrue((Path(tmp) / 'relativo.txt').exists())
+
+    def test_turno_ordenado_salvo_que_el_humano_pida_otra_ruta(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                sesion = Sesion.objects.create(nombre='orden')
+                enj = Enjambre(sesion)
+                self.assertFalse(enj._turno_libre('/armar hacé un informe'))
+                # ruta absoluta nombrada por el humano → ese turno trabaja donde él dijo
+                self.assertTrue(enj._turno_libre('/armar revisá /home/fede/repos/algo y arreglalo'))
+                self.assertTrue(enj._turno_libre('mirá ~/.config/app/config.toml'))
+                # marcador explícito
+                self.assertTrue(enj._turno_libre('/libre tocá lo que necesites'))
+                # la propia carpeta de la mesa NO cuenta como "otra ruta"
+                mesa = str(mesa_workspace(sesion))
+                self.assertFalse(enj._turno_libre(f'/armar dejalo en {mesa}/informe.md'))
+                # y el switch de la mesa lo apaga entero
+                sesion.confinar = False
+                self.assertTrue(enj._turno_libre('/armar hacé un informe'))
+
+    def test_ruta_libre_mira_el_ultimo_mensaje_humano(self):
+        """Con líder, la silla recibe un encargo reescrito: la ruta original solo está en el
+        mensaje del humano. Si no se mirara, el turno se ordenaría contra lo que él pidió."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                sesion = Sesion.objects.create(nombre='orden2')
+                Mensaje.objects.create(sesion=sesion, emisor='Humano',
+                                       texto='/armar arreglá /etc/hosts de esta máquina')
+                enj = Enjambre(sesion)
+                self.assertTrue(enj._turno_libre('[Encargo del líder]: revisá el archivo'))
+
+
+class ParamTokensTests(TestCase):
+    """OpenAI real exige max_completion_tokens; los compatibles siguen con max_tokens."""
+
+    def test_openai_directo_usa_max_completion_tokens(self):
+        from .providers.openai_compat import _param_tokens
+        self.assertEqual(_param_tokens(''), 'max_completion_tokens')
+
+    def test_compatibles_siguen_con_max_tokens(self):
+        from .providers.openai_compat import _param_tokens
+        self.assertEqual(_param_tokens('https://openrouter.ai/api/v1'), 'max_tokens')
+        self.assertEqual(_param_tokens('https://api.groq.com/openai/v1'), 'max_tokens')
+
+
+class ApiKeyGateTests(TestCase):
+    """El gate de API key del dispatcher: TODOS los proveedores la exigen. Pollinations dejó de ser
+    la excepción cuando su tier anónimo murió (2026-07-20) — ahora es un api más, con key."""
+
+    def test_pollinations_sin_key_devuelve_marcador(self):
+        from .providers import chat
+        salida = chat('pollinations', 'openai-fast', 'hi', '', timeout=5)
+        self.assertIn('sin API key', salida)
+
+    def test_openai_sin_key_sigue_gateado(self):
+        from .providers import chat
+        salida = chat('openai', 'gpt-5.2', 'hi', '', timeout=5)
+        self.assertIn('sin API key', salida)
+
+    def test_pollinations_con_key_charla(self):
+        from .providers import chat
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'hola'}}]})):
+            self.assertEqual(chat('pollinations', 'openai-fast', 'hi', 'tok', timeout=5), 'hola')
+
+    def test_chat_agentic_pollinations_usa_el_toolbelt(self):
+        # Ahora es un api más: con key, chat_agentic corre el loop de tool-use (payload con tools).
+        from .providers import chat_agentic
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'ok'}}]})) as m:
+            salida = chat_agentic('pollinations', 'openai-fast', 'hi', 'tok', 5,
+                                  sesion=None, participante=None)
+        self.assertEqual(salida, 'ok')
+        payload = m.call_args[0][1]
+        self.assertIn('tools', payload)   # loop agéntico, no charla plana
+
+
+class CierreForzadoTests(TestCase):
+    """Al agotar MAX_ROUNDS, una ronda final SIN tools obliga a la silla a resumir en vez de cortar
+    en frío con un marcador confuso. Bug real: Don Zoilo (openrouter) en la Mesa 2 del Parrot hizo
+    el trabajo pero no cerró en texto → salía "(⏹️ corté… pedile que resuma)"."""
+
+    def test_openai_compat_fuerza_un_resumen_final(self):
+        from .providers import openai_compat
+        pide_tool = {'choices': [{'message': {'tool_calls': [
+            {'id': '1', 'function': {'name': 'inspect', 'arguments': '{}'}}]}}]}
+        resumen = {'choices': [{'message': {'content': 'Resumen: escribí /home/fede/saludo3.txt'}}]}
+
+        def fake(url, payload, headers, timeout):
+            # la ronda de cierre es la ÚNICA sin 'tools' → devuelve el texto; el resto pide tool.
+            return True, (resumen if 'tools' not in payload else pide_tool)
+
+        with mock.patch('enjambre.providers.openai_compat._http_json', side_effect=fake) as h, \
+                mock.patch('enjambre.toolbelt.ejecutar_tool', return_value='ok'):
+            out = openai_compat.chat_agentic('m', 'hi', 'k', 5, sesion=None, participante=None)
+        self.assertEqual(out, 'Resumen: escribí /home/fede/saludo3.txt')
+        payloads = [c.args[1] for c in h.call_args_list]
+        self.assertEqual(sum('tools' in p for p in payloads), toolbelt_mod.MAX_ROUNDS)
+        self.assertEqual(sum('tools' not in p for p in payloads), 1)  # exactamente 1 cierre
+
+    def test_anthropic_fuerza_un_resumen_final(self):
+        from .providers import anthropic
+        pide_tool = {'content': [{'type': 'tool_use', 'id': '1', 'name': 'inspect', 'input': {}}]}
+        resumen = {'content': [{'type': 'text', 'text': 'Resumen: toqué NOTAS.md'}]}
+
+        def fake(url, payload, headers, timeout):
+            return True, (resumen if 'tools' not in payload else pide_tool)
+
+        # anthropic.chat_agentic reimporta `_http_json` desde el paquete en tiempo de llamada.
+        with mock.patch('enjambre.providers._http_json', side_effect=fake), \
+                mock.patch('enjambre.toolbelt.ejecutar_tool', return_value='ok'):
+            out = anthropic.chat_agentic('m', 'hi', 'k', 5, sesion=None, participante=None)
+        self.assertEqual(out, 'Resumen: toqué NOTAS.md')
+
+    def test_marcador_honesto_si_el_cierre_tambien_falla(self):
+        # Si hasta la ronda de cierre vuelve vacía, cae a un marcador que aclara que el trabajo se hizo.
+        from .providers import openai_compat
+        pide_tool = {'choices': [{'message': {'tool_calls': [
+            {'id': '1', 'function': {'name': 'inspect', 'arguments': '{}'}}]}}]}
+        vacio = {'choices': [{'message': {'content': ''}}]}
+
+        def fake(url, payload, headers, timeout):
+            return True, (vacio if 'tools' not in payload else pide_tool)
+
+        with mock.patch('enjambre.providers.openai_compat._http_json', side_effect=fake), \
+                mock.patch('enjambre.toolbelt.ejecutar_tool', return_value='ok'):
+            out = openai_compat.chat_agentic('m', 'hi', 'k', 5, sesion=None, participante=None)
+        self.assertIn('⏹️', out)
+        self.assertIn('Bitácora', out)   # aclara que el trabajo quedó hecho
+
+
+class PollinationsClienteTests(TestCase):
+    """El cliente de Pollinations: URL final correcta y Bearer con el token."""
+
+    def _llamar(self, api_key):
+        from .providers import pollinations
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'x'}}]})) as m:
+            pollinations.chat('', 'hola', api_key, timeout=5)
+        return m.call_args[0]  # (url, payload, headers, timeout)
+
+    def test_url_modelo_default_y_atribucion(self):
+        url, payload, headers, _ = self._llamar('')
+        self.assertEqual(url, 'https://text.pollinations.ai/openai/chat/completions')
+        self.assertEqual(payload['model'], 'openai-fast')
+        self.assertIn('Referer', headers)
+        # base_url custom → habla max_tokens, no max_completion_tokens (verificado con curl)
+        self.assertIn('max_tokens', payload)
+
+    def test_bearer_vacio_y_con_token(self):
+        _, _, headers, _ = self._llamar('')
+        self.assertEqual(headers['Authorization'], 'Bearer ')  # verificado inocuo en vivo
+        _, _, headers, _ = self._llamar('tok123')
+        self.assertEqual(headers['Authorization'], 'Bearer tok123')
+
+
+class GeminiClienteTests(TestCase):
+    """El proveedor gemini: URL final del endpoint OpenAI-compat de Google, Bearer y registro."""
+
+    def _llamar(self, model=''):
+        from .providers import gemini
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'x'}}]})) as m:
+            gemini.chat(model, 'hola', 'AIza-test', timeout=5)
+        return m.call_args[0]  # (url, payload, headers, timeout)
+
+    def test_url_base_fija_y_modelo_default(self):
+        url, payload, headers, _ = self._llamar()
+        self.assertEqual(
+            url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+        self.assertEqual(payload['model'], 'gemini-3.5-flash')
+        self.assertEqual(headers['Authorization'], 'Bearer AIza-test')
+
+    def test_dispatcher_rutea_y_sin_key_es_marcador(self):
+        from . import providers
+        with mock.patch('enjambre.providers.gemini.chat', return_value='ok') as m:
+            self.assertEqual(providers.chat('gemini', 'g', 'hola', 'k', 5), 'ok')
+        m.assert_called_once()
+        self.assertTrue(providers.chat('gemini', 'g', 'hola', '', 5).startswith('(❌ sin API key'))
+
+    def test_registro_y_vault(self):
+        from . import vault
+        from .clientes import api_de, es_api, modelo_de
+        self.assertIn('gemini', vault.PROVIDERS)
+        p = Participante.objects.create(
+            key='gem-t', nombre='Gema', comando=['api-gemini', '--model', 'gemini-3.1-pro'])
+        self.assertTrue(es_api('api-gemini'))
+        self.assertEqual(api_de(p), 'gemini')
+        self.assertEqual(modelo_de(p), 'gemini-3.1-pro')
+
+    def test_listar_modelos_pela_el_prefijo_models(self):
+        from . import providers
+        data = {'data': [{'id': 'models/gemini-3.5-flash'}, {'id': 'models/gemini-3.1-pro'}]}
+        with mock.patch('enjambre.providers._http_get_json', return_value=data):
+            src, models, _ = providers.listar_modelos('gemini', api_key='AIza-test')
+        self.assertEqual(src, 'live')
+        self.assertEqual([m['id'] for m in models], ['gemini-3.5-flash', 'gemini-3.1-pro'])
+
+
+class ClientePollinationsTests(TestCase):
+    """Pollinations pasó de silla-gratis-sin-key a proveedor por API key (tier anónimo muerto)."""
+
+    def _silla(self, **kw):
+        base = dict(key='polli-t', nombre='Polli',
+                    comando=['api-pollinations', '--model', 'openai-fast'])
+        base.update(kw)
+        return Participante.objects.create(**base)
+
+    def test_derivaciones(self):
+        from .clientes import api_de, cliente_de, es_api, es_cli, modelo_de
+        p = self._silla()
+        self.assertTrue(es_api('api-pollinations'))
+        self.assertEqual(api_de(p), 'pollinations')
+        self.assertEqual(cliente_de(p), 'api-pollinations')
+        self.assertEqual(modelo_de(p), 'openai-fast')
+        self.assertFalse(es_cli(p))  # api:* actúa por el toolbelt, no por subprocess
+
+    def test_endpoint_url_gana_sobre_api(self):
+        from .clientes import api_de
+        p = self._silla(key='polli-ollama', endpoint_url='http://lab:11434')
+        self.assertEqual(api_de(p), '')
+
+    def test_ya_no_tiene_flag_sin_key(self):
+        from .clientes import CLIENTES
+        self.assertNotIn('sin_key', CLIENTES['api-pollinations'])
+
+    def test_vault_lo_trata_como_proveedor_con_key(self):
+        from . import vault
+        self.assertIn('pollinations', vault.PROVIDERS)      # ahora requiere key
+        self.assertEqual(vault.PROVIDERS_OPCIONALES, ())
+
+    def test_listar_modelos_marca_no_free_y_pide_token(self):
+        from .providers import listar_modelos
+        catalogo = [
+            {'name': 'openai-fast', 'tier': 'anonymous', 'tools': True},
+            {'name': 'gemini-fast', 'tier': 'seed', 'tools': True},
+        ]
+        with mock.patch('enjambre.providers._http_get_json', return_value=catalogo):
+            source, out, nota = listar_modelos('pollinations')
+        self.assertEqual(source, 'live')
+        self.assertEqual({m['id'] for m in out}, {'openai-fast', 'gemini-fast'})  # ya no filtra tier
+        self.assertFalse(any(m['free'] for m in out))       # nada es gratis: todo cuesta pollen
+        self.assertIn('token', nota.lower())
+
+
+class RatelimitTests(TestCase):
+    """El espaciador del tier gratis: espacia, persiste a archivo y castiga tras 429."""
+
+    def setUp(self):
+        from . import ratelimit
+        ratelimit._ultimo.clear()
+        ratelimit._castigo.clear()
+        self.tmp = tempfile.mkdtemp()
+
+    def _con_data_dir(self):
+        return override_settings(SWARM_DATA_DIR=self.tmp)
+
+    def test_espacia_dos_requests(self):
+        import time as t
+        from . import ratelimit
+        with self._con_data_dir(), \
+                mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.2, 0.1)}), \
+                mock.patch('enjambre.vault.get_key', return_value=''):
+            t0 = t.monotonic()
+            ratelimit.esperar('x')
+            ratelimit.esperar('x')
+            self.assertGreaterEqual(t.monotonic() - t0, 0.2)
+
+    def test_token_acelera(self):
+        from . import ratelimit
+        with mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.2, 0.1)}):
+            with mock.patch('enjambre.vault.get_key', return_value='tok'):
+                self.assertEqual(ratelimit.intervalo_de('x'), 0.1)
+            with mock.patch('enjambre.vault.get_key', return_value=''):
+                self.assertEqual(ratelimit.intervalo_de('x'), 0.2)
+
+    def test_key_sin_limite_es_noop(self):
+        import time as t
+        from . import ratelimit
+        t0 = t.monotonic()
+        ratelimit.esperar('openai')  # no está en INTERVALOS
+        self.assertLess(t.monotonic() - t0, 0.05)
+
+    def test_persiste_el_sello_a_archivo(self):
+        import json as j
+        from . import ratelimit
+        with self._con_data_dir(), \
+                mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.01, 0.01)}), \
+                mock.patch('enjambre.vault.get_key', return_value=''):
+            ratelimit.esperar('x')
+            data = j.loads((Path(self.tmp) / '.ratelimit.json').read_text())
+        self.assertIn('x', data)
+
+    def test_castigo_estira_la_ventana(self):
+        import time as t
+        from . import ratelimit
+        with self._con_data_dir(), \
+                mock.patch.dict(ratelimit.INTERVALOS, {'x': (0.05, 0.05)}), \
+                mock.patch('enjambre.vault.get_key', return_value=''):
+            ratelimit.esperar('x')
+            ratelimit.castigar('x', 0.4)  # Retry-After simulado
+            t0 = t.monotonic()
+            ratelimit.esperar('x')
+            self.assertGreaterEqual(t.monotonic() - t0, 0.3)
+
+    def test_throttle_key_llega_desde_pollinations(self):
+        from .providers import pollinations
+        with mock.patch('enjambre.providers.openai_compat._http_json',
+                        return_value=(True, {'choices': [{'message': {'content': 'x'}}]})) as m:
+            pollinations.chat('', 'hola', '', timeout=5)
+        self.assertEqual(m.call_args.kwargs.get('throttle_key'), 'pollinations')
+
+
+class ClasificarErroresTests(TestCase):
+    """El contrato del que depende la cascada: cada marcador que el camino API puede emitir."""
+
+    def test_tabla_completa(self):
+        from .providers.errores import clasificar
+        casos = {
+            'Listo, el script quedó en ordenar.sh': 'ok',
+            '(sin respuesta)': 'ok',   # el modelo contestó vacío — no es error
+            '(❌ HTTP 429: rate limited)': 'reintentable',
+            '(❌ HTTP 500)': 'reintentable',
+            '(❌ HTTP 529: overloaded)': 'reintentable',
+            '(⏰ timeout tras 180s)': 'reintentable',
+            '(❌ respuesta no-JSON del proveedor)': 'reintentable',
+            '(❌ sin conexión: [Errno -3] …)': 'reintentable',
+            '(❌ HTTP 400: bad request)': 'terminal',
+            '(❌ HTTP 401: invalid key)': 'terminal',
+            '(❌ HTTP 404: model not found)': 'terminal',
+            '(❌ sin API key para este proveedor — …)': 'terminal',
+            '(❌ proveedor API desconocido: x)': 'terminal',
+            '(❌ API key inválida: tiene caracteres raros — …)': 'terminal',
+            '(❌ respuesta inesperada del proveedor)': 'terminal',
+        }
+        for marcador, esperado in casos.items():
+            with self.subTest(marcador=marcador):
+                self.assertEqual(clasificar(marcador), esperado)
+
+
+class RetryHttpJsonTests(TestCase):
+    """La capa 1 de la cascada: retry de transitorios en _http_json, sin retry de terminales."""
+
+    def _correr(self, intentos):
+        from .providers import _http_json
+        with mock.patch('enjambre.providers._intento', side_effect=intentos) as m, \
+                mock.patch('enjambre.providers.time.sleep'):
+            resultado = _http_json('http://x/v1/chat/completions', {}, {}, timeout=5)
+        return resultado, m.call_count
+
+    def test_429_reintenta_y_sale_ok(self):
+        (ok, data), llamadas = self._correr([
+            (False, ('(❌ HTTP 429: rate limited)', None)),
+            (True, {'choices': []}),
+        ])
+        self.assertTrue(ok)
+        self.assertEqual(llamadas, 2)
+
+    def test_400_no_reintenta(self):
+        (ok, marcador), llamadas = self._correr([(False, ('(❌ HTTP 400: bad request)', None))])
+        self.assertFalse(ok)
+        self.assertEqual(llamadas, 1)
+        self.assertIn('400', marcador)
+
+    def test_sin_conexion_no_reintenta(self):
+        (ok, marcador), llamadas = self._correr([(False, '(❌ sin conexión: DNS caído)')])
+        self.assertFalse(ok)
+        self.assertEqual(llamadas, 1)
+
+    def test_transitorio_persistente_agota_los_intentos(self):
+        from .providers import MAX_INTENTOS
+        fallo = (False, ('(❌ HTTP 503)', None))
+        (ok, marcador), llamadas = self._correr([fallo] * MAX_INTENTOS)
+        self.assertFalse(ok)
+        self.assertEqual(llamadas, MAX_INTENTOS)
+        self.assertIn('503', marcador)
+
+    def test_respeta_retry_after(self):
+        from .providers import _http_json
+        with mock.patch('enjambre.providers._intento', side_effect=[
+                (False, ('(❌ HTTP 429)', '7')), (True, {})]), \
+                mock.patch('enjambre.providers.time.sleep') as s:
+            _http_json('http://x', {}, {}, timeout=5)
+        s.assert_called_once_with(7.0)
+
+    def test_timeout_sale_como_reloj_y_reintenta(self):
+        (ok, marcador), llamadas = self._correr([
+            (False, '(⏰ timeout tras 5s)'), (False, '(⏰ timeout tras 5s)'),
+            (True, {'r': 1})])
+        self.assertTrue(ok)
+        self.assertEqual(llamadas, 3)
+
+
+class ChispaRetiradaTests(TestCase):
+    """La migración 0008 retira Chispa: su tier anónimo (Pollinations sin key) murió."""
+
+    def test_chispa_no_existe(self):
+        self.assertFalse(Participante.objects.filter(key='chispa').exists())
+
+    def test_no_hay_silla_activa_de_fabrica(self):
+        # Sin Chispa, una instalación de fábrica arranca sin ninguna silla lista → la escalera
+        # empuja a sentar opencode o una API key.
+        self.assertEqual(Participante.objects.filter(activo=True).count(), 0)
+
+
+class OnboardingTests(TestCase):
+    """El estado de la escalera de 2 escalones (opencode / API keys), sin red ni binarios."""
+
+    def test_arranque_de_fabrica(self):
+        from . import onboarding
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None), \
+                mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}), \
+                mock.patch('enjambre.vault.configured_providers', return_value=[]):
+            e = onboarding.escalones()
+        self.assertEqual(len(e), 2)
+        self.assertEqual([x['n'] for x in e], [1, 2])   # ya no hay escalón 0
+        self.assertFalse(e[0]['listo'])   # opencode: sin binario
+        self.assertFalse(e[0]['instalado'])
+        self.assertFalse(e[1]['listo'])   # keys: bóveda vacía
+        self.assertFalse(onboarding.completa())
+
+    def test_opencode_instalado_sin_login(self):
+        # El estado más probable del escalón 1: binario sí, credencial no → CTA de login.
+        from . import onboarding
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/opencode'), \
+                mock.patch('enjambre.conexiones.detectar', return_value={'opencode': False}):
+            e = onboarding.escalones()
+        self.assertFalse(e[0]['listo'])
+        self.assertTrue(e[0]['instalado'])
+        self.assertFalse(e[0]['logueado'])
+
+    def test_escalera_completa(self):
+        from . import onboarding
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/opencode'), \
+                mock.patch('enjambre.conexiones.detectar', return_value={'opencode': True}), \
+                mock.patch('enjambre.vault.configured_providers', return_value=['openrouter']):
+            e = onboarding.escalones()
+            self.assertTrue(all(x['listo'] for x in e))
+            self.assertTrue(onboarding.completa())
+
+
+class ConfigIOTests(TestCase):
+    """Exportar/importar la config de sillas (llevarla a otra PC o a una versión nueva)."""
+
+    def _exportar(self):
+        from . import config_io
+        return json.loads(config_io.exportar_json())
+
+    def test_roundtrip_conserva_la_config(self):
+        p = Participante.objects.create(
+            key='neo', nombre='Neo', comando=['opencode', 'run', '--model', 'opencode/big-pickle'],
+            persona='sos Neo', especialidad='fabricar', rol_tarjeta='Constructor',
+            color_ui='#a0e020', activo=True, orden=7)
+        data = self._exportar()
+        Participante.objects.all().delete()
+
+        from . import config_io
+        rep = config_io.importar(json.dumps(data).encode(), reemplazar=False,
+                                 avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertEqual(rep['avisos'], [])
+        n = Participante.objects.get(key='neo')
+        self.assertEqual(n.nombre, p.nombre)
+        self.assertEqual(n.persona, 'sos Neo')
+        self.assertEqual(n.especialidad, 'fabricar')
+        self.assertEqual(n.color_ui, '#a0e020')
+        self.assertEqual(n.orden, 7)
+        # El comando se RECONSTRUYE con build_comando de esta versión, no se copia crudo.
+        self.assertEqual(n.comando, ['opencode', 'run', '--model', 'opencode/big-pickle'])
+
+    def test_export_no_lleva_comando_crudo(self):
+        """El argv no viaja: importar un JSON no puede inyectar un comando arbitrario."""
+        data = self._exportar()
+        for s in data['sillas']:
+            self.assertNotIn('comando', s)
+            self.assertIn('cliente', s)
+
+    def test_import_ignora_comando_inyectado(self):
+        from . import config_io
+        data = self._exportar()
+        data['sillas'] = [{'key': 'malicia', 'nombre': 'Malicia', 'cliente': 'opencode',
+                           'modelo': '', 'comando': ['rm', '-rf', '/'], 'activo': True}]
+        config_io.importar(json.dumps(data).encode(), avatar_limpio=lambda v: v or '',
+                           color_limpio=lambda v: v or '')
+        self.assertEqual(Participante.objects.get(key='malicia').comando, ['opencode', 'run'])
+
+    def test_import_saltea_cliente_desconocido_y_avisa(self):
+        from . import config_io
+        data = self._exportar()
+        data['sillas'] = [{'key': 'rara', 'nombre': 'Rara', 'cliente': 'inventado', 'modelo': ''}]
+        rep = config_io.importar(json.dumps(data).encode(), avatar_limpio=lambda v: v or '',
+                                 color_limpio=lambda v: v or '')
+        self.assertFalse(Participante.objects.filter(key='rara').exists())
+        self.assertEqual(len(rep['avisos']), 1)
+
+    def test_fusionar_no_borra_las_que_no_estan(self):
+        from . import config_io
+        Participante.objects.create(key='mia', nombre='Mía', comando=['opencode', 'run'])
+        data = self._exportar()
+        data['sillas'] = [{'key': 'nueva', 'nombre': 'Nueva', 'cliente': 'opencode', 'modelo': ''}]
+        config_io.importar(json.dumps(data).encode(), reemplazar=False,
+                           avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertTrue(Participante.objects.filter(key='mia').exists())
+        self.assertTrue(Participante.objects.filter(key='nueva').exists())
+
+    def test_reemplazar_deja_la_db_igual_al_archivo(self):
+        from . import config_io
+        Participante.objects.create(key='mia', nombre='Mía', comando=['opencode', 'run'])
+        data = self._exportar()
+        data['sillas'] = [{'key': 'nueva', 'nombre': 'Nueva', 'cliente': 'opencode', 'modelo': ''}]
+        rep = config_io.importar(json.dumps(data).encode(), reemplazar=True,
+                                 avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertEqual(list(Participante.objects.values_list('key', flat=True)), ['nueva'])
+        self.assertGreaterEqual(rep['borradas'], 1)
+
+    def test_archivo_roto_no_toca_nada(self):
+        from . import config_io
+        antes = Participante.objects.count()
+        for raw in (b'no soy json', b'{}', b'{"swarm_config": 99, "sillas": []}'):
+            with self.assertRaises(config_io.ErrorImport):
+                config_io.importar(raw)
+        self.assertEqual(Participante.objects.count(), antes)
+
+    def test_reemplazar_con_archivo_sin_sillas_validas_no_vacia_la_mesa(self):
+        """Red de seguridad: si TODAS las sillas del archivo se saltean, reemplazar no borra."""
+        from . import config_io
+        data = self._exportar()
+        data['sillas'] = [{'key': 'x', 'nombre': 'X', 'cliente': 'inventado'}]
+        config_io.importar(json.dumps(data).encode(), reemplazar=True,
+                           avatar_limpio=lambda v: v or '', color_limpio=lambda v: v or '')
+        self.assertTrue(Participante.objects.exists())
+
+    def test_vista_exportar_baja_un_json(self):
+        r = self.client.get(reverse('enjambre:exportar_sillas'))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('attachment', r['Content-Disposition'])
+        self.assertEqual(json.loads(r.content)['swarm_config'], 1)
+
+    def test_vista_importar_sube_archivo_y_reporta(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        data = self._exportar()
+        data['sillas'].append({'key': 'subida', 'nombre': 'Subida', 'cliente': 'opencode',
+                               'modelo': '', 'activo': True, 'orden': 4})
+        f = SimpleUploadedFile('cfg.json', json.dumps(data).encode(), 'application/json')
+        r = self.client.post(reverse('enjambre:importar_sillas'), {'archivo': f}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(Participante.objects.filter(key='subida').exists())
+        self.assertContains(r, 'Config importada')
+
+
+class PlantillasTests(TestCase):
+    """Errores de plantilla que el navegador NO grita: quedan impresos en la página."""
+
+    def _plantillas(self):
+        raiz = Path(__file__).resolve().parent / 'templates'
+        return sorted(raiz.rglob('*.html'))
+
+    def test_no_hay_comentarios_multilinea(self):
+        """`{# … #}` en Django es de UNA sola línea: si abarca dos, deja de ser comentario y se
+        IMPRIME en la página. Para varias líneas va `{% comment %}…{% endcomment %}`.
+        Ya nos mordió más de una vez (el peor caso fue en base_swarm.html: salía en TODAS
+        las vistas), así que lo chequea la suite y no el ojo."""
+        malos = []
+        for f in self._plantillas():
+            texto = f.read_text(encoding='utf-8')
+            for m in re.finditer(r'\{#', texto):
+                fin = texto.find('#}', m.start())
+                if fin == -1 or '\n' in texto[m.start():fin]:
+                    malos.append(f"{f.name}:{texto[:m.start()].count(chr(10)) + 1}")
+        self.assertEqual(malos, [], f"Comentarios {{# #}} multilínea (se imprimen): {malos}")
+
+    def test_los_comentarios_de_bloque_cierran(self):
+        """Un `{% comment %}` sin `{% endcomment %}` se come el resto de la plantilla."""
+        for f in self._plantillas():
+            texto = f.read_text(encoding='utf-8')
+            self.assertEqual(texto.count('{% comment %}'), texto.count('{% endcomment %}'),
+                             f"{f.name}: comment/endcomment desbalanceados")
+
+    def test_las_vistas_no_escupen_sintaxis_de_plantilla(self):
+        """Red final: renderizar de verdad y mirar que no se filtre `{# … #}`, `{{ var }}` ni
+        `{% tag %}` al HTML (fuera de <script>/<style>, donde las llaves son legítimas)."""
+        sesion = Sesion.objects.create(nombre='prueba')
+        urls = ['/', '/ayuda/', '/conexiones/', '/sillas/', f'/sesion/{sesion.pk}/']
+        sospechas = [r'\{#', r'#\}', r'\{%\s*comment', r'\{\{\s*\w+\s*\}\}',
+                     r'\{%\s*(if|for|trans|blocktrans|url|include)\b']
+        for lang in ('es', 'en'):
+            with translation.override(lang):
+                for url in urls:
+                    cuerpo = self.client.get(url, follow=True).content.decode('utf-8', 'replace')
+                    limpio = re.sub(r'<script[\s\S]*?</script>|<style[\s\S]*?</style>', '', cuerpo)
+                    for patron in sospechas:
+                        self.assertIsNone(re.search(patron, limpio),
+                                          f"[{lang}] {url}: se filtró sintaxis de plantilla")
+
+    def test_la_mesa_ofrece_bajar_la_charla_y_el_switch_de_orden(self):
+        """Los dos controles nuevos de la cabecera/config tienen que estar en el HTML: si un
+        refactor del template se los come, no se nota hasta que alguien los busca."""
+        sesion = Sesion.objects.create(nombre='prueba')
+        cuerpo = self.client.get(f'/sesion/{sesion.pk}/').content.decode()
+        self.assertIn('id="enj-descargar"', cuerpo)   # charla en .txt
+        self.assertIn('id="enj-pdf"', cuerpo)         # charla en PDF
+        self.assertIn('name="confinar"', cuerpo)      # trabajar en la carpeta de la mesa
+
+    def test_ningun_trans_en_js_trae_comillas_en_su_traduccion(self):
+        """Una traducción con apóstrofo interpolada en un string JS de comilla simple CIERRA el
+        string y rompe el `<script>` ENTERO — mueren todos los botones de esa página, en ese
+        idioma nada más. Pasó en mesa.html: EN «couldn't upload» dejó la mesa sin config, toggle
+        ni carpeta (la Bitácora seguía porque es un link, no JS).
+
+        Regla: `{% trans %}` dentro de `<script>` va con `|escapejs`. Este test permite el
+        literal solo si su traducción no trae comillas ni barras.
+
+        Traduce con `gettext` (el `.mo` COMPILADO, que es lo que se despacha) en vez de leer el
+        `.po`: sin dependencias extra —polib no está en requirements y el CI se rompía— y de paso
+        agarra el caso de que el `.po` y el `.mo` estén desincronizados."""
+        idiomas = [c for c, _ in settings.LANGUAGES if c != settings.LANGUAGE_CODE]
+        peligrosos = []
+        for f in self._plantillas():
+            texto = f.read_text(encoding='utf-8')
+            for bloque in re.finditer(r'<script([^>]*)>([\s\S]*?)</script>', texto):
+                if 'src=' in bloque.group(1):
+                    continue
+                js = bloque.group(2)
+                for m in re.finditer(r"\{%\s*trans\s+([\"'])(.+?)\1\s*%\}", js):
+                    if 'escapejs' in js[m.end():m.end() + 40]:
+                        continue
+                    for idioma in idiomas:
+                        with translation.override(idioma):
+                            traducido = translation.gettext(m.group(2))
+                        if any(c in traducido for c in ('\'', '"', '\\', '\n')):
+                            linea = (texto[:bloque.start()].count(chr(10))
+                                     + js[:m.start()].count(chr(10)) + 1)
+                            peligrosos.append(
+                                f"{f.name}:{linea} [{idioma}] «{m.group(2)}» → «{traducido}»")
+        self.assertEqual(peligrosos, [],
+                         f"Traducción con comillas dentro de JS sin |escapejs: {peligrosos}")
+
+
+class ModoMaquinaCliTests(TestCase):
+    """Toolbelt ON → una silla CLI opera la MÁQUINA REAL en un turno normal (no solo en /armar),
+    y el turno queda en la Bitácora. Es la tesis de Swarm: CLI y API con el mismo alcance."""
+
+    def setUp(self):
+        self.sesion = Sesion.objects.create(nombre='soporte')
+        self.cli = Participante.objects.create(
+            key='neo', nombre='Neo', comando=['opencode', 'run'],
+            comando_trabajo=['opencode', 'run', '--agent', 'build'], activo=True)
+        self.sesion.participantes.add(self.cli)
+        # Las mesas de estos turnos van a un tmpdir: sin esto se crean en el HOME real del que
+        # corre la suite (los turnos de modo máquina ahora aterrizan en la carpeta de la mesa).
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        settings_patch = override_settings(ENJAMBRE_MESAS_DIR=tmp.name)
+        settings_patch.enable()
+        self.addCleanup(settings_patch.disable)
+        self.mesas_dir = tmp.name
+
+    @staticmethod
+    def _parche_cli(salida):
+        """Intercepta SOLO la invocación del CLI. `subprocess` es un módulo compartido, así que
+        parchear `Popen` a secas también se come los `git` del workspace (`subprocess.run` de git
+        termina en el mismo Popen, y `git init` explota con un Mock por returncode). Este
+        side_effect deja pasar git al subprocess real."""
+        real = subprocess.Popen
+        procs = []
+
+        def dispatch(argv, *a, **kw):
+            if argv and 'git' in str(argv[0]):
+                return real(argv, *a, **kw)
+            procs.append(proceso_falso(salida))
+            return procs[-1]
+        parche = mock.patch('enjambre.engine.subprocess.Popen', side_effect=dispatch)
+        parche.procs = procs   # el prompt viaja por stdin: se lee del `communicate` del proceso
+        return parche
+
+    def _correr(self, salida='listo: miré /etc/fstab y no toqué nada', pedido='revisá el disco'):
+        """Corre un turno interceptando el CLI. Devuelve la llamada del CLI (no la de git: el
+        turno ordenado commitea al final, así que la última llamada es del commit)."""
+        parche = self._parche_cli(salida)
+        with parche as run:
+            Enjambre(self.sesion).enviar(self.cli, pedido)
+        self.prompt_enviado = parche.procs[0].communicate.call_args.kwargs['input']
+        return [c for c in run.call_args_list if 'git' not in str(c.args[0][0])][0]
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_con_toolbelt_on_la_silla_cli_corre_sobre_la_maquina(self, _h):
+        args = self._correr()
+        # usa el comando AGÉNTICO (puede leer/editar/ejecutar), no el de charla
+        self.assertIn('--agent', args.args[0])
+        # y el prompt le dice que está sobre la máquina real
+        # (el prompt va por stdin, no por argv: ver `prompt_stdin`)
+        self.assertIn('TOOLBELT está ENCENDIDO', self.prompt_enviado)
+        self.assertNotIn(self.prompt_enviado, args.args[0])
+        # Aterriza en la carpeta de la mesa (prolijidad por default): sigue alcanzando toda la
+        # máquina, pero lo que produce queda junto y versionado.
+        self.assertIn('mesa-', args.kwargs['cwd'])
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_si_el_humano_nombra_una_ruta_el_turno_arranca_en_la_maquina(self, _h):
+        """El orden es una preferencia, no una jaula: pedir algo sobre una ruta concreta manda."""
+        args = self._correr(pedido='mirá /var/log/syslog y decime qué pasó')
+        self.assertEqual(args.kwargs['cwd'], toolbelt_mod.cwd_maquina())
+        self.assertNotIn('mesa-', args.kwargs['cwd'])
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_el_turno_queda_en_la_bitacora(self, _h):
+        self._correr(salida='corrí df -h; /home está al 80%')
+        acc = Accion.objects.get(sesion=self.sesion)
+        self.assertEqual(acc.herramienta, 'cli_maquina')
+        self.assertEqual(acc.estado, Accion.Estado.EJECUTADA)
+        self.assertTrue(acc.es_mutacion)
+        self.assertEqual(acc.emisor, 'Neo')
+        self.assertIn('opencode', acc.comando)      # qué corrió
+        self.assertIn('cwd:', acc.comando)          # dónde
+        self.assertIn('df -h', acc.salida)          # qué hizo
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=False)
+    def test_con_toolbelt_off_no_cambia_nada(self, _h):
+        args = self._correr()
+        self.assertIsNone(args.kwargs['cwd'])                 # charla, sin filesystem
+        self.assertNotIn('--agent', args.args[0])             # comando de charla
+        self.assertFalse(Accion.objects.exists())             # no ensucia la bitácora
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_armar_sigue_fabricando_en_la_carpeta_de_la_mesa(self, _h):
+        """El toolbelt NO se roba /armar: fabricar sigue siendo el taller de entregables."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(ENJAMBRE_MESAS_DIR=tmp):
+                with self._parche_cli('hecho') as run:
+                    Enjambre(self.sesion).enviar(self.cli, 'armá un script', editar=True)
+                # call_args es la ÚLTIMA llamada y acá termina siendo un `git` del commit:
+                # hay que buscar la del CLI entre todas.
+                cli = [c for c in run.call_args_list if 'git' not in str(c.args[0][0])]
+                cwd = cli[0].kwargs['cwd']
+        self.assertIn('mesa-', cwd)                # la carpeta de la mesa, no el home
+        self.assertNotEqual(cwd, toolbelt_mod.cwd_maquina())
+        self.assertFalse(Accion.objects.exists())  # eso va al commit, no a la bitácora
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_las_sillas_http_no_operan_la_maquina(self, _h):
+        """Ollama no tiene filesystem: sigue siendo charla por HTTP."""
+        local = Participante.objects.create(
+            key='heis', nombre='Heisenberg', endpoint_url='http://192.168.0.7:11434',
+            endpoint_model='qwen3', activo=True)
+        with mock.patch('enjambre.engine.ejecutar_http', return_value=('hola', False)) as http:
+            Enjambre(self.sesion).enviar(local, 'hola')
+        self.assertTrue(http.called)
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_el_lider_opera_la_maquina_como_una_silla_mas(self, _h):
+        """Bug real (Parrot, Mesa 2): el líder integraba en un modo lee-RO con el comando de CHARLA
+        (sin el flag de auto-aprobación) y opencode auto-rechazaba al querer verificar el resultado
+        en la máquina real. Ahora el líder no es un caso aparte: opera la máquina como cualquiera."""
+        with self._parche_cli('verifiqué /home/fede/nombres.txt, quedó completo') as run:
+            # editar=False es como lo llama `liderar` cuando el líder coordina con workers.
+            Enjambre(self.sesion).enviar(self.cli, 'integrá lo que hicieron', editar=False)
+        cli = [c for c in run.call_args_list if 'git' not in str(c.args[0][0])][0]
+        self.assertIn('--agent', cli.args[0])                       # comando agéntico, no charla
+        # Y aterriza en la mesa: la fuga de la mesa 4 del pendrive fue justo acá — el líder
+        # coordinaba desde $HOME y su informe quedaba fuera de la mesa, sin commit.
+        self.assertIn('mesa-', cli.kwargs['cwd'])
+        acc = Accion.objects.get(sesion=self.sesion)                # y el turno queda auditado
+        self.assertEqual(acc.herramienta, 'cli_maquina')
+
+    def test_el_footer_muestra_la_version(self):
+        """El footer dice qué versión estás corriendo: es lo primero que se pregunta cuando
+        alguien reporta algo desde un pendrive que no sabés de cuándo es. La sella el workflow
+        de release en `swarm/version.py`; en un clone queda 'dev', que también es la verdad."""
+        with mock.patch('enjambre.context_processors.__version__', 'v9.9.9'):
+            cuerpo = self.client.get('/').content.decode()
+        self.assertIn('Hidr4lisk_Swarm v9.9.9', cuerpo)
+
+    def test_puede_actuar_lo_decide_el_switch_del_toolbelt(self):
+        """El permiso para tocar la máquina es UNO SOLO: el switch. Con el toolbelt encendido
+        actúan tanto las CLI como las api:*; apagado, ninguna (las sillas solo responden texto).
+        Las HTTP (Ollama) quedan afuera siempre — no es permiso, es que no tienen filesystem."""
+        from .clientes import es_cli, puede_actuar
+        api = Participante(key='a', comando=['api-openrouter', '--model', 'x'])
+        http = Participante(key='o', endpoint_url='http://x:11434')
+        with mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            self.assertTrue(puede_actuar(self.cli))
+            self.assertTrue(puede_actuar(api))
+            self.assertFalse(puede_actuar(http))
+        with mock.patch('enjambre.toolbelt.habilitado', return_value=False):
+            self.assertFalse(puede_actuar(self.cli))
+            self.assertFalse(puede_actuar(api))
+        # es_cli sigue distinguiendo POR DÓNDE actúa cada backend (cwd vs rutas absolutas).
+        self.assertTrue(es_cli(self.cli))
+        self.assertFalse(es_cli(api))
+
+
+class LiderNecesitaToolbeltTests(TestCase):
+    """El modo LÍDER solo se habilita con el toolbelt encendido: apagado, las sillas solo hablan
+    y no hay trabajo que coordinar, así que la mesa líder degrada a PLANA (como el líder inactivo)."""
+
+    def setUp(self):
+        from .models import Topologia
+        self.sesion = Sesion.objects.create(nombre='conduccion', topologia=Topologia.LIDER)
+        self.lider = Participante.objects.create(key='pr', nombre='PickleRick',
+                                                 comando=['opencode', 'run'], activo=True)
+        self.otra = Participante.objects.create(key='neo', nombre='Neo',
+                                                comando=['opencode', 'run'], activo=True)
+        self.sesion.participantes.add(self.lider, self.otra)
+        self.sesion.lider = self.lider
+        self.sesion.save()
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=False)
+    def test_toolbelt_off_la_mesa_lider_corre_plana(self, _h):
+        with mock.patch.object(Enjambre, 'responder', return_value={}) as plana:
+            Enjambre(self.sesion).liderar('hola mesa')
+        self.assertTrue(plana.called)   # cayó a plana, no repartió como líder
+        aviso = Mensaje.objects.filter(sesion=self.sesion, es_sistema=True).last()
+        self.assertIsNotNone(aviso)
+        self.assertIn('toolbelt', aviso.texto.lower())
+
+    @mock.patch('enjambre.toolbelt.habilitado', return_value=True)
+    def test_toolbelt_on_el_lider_toma_la_posta(self, _h):
+        """Con el toolbelt encendido NO degrada a plana: entra al flujo de líder (planifica)."""
+        with mock.patch.object(Enjambre, 'responder', return_value={}) as plana:
+            with mock.patch.object(Enjambre, 'enviar', return_value='(plan)') as env:
+                Enjambre(self.sesion).liderar('hola mesa')
+        self.assertFalse(plana.called)  # no degradó
+        self.assertTrue(env.called)     # el líder arrancó su turno
+
+
+class GitFaltanteTests(TestCase):
+    """git es la única dependencia externa que Swarm NO bundlea, y en una Windows recién
+    instalada no está. Sin esto el turno moría con `[WinError 2] El sistema no puede encontrar
+    el archivo especificado`, que no nombra a git ni dice cómo salir del paso (Oficina,
+    2026-08-07). Charlar no lo usa: el aviso va donde vive /armar, no en la escalera."""
+
+    def test_sin_git_el_error_nombra_a_git_y_como_instalarlo(self):
+        from .workspace import _git
+        with mock.patch('enjambre.workspace.subprocess.run', side_effect=FileNotFoundError()):
+            with self.assertRaises(RuntimeError) as cm:
+                _git('/tmp', 'init')
+        msg = str(cm.exception)
+        self.assertIn('git', msg)
+        self.assertIn('/armar', msg)
+        self.assertIn('install', msg)          # el comando concreto para este sistema
+        self.assertNotIn('WinError', msg)
+
+    def test_check_false_tampoco_se_traga_la_falta_de_git(self):
+        """`check=False` significa «no me importa el returncode», no «seguí sin repo»: si git
+        no existe no hay nada que versionar y todos los caminos tienen que cortar igual."""
+        from .workspace import _git
+        with mock.patch('enjambre.workspace.subprocess.run', side_effect=FileNotFoundError()):
+            with self.assertRaises(RuntimeError):
+                _git('/tmp', 'rev-parse', 'HEAD', check=False)
+
+    def test_el_comando_de_instalacion_es_el_del_sistema(self):
+        from .conexiones import como_instalar_git
+        with mock.patch('platform.system', return_value='Windows'):
+            self.assertIn('winget', como_instalar_git())
+        with mock.patch('platform.system', return_value='Linux'):
+            self.assertIn('apt', como_instalar_git())
+
+    def test_conexiones_avisa_cuando_falta_git(self):
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
+            r = self.client.get(reverse('enjambre:conexiones'))
+        self.assertFalse(r.context['git_ok'])
+        self.assertContains(r, 'git no está instalado')
+
+    def test_conexiones_no_molesta_cuando_git_esta(self):
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/git'):
+            r = self.client.get(reverse('enjambre:conexiones'))
+        self.assertTrue(r.context['git_ok'])
+        self.assertNotContains(r, 'git no está instalado')
+
+    def test_git_no_es_un_escalon_de_la_escalera(self):
+        """La escalera es para ARRANCAR (charlar). Si git contara, quedaría siempre incompleta
+        para quien solo conversa — y el banner de home no se iría nunca."""
+        from . import onboarding
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
+            self.assertEqual(len(onboarding.escalones()), 2)
+
+    def test_serve_avisa_en_la_consola_cuando_falta_git(self):
+        """La consola del launcher es lo unico que el humano de una maquina pelada mira si o si:
+        Conexiones solo la ve el que ya sabe que tiene que ir, y el error de la mesa llega con el
+        turno ya perdido."""
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value=None):
+            with mock.patch('enjambre.management.commands.serve.call_command'), \
+                 mock.patch('django.core.management.commands.runserver.Command.handle'), \
+                 mock.patch('threading.Thread'), mock.patch('threading.Timer'):
+                call_command('serve', '--no-browser', '--no-worker', stdout=out)
+        texto = out.getvalue()
+        self.assertIn('git', texto)
+        self.assertIn('/armar', texto)
+        self.assertIn('install', texto)
+
+    def test_serve_no_dice_nada_si_git_esta(self):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        with mock.patch('enjambre.conexiones.resolver_bin', return_value='/usr/bin/git'):
+            with mock.patch('enjambre.management.commands.serve.call_command'), \
+                 mock.patch('django.core.management.commands.runserver.Command.handle'), \
+                 mock.patch('threading.Thread'), mock.patch('threading.Timer'):
+                call_command('serve', '--no-browser', '--no-worker', stdout=out)
+        self.assertNotIn('git no esta', out.getvalue())
+
+    def test_el_leeme_no_promete_que_no_hay_que_instalar_nada(self):
+        """El LEEME abria con «No hace falta instalar nada»: cierto para charlar, FALSO para
+        /armar. Que la promesa quede acotada es el arreglo, no un detalle de redaccion."""
+        build = (Path(__file__).resolve().parent.parent / 'scripts' / 'build_bundle.sh')
+        txt = build.read_text(encoding='utf-8')
+        leeme = txt.split("cat > \"$OUT/LEEME.txt\"")[1].split("\nTXT\n")[0]
+        self.assertNotIn('No hace falta instalar nada (ni Python ni Docker).', leeme)
+        self.assertIn('git', leeme)
+        self.assertIn('winget install', leeme)
+
+
+class GitDubiousOwnershipTests(TestCase):
+    """exFAT/FAT32 no registra dueño → git ve el repo como ajeno y se planta con «detected
+    dubious ownership» antes de hacer nada. Es EL caso de Swarm (las mesas viven en el `data/`
+    del pendrive), no un borde. La receta que sugiere git —`config --global --add safe.directory`—
+    escribe en el ~/.gitconfig de la PC del cliente: justo el rastro que el modo SIN RASTRO
+    promete no dejar. Se marca por invocación (Oficina, 2026-08-07)."""
+
+    def test_nuestro_git_lleva_la_excepcion(self):
+        from .workspace import _git
+        with mock.patch('enjambre.workspace.subprocess.run') as run:
+            run.return_value = mock.Mock(returncode=0, stdout='', stderr='')
+            _git('/tmp/x', 'status', '--porcelain')
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[0], 'git')
+        self.assertIn('safe.directory=*', argv)
+        self.assertLess(argv.index('safe.directory=*'), argv.index('status'))  # antes del subcomando
+
+    def test_env_git_safe_pone_el_trio_completo(self):
+        from .workspace import env_git_safe
+        env = env_git_safe({})
+        self.assertEqual(env['GIT_CONFIG_COUNT'], '1')
+        self.assertEqual(env['GIT_CONFIG_KEY_0'], 'safe.directory')
+        self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')
+
+    def test_env_git_safe_no_pisa_lo_que_ya_venia(self):
+        """Si el entorno ya traía config por env, se agrega al final en vez de aplastarla."""
+        from .workspace import env_git_safe
+        env = env_git_safe({'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'core.pager',
+                            'GIT_CONFIG_VALUE_0': 'cat'})
+        self.assertEqual(env['GIT_CONFIG_COUNT'], '2')
+        self.assertEqual(env['GIT_CONFIG_KEY_0'], 'core.pager')   # intacta
+        self.assertEqual(env['GIT_CONFIG_KEY_1'], 'safe.directory')
+
+    def test_env_git_safe_sobrevive_un_contador_basura(self):
+        from .workspace import env_git_safe
+        self.assertEqual(env_git_safe({'GIT_CONFIG_COUNT': 'aaa'})['GIT_CONFIG_COUNT'], '1')
+
+    def test_la_silla_cli_hereda_la_excepcion(self):
+        """La silla corre git por su cuenta dentro de la carpeta de la mesa (status, diff…)."""
+        from .engine import ejecutar_cli
+        p = Participante.objects.create(key='oc', nombre='OC', comando=['opencode', 'run'])
+        with mock.patch('enjambre.engine.subprocess.Popen') as popen:
+            popen.return_value = proceso_falso('ok')
+            ejecutar_cli(p, 'hola', 30)
+        env = popen.call_args.kwargs['env']
+        self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')
+
+    def test_el_toolbelt_tambien(self):
+        from .toolbelt import _env
+        self.assertEqual(_env()['GIT_CONFIG_KEY_0'], 'safe.directory')
+
+
+class VaultBruteForceTests(TestCase):
+    """Regresión de la auditoría 2026-08: `unlock`/`verify` no tenían ningún freno.
+
+    El único costo por intento era scrypt (~250-500 ms), que frena un diccionario
+    online pero no un proceso local martillando una passphrase débil — y el endpoint
+    es un POST sin login humano.
+    """
+
+    def setUp(self):
+        from enjambre import vault
+        vault._limpiar_penalizacion()
+        self.addCleanup(vault._limpiar_penalizacion)
+
+    def test_los_primeros_fallos_no_penalizan(self):
+        """Un dedazo del dueño no puede dejarlo esperando."""
+        from enjambre import vault
+        for _ in range(vault._FALLOS_LIBRES):
+            vault._penalizar()
+        self.assertEqual(vault.espera_restante(), 0.0)
+
+    def test_backoff_crece_y_tiene_techo(self):
+        from enjambre import vault
+        for _ in range(vault._FALLOS_LIBRES + 1):
+            vault._penalizar()
+        primera = vault.espera_restante()
+        self.assertGreater(primera, 0.0)
+        for _ in range(20):
+            vault._penalizar()
+        self.assertLessEqual(vault.espera_restante(), vault._ESPERA_MAX_S + 1)
+
+    def test_un_acierto_limpia_la_penalizacion(self):
+        from enjambre import vault
+        for _ in range(vault._FALLOS_LIBRES + 2):
+            vault._penalizar()
+        self.assertGreater(vault.espera_restante(), 0.0)
+        vault._limpiar_penalizacion()
+        self.assertEqual(vault.espera_restante(), 0.0)
+
+
+class DispatchCliTests(TestCase):
+    """Lo que rodea a la invocación del CLI: config impuesta, estado aislado, muerte del árbol
+    al vencer el turno y credencial vencida. Portado del Enjambre de hidralisk (2026-08-12),
+    donde estas cuatro cosas se pagaron caras en producción."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = override_settings(ENJAMBRE_MESAS_DIR=str(Path(tmp.name) / 'mesas'))
+        p.enable()
+        self.addCleanup(p.disable)
+        self.oc = Participante.objects.create(key='oc', nombre='OC', comando=['opencode', 'run'])
+
+    @staticmethod
+    def _correr(participante, proc, prompt='hola', timeout=30):
+        with mock.patch('enjambre.engine.subprocess.Popen', return_value=proc) as popen:
+            salida, ruido = ejecutar_cli(participante, prompt, timeout)
+        return salida, ruido, popen.call_args
+
+    def test_opencode_corre_con_el_agente_title_apagado(self):
+        """El `title` interno de opencode usa `small_model`, que por default NO es free: era una
+        llamada paga fallida por turno y por silla. Se apaga; NO se le da un modelo free (eso
+        duplicaría el consumo de la cuota gratuita, que es el recurso escaso)."""
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        cfg = json.loads(call.kwargs['env']['OPENCODE_CONFIG_CONTENT'])
+        self.assertIs(cfg['agent']['title']['disable'], True)
+        self.assertNotIn('small_model', cfg)
+
+    def test_el_estado_de_opencode_no_se_comparte_entre_sillas(self):
+        """Sin XDG propio, las sillas comparten la SQLite de opencode y su lock: una matada por
+        timeout deja el lock tomado y cuelga a la siguiente."""
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        env = call.kwargs['env']
+        dirs = {env['XDG_DATA_HOME'], env['XDG_STATE_HOME'], env['XDG_CACHE_HOME']}
+        self.assertEqual(len(dirs), 3)                       # tres carpetas distintas
+        for d in dirs:
+            self.assertIn('cli-oc-', d)                      # y propias de ESTA silla
+
+    def test_la_carpeta_efimera_se_borra_al_terminar_el_turno(self):
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        self.assertFalse(Path(call.kwargs['env']['XDG_DATA_HOME']).parent.exists())
+
+    def test_una_silla_que_no_es_opencode_no_recibe_su_config(self):
+        cl = Participante.objects.create(key='cl', nombre='CL', comando=['claude', '-p'])
+        # `ejecutar_cli` arranca con `os.environ.copy()`: si la suite corre DENTRO de una silla
+        # opencode (el caso de la mesa en vivo), el ambiente ya trae OPENCODE_CONFIG_CONTENT y las
+        # XDG de `_env_opencode` y el assert fallaría por contaminación, no por el motor. El test
+        # limpia el ambiente heredado y verifica que el motor NO lo vuelve a meter para claude.
+        with mock.patch.dict(os.environ, {}, clear=False) as env:
+            env.pop('OPENCODE_CONFIG_CONTENT', None)
+            env.pop('XDG_DATA_HOME', None)
+            env.pop('XDG_STATE_HOME', None)
+            env.pop('XDG_CACHE_HOME', None)
+            _s, _r, call = self._correr(cl, proceso_falso('ok'))
+        self.assertNotIn('OPENCODE_CONFIG_CONTENT', call.kwargs['env'])
+
+    def test_al_vencer_el_turno_se_mata_el_arbol_y_no_solo_el_hijo(self):
+        """`Popen.kill()` deja vivos a los nietos (los CLIs son Node/Bun y paren shells/LSP):
+        siguen quemando cuota con la mesa dándolos por muertos."""
+        proc = proceso_falso(timeout=True)
+        with mock.patch('enjambre.engine._matar_arbol') as matar:
+            salida, ruido, _c = self._correr(self.oc, proc)
+        matar.assert_called_once()
+        self.assertIs(matar.call_args.args[0], proc)
+        self.assertTrue(matar.call_args.args[1])   # y con la marca del turno, para el barrido
+        self.assertIn('timeout', salida)
+        self.assertTrue(ruido)
+
+    def test_matar_arbol_usa_el_grupo_de_procesos_en_posix(self):
+        proc = mock.Mock(pid=4242)
+        with mock.patch('enjambre.engine.os.name', 'posix'), \
+             mock.patch('enjambre.engine.os.killpg') as killpg:
+            engine_mod._matar_arbol(proc)
+        killpg.assert_called_once()
+        self.assertEqual(killpg.call_args.args[0], 4242)
+
+    def test_credencial_vencida_dice_como_re_loguear(self):
+        """Sin esto la silla contesta «(sin respuesta)» y el humano no tiene cómo saber que lo
+        único que pasa es que hay que re-loguear el CLI."""
+        proc = proceso_falso('', 'Error: oauth token has expired')
+        salida, ruido, _c = self._correr(self.oc, proc)
+        self.assertTrue(ruido)
+        self.assertIn('opencode auth login', salida)
+
+    def test_una_mesa_que_habla_de_401_no_se_marca_como_credencial_vencida(self):
+        """Una mesa de pentesting menciona 401/unauthorized legítimamente: por eso los markers
+        son frases de auth de CLI y no esas dos palabras sueltas."""
+        salida, _r, _c = self._correr(
+            self.oc, proceso_falso('El endpoint devuelve 401 unauthorized sin el token'))
+        self.assertNotIn('auth login', salida)
+
+    def test_la_silla_arranca_sin_heredar_el_stdin_del_server(self):
+        """Nunca el stdin del server: o lleva el prompt (PIPE) o va a DEVNULL (agy, que lo recibe
+        por argv)."""
+        _s, _r, call = self._correr(self.oc, proceso_falso('ok'))
+        self.assertEqual(call.kwargs['stdin'], subprocess.PIPE)
+        agy = Participante.objects.create(key='agy1', nombre='AGY', comando=['agy', '--sandbox', '-p'])
+        _s, _r, call = self._correr(agy, proceso_falso('ok'))
+        self.assertEqual(call.kwargs['stdin'], subprocess.DEVNULL)
+
+
+@unittest.skipUnless(os.name != 'nt' and Path('/proc').is_dir(),
+                     'el barrido por marca es de Linux (lee /proc)')
+class TurnoVencidoNoDejaProcesosVivosTests(TestCase):
+    """Integración de verdad (sin mocks del subprocess): una silla falsa que deja hijos largos.
+
+    Uno queda en el grupo del CLI y otro se hace **sesión propia** con `setsid` — que es lo que
+    hace opencode con cada comando de su toolbelt (verificado en jarvis: sus hijos quedan con
+    ppid=1 y pgid propio, así que matar el grupo NO los alcanza).
+
+    Sin el matar completo esto no deja basura: **cuelga el turno para siempre**, porque los nietos
+    heredan las pipes y el `communicate()` posterior al kill espera a que se cierren.
+    """
+
+    GUION = 'sleep 60 & setsid sleep 60 & sleep 60'
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = override_settings(ENJAMBRE_MESAS_DIR=str(Path(tmp.name) / 'mesas'))
+        p.enable()
+        self.addCleanup(p.disable)
+
+    @staticmethod
+    def _vivos_con_marca(marca):
+        objetivo = f'SWARM_TURNO_ID={marca}'.encode()
+        pids = []
+        for entry in os.scandir('/proc'):
+            if not entry.name.isdigit():
+                continue
+            try:
+                with open(f'/proc/{entry.name}/environ', 'rb') as fh:
+                    if objetivo in fh.read():
+                        pids.append(int(entry.name))
+            except OSError:
+                continue
+        return pids
+
+    def test_no_sobrevive_ni_el_que_se_hizo_sesion_propia(self):
+        p = Participante.objects.create(key='falsa', nombre='Falsa',
+                                        comando=['bash', '-c', self.GUION])
+        marca = {}
+        real = subprocess.Popen
+
+        def espiar(*a, **kw):
+            marca['id'] = kw['env']['SWARM_TURNO_ID']
+            return real(*a, **kw)
+
+        with mock.patch('enjambre.engine.subprocess.Popen', side_effect=espiar):
+            salida, ruido = ejecutar_cli(p, 'ignorado', timeout=2)
+        self.assertIn('timeout', salida)
+        self.assertTrue(ruido)
+        sobrevivientes = self._vivos_con_marca(marca['id'])
+        for pid in sobrevivientes:          # que un fallo no deje procesos colgados en la máquina
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+        self.assertEqual(sobrevivientes, [])
+
+
+class ModeloConFormaDeFlagTests(TestCase):
+    """`modelo` es texto libre de un POST y termina en argv después de `--model`. Por argv no
+    puede inyectar comandos; lo que sí puede es hacerse pasar por una OPCIÓN del CLI."""
+
+    def test_un_modelo_que_parece_flag_se_descarta(self):
+        cmd, cmdt = build_comando('opencode', '--dangerously-skip-permissions')
+        self.assertNotIn('--dangerously-skip-permissions', cmd + cmdt)
+        self.assertNotIn('--model', cmd + cmdt)
+
+    def test_un_modelo_con_espacios_y_parentesis_sigue_pasando(self):
+        """Los modelos de `agy` son así: un filtro por charset los rompería."""
+        cmd, _t = build_comando('agy', 'Claude Sonnet 4.6 (Thinking)')
+        self.assertIn('Claude Sonnet 4.6 (Thinking)', cmd)
+
+
+class AnclaTemporalTests(TestCase):
+    """Sin fecha en el prompt la silla asume su fecha de entrenamiento y razona sobre
+    versiones/actualidad como si estuviera en un año anterior."""
+
+    def test_el_prompt_lleva_la_fecha_de_hoy(self):
+        from django.utils import timezone
+        s = Sesion.objects.create(nombre='t')
+        p = Participante.objects.create(key='oc2', nombre='OC', comando=['opencode', 'run'])
+        prompt = Enjambre(s).construir_prompt(p, 'hola')
+        self.assertIn('UBICACIÓN TEMPORAL', prompt)
+        self.assertIn(str(timezone.localtime(timezone.now()).year), prompt)
+
+
+# ── Defensas portadas del Enjambre de hidralisk (auditoría S-01 … S-09) ────────────────────────
+# Los que necesitan symlinks o scripts `#!/bin/sh` se saltean en Windows; los caminos
+# alternativos de Windows (sin O_NOFOLLOW/dir_fd) se ejercitan en Linux forzando `_CON_DIRFD`.
+SOLO_POSIX = unittest.skipIf(os.name == 'nt', 'usa symlinks / scripts sh (POSIX)')
+
+
+class GitDelHostTests(TestCase):
+    """S-01: el git del HOST corre sobre un `.git` que la silla puede escribir. Hooks y fsmonitor
+    se apagan por flag; un filtro no, así que un `.git` que cambió en el turno o que trae algo que
+    ejecuta no se commitea. Repos descartables en tmp, git real."""
+
+    def setUp(self):
+        from . import workspace
+        self.ws = workspace
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.centinela = self.tmp / 'PWNED'
+        self.repo = self.tmp / 'mesa'
+        self.repo.mkdir()
+        workspace._git(self.repo, 'init')
+        (self.repo / 'a.txt').write_text('a')
+        workspace._git(self.repo, 'add', '-A')
+        workspace._git(self.repo, *workspace.GIT_AUTOR, 'commit', '-m', 'init')
+
+    def _script(self, nombre):
+        s = self.tmp / nombre
+        s.write_text(f'#!/bin/sh\ntouch {self.centinela}\ncat\n')
+        s.chmod(0o755)
+        return s
+
+    def _head(self):
+        return self.ws._git(self.repo, 'rev-parse', 'HEAD')
+
+    def test_todo_git_lleva_los_flags_seguros_y_entorno_limpio(self):
+        with mock.patch.dict(os.environ, {'GIT_DIR': '/otro', 'GIT_CONFIG_COUNT': '1'}), \
+                mock.patch('enjambre.workspace.subprocess.run') as run:
+            run.return_value = mock.Mock(returncode=0, stdout='', stderr='')
+            self.ws._git(self.repo, 'status')
+        cmd, kw = run.call_args.args[0], run.call_args.kwargs
+        for flag in self.ws.GIT_SEGURO:
+            self.assertIn(flag, cmd)
+        self.assertIn(f'core.hooksPath={os.devnull}', cmd)
+        self.assertIn('core.fsmonitor=false', cmd)
+        self.assertIn('safe.directory=*', cmd)            # lo de Swarm (pendrive exFAT) sigue
+        self.assertFalse([k for k in kw['env'] if k.startswith('GIT_') and not k.startswith('GIT_CONFIG_')])
+        self.assertEqual(kw['env']['GIT_CONFIG_NOSYSTEM'], '1')
+        self.assertEqual(kw['env']['GIT_CONFIG_GLOBAL'], os.devnull)
+        self.assertNotIn('GIT_CONFIG_COUNT', kw['env'])
+
+    @SOLO_POSIX
+    def test_hook_no_corre_y_la_mesa_no_se_commitea(self):
+        hook = self.repo / '.git' / 'hooks' / 'pre-commit'
+        hook.write_text(f'#!/bin/sh\ntouch {self.centinela}\n')
+        hook.chmod(0o755)
+        (self.repo / 'b.txt').write_text('b')
+        # Aunque se llame a git directo, el hook está apagado por flag.
+        self.ws._git(self.repo, 'add', '-A')
+        self.ws._git(self.repo, *self.ws.GIT_AUTOR, 'commit', '-m', 'x')
+        self.assertFalse(self.centinela.exists())
+        # Y comitear() ni lo intenta: un hook real en una mesa es una mesa tocada.
+        (self.repo / 'c.txt').write_text('c')
+        with self.assertRaisesRegex(self.ws.GitAlterado, 'hook pre-commit'):
+            self.ws.comitear(self.repo, 'y')
+
+    @SOLO_POSIX
+    def test_fsmonitor_no_corre(self):
+        self.ws._git(self.repo, 'config', 'core.fsmonitor', str(self._script('fsmon')))
+        self.ws._git(self.repo, 'status', '--porcelain')
+        self.assertFalse(self.centinela.exists())
+
+    @SOLO_POSIX
+    def test_filtro_puesto_en_el_turno_no_corre_ni_se_commitea(self):
+        huella = self.ws.huella_git(self.repo)
+        antes = self._head()
+        # Lo que haría la silla con `.git` escribible: un filtro + .gitattributes.
+        cfg = self.repo / '.git' / 'config'
+        cfg.write_text(cfg.read_text() + f'[filter "x"]\n\tclean = {self._script("filtro")}\n')
+        (self.repo / '.gitattributes').write_text('* filter=x\n')
+        (self.repo / 'b.txt').write_text('b')
+        with self.assertRaises(self.ws.GitAlterado) as e:
+            self.ws.comitear(self.repo, 'turno', huella=huella)
+        self.assertTrue(str(e.exception).startswith(self.ws.GIT_ALTERADO_MARCA))
+        self.assertFalse(self.centinela.exists())
+        self.assertEqual(self._head(), antes)
+
+    def test_la_huella_cambia_si_cambia_la_config_o_un_hook(self):
+        h0 = self.ws.huella_git(self.repo)
+        self.assertEqual(self.ws.huella_git(self.repo), h0)          # estable sin cambios
+        cfg = self.repo / '.git' / 'config'
+        cfg.write_text(cfg.read_text() + '[user]\n\tname = x\n')
+        h1 = self.ws.huella_git(self.repo)
+        self.assertNotEqual(h1, h0)
+        (self.repo / '.git' / 'hooks' / 'post-commit').write_text('x')
+        self.assertNotEqual(self.ws.huella_git(self.repo), h1)
+
+    def test_turno_que_toca_git_deja_la_tarea_en_error_con_la_marca(self):
+        from .models import Tarea
+        p = Participante.objects.create(key='neo-git', nombre='Neo', comando=['x'])
+        s = Sesion.objects.create(nombre='m')
+        t = Tarea.objects.create(sesion=s, participante=p, titulo='t', ordenes='hacelo',
+                                 estado=Tarea.Estado.EN_CURSO, persistente=True)
+
+        def silla(*a, **k):
+            dest = Path(s.workspace_dir)
+            (dest / '.git' / 'hooks' / 'post-commit').write_text('#!/bin/sh\nexit 0\n')
+            (dest / 'b.txt').write_text('b')
+            return ('lo hice', False)
+
+        with override_settings(ENJAMBRE_MESAS_DIR=str(self.tmp / 'mesas')), \
+                mock.patch.object(self.ws, 'ejecutar_cli', side_effect=silla):
+            self.ws._ejecutar_persistente(t, timeout=1)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn(self.ws.GIT_ALTERADO_MARCA, t.salida)
+        # solo el commit init: lo de la silla no se versionó
+        self.assertEqual(self.ws._git(s.workspace_dir, 'log', '--oneline').count('\n'), 0)
+
+    def _motivos(self):
+        return self.ws.peligros_git(self.repo)
+
+    def test_mesa_recien_creada_esta_limpia(self):
+        self.assertEqual(self._motivos(), [])
+
+    def test_lista_blanca_de_config(self):
+        """Cualquier clave que `git init` no deja es una mesa tocada (gpg.program, worktreeConfig…)."""
+        for clave, valor in (('commit.gpgSign', 'true'), ('gpg.program', './firmar'),
+                             ('extensions.worktreeConfig', 'true')):
+            self.ws._git(self.repo, 'config', clave, valor)
+        self.assertLessEqual({'config commit.gpgsign', 'config gpg.program',
+                              'config extensions.worktreeconfig'}, set(self._motivos()))
+
+    def test_repo_anidado_bloquea(self):
+        (self.repo / 'sub').mkdir()
+        self.ws._git(self.repo / 'sub', 'init')
+        self.assertIn('repo anidado sub/.git', self._motivos())
+        with self.assertRaises(self.ws.GitAlterado):
+            self.ws.asegurar_git(self.repo)
+
+    def test_repo_anidado_mayusculas_bloquea_en_windows(self):
+        (self.repo / 'sub').mkdir()
+        (self.repo / 'sub' / '.GIT').mkdir()
+        with mock.patch('enjambre.workspace.sys.platform', 'win32'):
+            self.assertIn('repo anidado sub/.git', self._motivos())
+
+    def test_config_malformada_falla_cerrado(self):
+        (self.repo / '.git' / 'config').write_text('[core\nbroken')
+        self.assertIn('.git/config ilegible', self._motivos())
+        self.assertIn('config ilegible', self.ws.peligros_worktree(self.repo, self.repo / '.git'))
+
+    def test_junction_en_git_o_hooks_bloquea(self):
+        g = self.repo / '.git'
+        with mock.patch('enjambre.workspace.os.path.isjunction', side_effect=lambda p: Path(p) == g):
+            self.assertEqual(self._motivos(), ['.git no es un directorio'])
+        hooks = g / 'hooks'
+        with mock.patch('enjambre.workspace.os.path.isjunction', side_effect=lambda p: Path(p) == hooks):
+            self.assertIn('.git/hooks es un enlace', self._motivos())
+
+    def test_git_que_no_es_directorio_bloquea(self):
+        shutil.rmtree(self.repo / '.git')
+        (self.repo / '.git').write_text('gitdir: /otro/lado\n')
+        self.assertEqual(self._motivos(), ['.git no es un directorio'])
+
+    def test_indirecciones_de_git_bloquean(self):
+        (self.repo / '.git' / 'commondir').write_text('../otro')
+        self.assertIn('.git/commondir', self._motivos())
+
+    def test_worktree_niega_claves_que_ejecutan(self):
+        git_dir = self.repo / '.git'
+        self.ws._git(self.repo, 'config', 'filter.x.clean', 'cat')
+        self.ws._git(self.repo, 'config', 'core.hooksPath', 'hooks-del-proyecto')   # legítima
+        motivos = self.ws.peligros_worktree(self.repo, git_dir)
+        self.assertIn('config filter.x.clean', motivos)
+        self.assertFalse([m for m in motivos if 'hookspath' in m.lower()])
+
+    def test_comitear_sano_sigue_andando(self):
+        huella = self.ws.huella_git(self.repo)
+        (self.repo / 'b.txt').write_text('b')
+        self.assertTrue(self.ws.comitear(self.repo, 'ok', huella=huella))
+        self.assertIsNone(self.ws.comitear(self.repo, 'nada', huella=huella))
+
+    def test_comitear_y_postear_deja_el_fallo_en_la_mesa(self):
+        """GitAlterado en el turno de una silla: aviso de sistema + log de error + fallo_ejecucion."""
+        from .models import LogMesa
+        s = Sesion.objects.create(nombre='alt')
+        p = Participante.objects.create(key='alt1', nombre='Alt', comando=['x'])
+        enj = Enjambre(s)
+        with mock.patch('enjambre.workspace.comitear',
+                        side_effect=self.ws.GitAlterado(f'{self.ws.GIT_ALTERADO_MARCA} en x: y')):
+            enj._comitear_y_postear(p, str(self.repo), 'abc')
+        self.assertTrue(s.mensajes.filter(es_sistema=True, texto__contains=self.ws.GIT_ALTERADO_MARCA).exists())
+        self.assertTrue(LogMesa.objects.filter(sesion=s, nivel='error').exists())
+        self.assertTrue(enj.fallo_ejecucion)
+
+    def test_enviar_toma_la_huella_antes_del_turno_y_la_pasa_al_commit(self):
+        with tempfile.TemporaryDirectory() as tmp, override_settings(ENJAMBRE_MESAS_DIR=tmp):
+            s = Sesion.objects.create(nombre='h')
+            p = Participante.objects.create(key='h1', nombre='H', comando=['opencode', 'run'])
+            s.participantes.add(p)
+            with mock.patch('enjambre.clientes.puede_actuar', return_value=True), \
+                    mock.patch('enjambre.engine.ejecutar_cli', return_value=('hecho', False)), \
+                    mock.patch.object(Enjambre, '_comitear_y_postear') as post:
+                Enjambre(s).enviar(p, 'armá algo', editar=True)
+            self.assertEqual(post.call_args.kwargs['huella'], self.ws.huella_git(s.workspace_dir))
+
+    def test_rebobinar_con_git_tocado_se_niega(self):
+        with tempfile.TemporaryDirectory() as tmp, override_settings(ENJAMBRE_MESAS_DIR=tmp):
+            s = Sesion.objects.create(nombre='r')
+            dest = mesa_workspace(s)
+            (dest / '.git' / 'hooks' / 'post-checkout').write_text('x')
+            enj = Enjambre(s)
+            self.assertFalse(enj._git_sano(str(dest)))
+            enj.deshacer()
+            self.assertTrue(s.mensajes.filter(es_sistema=True, texto__contains='No rebobino').exists())
+
+
+class ArtefactosSinSeguirEnlacesTests(TestCase):
+    """S-02: lo que escribe la silla lo lee/sirve el host o la web; un symlink no puede sacar nada
+    de afuera. Cada caso corre por la vía POSIX (O_NOFOLLOW + dir_fd) y por la de Windows (lstat)."""
+
+    def setUp(self):
+        from . import workspace
+        self.ws = workspace
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.base = self.tmp / 'mesa'
+        self.base.mkdir()
+        self.secreto = self.tmp / 'secreto.txt'
+        self.secreto.write_text('TOKEN-SECRETO')
+
+    def _vias(self):
+        yield 'posix', mock.patch.object(self.ws, '_CON_DIRFD', self.ws._CON_DIRFD)
+        yield 'fallback', mock.patch.object(self.ws, '_CON_DIRFD', False)
+
+    def test_lee_un_archivo_regular_acotado(self):
+        (self.base / 'NOTAS.md').write_text('0123456789')
+        for _n, via in self._vias():
+            with via:
+                self.assertEqual(self.ws.leer_artefacto(self.base, 'NOTAS.md', 4), '0123')
+                self.assertEqual(self.ws.leer_artefacto(self.base, 'no-existe.md', 4), '')
+
+    def test_nombre_invalido_se_rechaza(self):
+        for malo in ('', '..', 'a/b'):
+            with self.assertRaises(ValueError):
+                self.ws.leer_artefacto(self.base, malo, 10)
+
+    @SOLO_POSIX
+    def test_symlink_al_secreto_no_se_lee(self):
+        os.symlink(self.secreto, self.base / 'NOTAS.md')
+        for _n, via in self._vias():
+            with via:
+                self.assertEqual(self.ws.leer_artefacto(self.base, 'NOTAS.md', 100), '')
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'NOTAS.md'))
+
+    @SOLO_POSIX
+    def test_symlink_de_directorio_en_el_camino_no_se_sigue(self):
+        os.symlink(self.tmp, self.base / 'sub')
+        for _n, via in self._vias():
+            with via:
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'sub/secreto.txt'))
+
+    def test_dot_dot_y_git_no_son_componentes_validos(self):
+        (self.base / '.git').mkdir()
+        (self.base / '.git' / 'config').write_text('x')
+        for rel in ('../secreto.txt', '.git/config', '.GIT/config', '.', ''):
+            for _n, via in self._vias():
+                with via:
+                    self.assertIsNone(self.ws.abrir_artefacto(self.base, rel), rel)
+
+    def test_dos_puntos_en_windows_se_rechaza(self):
+        with mock.patch('enjambre.workspace.sys.platform', 'win32'):
+            self.assertIsNone(self.ws.abrir_artefacto(self.base, 'C:secreto.txt'))
+            self.assertIsNone(self.ws.abrir_artefacto(self.base, 'a.txt:stream'))
+            with self.assertRaises(OSError):
+                self.ws.abrir_escritura(self.base, 'C:evil.txt')
+            with self.assertRaises(OSError):
+                self.ws.abrir_escritura(self.base, 'a.txt:stream')
+
+    def test_windows_descarta_fd_que_termino_fuera_de_base(self):
+        """La carrera lstat→open de Windows (junction cambiada en el medio, reproducida en win11):
+        lo que decide es la ruta FINAL del handle ya abierto."""
+        (self.base / 'sub').mkdir()
+        (self.base / 'sub' / 'a.txt').write_text('ok')
+        (self.base / 'b.txt').write_text('ok')
+        afuera = lambda fd: str(self.secreto)  # noqa: E731
+        en_su_lugar = lambda fd: os.path.join(os.path.realpath(self.base), 'sub', 'a.txt')  # noqa: E731
+        with mock.patch.object(self.ws, '_CON_DIRFD', False), \
+                mock.patch('enjambre.workspace.sys.platform', 'win32'):
+            with mock.patch.object(self.ws, '_ruta_final_fd', side_effect=afuera):
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'sub/a.txt'))
+                with self.assertRaises(OSError):
+                    self.ws.abrir_escritura(self.base, 'b.txt')
+            with mock.patch.object(self.ws, '_ruta_final_fd', return_value=None):
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'sub/a.txt'))  # no saber = no
+            with mock.patch.object(self.ws, '_ruta_final_fd', side_effect=en_su_lugar):
+                fd = self.ws.abrir_artefacto(self.base, 'sub/a.txt')
+                self.assertIsNotNone(fd)
+                os.close(fd)
+
+    def test_escritura_fallback_tambien_verifica_fstat(self):
+        (self.base / 'x.txt').write_text('ok')
+        fake_st = mock.Mock(st_mode=0o020666)  # S_IFCHR (ej. dispositivo NUL/CON en Windows)
+        with mock.patch.object(self.ws, '_CON_DIRFD', False), \
+                mock.patch('enjambre.workspace.os.fstat', return_value=fake_st):
+            with self.assertRaises(OSError):
+                self.ws.abrir_escritura(self.base, 'x.txt')
+
+    def test_directorio_no_es_un_artefacto(self):
+        (self.base / 'd').mkdir()
+        for _n, via in self._vias():
+            with via:
+                self.assertIsNone(self.ws.abrir_artefacto(self.base, 'd'))
+
+    def test_abre_anidado_y_devuelve_los_bytes(self):
+        (self.base / 'a').mkdir()
+        (self.base / 'a' / 'b.bin').write_bytes(b'\x00\r\n\xff')
+        for _n, via in self._vias():
+            with via:
+                fd = self.ws.abrir_artefacto(self.base, 'a/b.bin')
+                self.assertIsNotNone(fd)
+                try:
+                    self.assertEqual(self.ws.leer_fd(fd, 100), b'\x00\r\n\xff')
+                finally:
+                    os.close(fd)
+
+    def test_escritura_normal_y_trunca_a_pedido(self):
+        (self.base / 'x.txt').write_text('viejo y largo')
+        for _n, via in self._vias():
+            with via:
+                with os.fdopen(self.ws.abrir_escritura(self.base, 'x.txt'), 'wb') as out:
+                    out.truncate()
+                    out.write(b'nuevo')
+                self.assertEqual((self.base / 'x.txt').read_bytes(), b'nuevo')
+
+    @SOLO_POSIX
+    def test_escritura_a_traves_de_un_symlink_se_niega(self):
+        os.symlink(self.secreto, self.base / 'x.txt')
+        for _n, via in self._vias():
+            with via:
+                with self.assertRaises(OSError):
+                    self.ws.abrir_escritura(self.base, 'x.txt')
+        self.assertEqual(self.secreto.read_text(), 'TOKEN-SECRETO')
+
+    @SOLO_POSIX
+    def test_escritura_sobre_un_fifo_no_cuelga_y_se_niega(self):
+        os.mkfifo(self.base / 'tubo')
+        for _n, via in self._vias():
+            with via:
+                with self.assertRaises(OSError):
+                    self.ws.abrir_escritura(self.base, 'tubo')
+
+    def test_sin_o_nofollow_las_constantes_caen_a_cero(self):
+        """En Windows `os.O_NOFOLLOW`/`O_NONBLOCK`/`O_DIRECTORY` no existen: se usan con getattr."""
+        for nombre in ('_O_NOFOLLOW', '_O_NONBLOCK', '_O_DIRECTORY', '_O_BINARY'):
+            self.assertIsInstance(getattr(self.ws, nombre), int)
+
+    @SOLO_POSIX
+    def test_huella_de_symlink_no_lee_el_destino(self):
+        (self.base / '.git').mkdir()
+        os.symlink(self.secreto, self.base / '.git' / 'config')
+        h = self.ws._huella_archivo(self.base / '.git' / 'config')
+        self.assertTrue(h.startswith(b'link:'))
+        self.assertNotIn(b'TOKEN', h)
+
+    def test_la_vista_de_subida_no_escribe_a_traves_de_un_enlace(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        with override_settings(ENJAMBRE_MESAS_DIR=str(self.tmp / 'mesas')):
+            s = Sesion.objects.create(nombre='sube')
+            dest = Path(self.ws.mesas_dir()) / f'mesa-{s.pk}'
+            dest.mkdir(parents=True)
+            if os.name != 'nt':
+                os.symlink(self.secreto, dest / 'robo.txt')
+            resp = self.client.post(reverse('enjambre:mesa_subir', args=[s.pk]), {
+                'archivos': [SimpleUploadedFile('robo.txt', b'pisado'),
+                             SimpleUploadedFile('ok.txt', b'bien')]})
+        self.assertEqual((dest / 'ok.txt').read_bytes(), b'bien')
+        self.assertEqual(self.secreto.read_text(), 'TOKEN-SECRETO')
+        if os.name != 'nt':
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(any('robo.txt' in r for r in resp.json().get('rechazados', [])))
+
+    @SOLO_POSIX
+    def test_la_vista_de_descarga_y_el_zip_no_sirven_enlaces(self):
+        with override_settings(ENJAMBRE_MESAS_DIR=str(self.tmp / 'mesas')):
+            s = Sesion.objects.create(nombre='baja')
+            dest = Path(self.ws.mesas_dir()) / f'mesa-{s.pk}'
+            dest.mkdir(parents=True)
+            (dest / 'real.txt').write_text('real')
+            os.symlink(self.secreto, dest / 'enlace.txt')
+            r1 = self.client.get(reverse('enjambre:mesa_archivo', args=[s.pk]), {'path': 'real.txt'})
+            self.assertEqual(b''.join(r1.streaming_content), b'real')
+            r2 = self.client.get(reverse('enjambre:mesa_archivo', args=[s.pk]), {'path': 'enlace.txt'})
+            self.assertEqual(r2.status_code, 403)   # resuelve fuera de la carpeta
+            z = self.client.get(reverse('enjambre:mesa_zip', args=[s.pk]))
+        import io
+        import zipfile
+        nombres = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+        self.assertEqual(nombres, ['real.txt'])
+
+
+class SillaEntornoYStdinTests(TestCase):
+    """S-04: el CLI de la silla hereda SOLO el entorno permitido y recibe el prompt por stdin
+    (excepto agy, que lo recibe por argv)."""
+
+    SECRETOS = {'SWARM_SECRET_KEY': 'k', 'GITHUB_TOKEN': 'g', 'AWS_SECRET_ACCESS_KEY': 'a',
+                'DATABASE_URL': 'd', 'SWARM_DATA_DIR': '/boveda', 'ENJAMBRE_HOST_UID': '1'}
+    PERMITIDAS = {'PATH': '/bin', 'HOME': '/h', 'APPDATA': 'C:\\A', 'USERPROFILE': 'C:\\U',
+                  'SystemRoot': 'C:\\W', 'ANTHROPIC_API_KEY': 'ak', 'OPENCODE_CONFIG': 'c',
+                  'CODEX_HOME': '/cx', 'GEMINI_API_KEY': 'gk', 'HTTPS_PROXY': 'p',
+                  'LC_ALL': 'C', 'XDG_CONFIG_HOME': '/x'}
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = override_settings(ENJAMBRE_MESAS_DIR=str(Path(tmp.name) / 'mesas'))
+        p.enable()
+        self.addCleanup(p.disable)
+
+    def _correr(self, comando, key='s1', extra_env=None):
+        silla = Participante.objects.create(key=key, nombre='T', comando=comando)
+        proc = proceso_falso('hola')
+        entorno = {**self.SECRETOS, **self.PERMITIDAS, **(extra_env or {})}
+        with mock.patch.dict(os.environ, entorno), \
+                mock.patch('enjambre.engine.subprocess.Popen', return_value=proc) as popen:
+            ejecutar_cli(silla, 'PROMPT-SECRETO', 10)
+        return popen.call_args, proc
+
+    def test_no_hereda_secretos_ni_variables_de_swarm(self):
+        call, _p = self._correr(['opencode', 'run'])
+        env = call.kwargs['env']
+        for k in self.SECRETOS:
+            self.assertNotIn(k, env)
+
+    def test_hereda_lo_que_el_cli_necesita(self):
+        call, _p = self._correr(['claude', '-p'], key='s2')
+        env = call.kwargs['env']
+        for k, v in self.PERMITIDAS.items():
+            if os.name == 'nt':
+                k = k.upper()
+            self.assertEqual(env[k] if k in env else env[next(x for x in env if x.upper() == k.upper())], v)
+
+    def test_marcas_del_turno_se_agregan_aparte(self):
+        call, _p = self._correr(['opencode', 'run'], key='s3')
+        env = call.kwargs['env']
+        self.assertIn('SWARM_TURNO_ID', env)
+        self.assertEqual(env['GIT_CONFIG_VALUE_0'], '*')          # safe.directory del pendrive
+        self.assertIn('OPENCODE_CONFIG_CONTENT', env)
+
+    def test_swarm_silla_env_suma_nombres_y_prefijos(self):
+        call, _p = self._correr(['opencode', 'run'], key='s4',
+                                extra_env={'SWARM_SILLA_ENV': 'GROQ_*, MI_VAR',
+                                           'GROQ_API_KEY': 'gq', 'MI_VAR': 'v', 'OTRA': 'x'})
+        env = call.kwargs['env']
+        self.assertEqual(env['GROQ_API_KEY'], 'gq')
+        self.assertEqual(env['MI_VAR'], 'v')
+        self.assertNotIn('OTRA', env)
+        self.assertNotIn('SWARM_SILLA_ENV', env)
+
+    def test_el_nombre_se_compara_sin_distinguir_mayusculas(self):
+        """Windows entrega `SystemRoot`/`Path`; en Linux un `path` en minúscula también pasa."""
+        call, _p = self._correr(['opencode', 'run'], key='s5', extra_env={'Windir': 'C:\\W'})
+        self.assertTrue(any(k.upper() == 'WINDIR' for k in call.kwargs['env']))
+
+    def test_claude_y_opencode_van_por_stdin(self):
+        for i, cmd in enumerate((['claude', '-p', '--output-format', 'text'], ['opencode', 'run'])):
+            call, proc = self._correr(cmd, key=f'in{i}')
+            self.assertNotIn('PROMPT-SECRETO', call.args[0])
+            self.assertEqual(call.kwargs['stdin'], subprocess.PIPE)
+            proc.communicate.assert_called_once_with(input='PROMPT-SECRETO', timeout=10)
+
+    def test_codex_sigue_por_stdin_con_guion(self):
+        call, proc = self._correr(['codex', 'exec'], key='cx')
+        self.assertEqual(call.args[0][-1], '-')
+        proc.communicate.assert_called_once_with(input='PROMPT-SECRETO', timeout=10)
+
+    def test_agy_sigue_por_argv_con_stdin_cerrado(self):
+        """agy no tiene verificado leer de stdin: queda `-p <prompt>` (anotado en clientes.py)."""
+        call, proc = self._correr(['agy', '--sandbox', '-p'], key='agy2')
+        self.assertEqual(call.args[0][-1], 'PROMPT-SECRETO')
+        self.assertIs(call.kwargs['stdin'], subprocess.DEVNULL)
+        proc.communicate.assert_called_once_with(timeout=10)
+
+    def test_prompt_stdin_solo_en_los_clientes_verificados(self):
+        self.assertTrue(CLIENTES['claude']['prompt_stdin'])
+        self.assertTrue(CLIENTES['opencode']['prompt_stdin'])
+        self.assertFalse(CLIENTES['agy'].get('prompt_stdin'))
+
+
+class PromptPlanReglasTests(TestCase):
+    def test_reglas_de_reparto_y_reconocimiento(self):
+        from .engine import _prompt_plan
+        s = Sesion.objects.create(nombre='plan')
+        w = Participante.objects.create(key='pw', nombre='PW', comando=['x'])
+        s.participantes.add(w)
+        build = _prompt_plan('hacé X', [w], editar=True)
+        self.assertIn('UNA sola llamada', build)                 # varias líneas por alias = 1 llamada
+        self.assertIn('persista el avance', build)               # trabajo extenso: persistir
+        self.assertIn('RECONOCIMIENTO', build)
+        self.assertIn('No inventes consignas', build)
+        charla = _prompt_plan('pensá X', [w], editar=False)
+        self.assertNotIn('UNA sola llamada', charla)             # solo aplica al modo fabricar
+        self.assertIn('RECONOCIMIENTO', charla)
+        for prohibido in ('Ultron', 'Mesa X'):
+            self.assertNotIn(prohibido, build)
+
+
+class FalloEjecucionVisibleTests(TestCase):
+    """Un turno con subtareas caídas no se cierra como «completo»; un plan caído no se parsea."""
+
+    def _mesa(self):
+        lider = Participante.objects.create(key='lid-f', nombre='Líder', comando=['x'])
+        worker = Participante.objects.create(key='wk-f', nombre='WorkerF', comando=['x'])
+        s = Sesion.objects.create(nombre='lf', topologia='lider', lider=lider)
+        s.participantes.add(lider, worker)
+        return s, lider, worker
+
+    def _liderar(self, respuestas, texto='pedido'):
+        s, _l, _w = self._mesa()
+        it = iter(respuestas)
+        enj = Enjambre(s)
+        with mock.patch.object(Enjambre, 'enviar', side_effect=lambda *a, **k: next(it)), \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            res = enj.liderar(texto)
+        return s, enj, res
+
+    def test_silla_caida_marca_fallo(self):
+        _s, enj, _r = self._liderar(['@workerf: tarea', '(❌ WorkerF falló)', 'Cierre legible'])
+        self.assertIs(enj.fallo_ejecucion, True)
+
+    def test_todo_bien_no_marca_fallo(self):
+        _s, enj, _r = self._liderar(['@workerf: tarea', 'Hecho', 'Cierre legible'])
+        self.assertIs(enj.fallo_ejecucion, False)
+
+    def test_excepcion_de_la_silla_marca_fallo(self):
+        s, _l, _w = self._mesa()
+        resp = iter(['@workerf: tarea', RuntimeError('CLI roto'), 'Cierre'])
+
+        def enviar(*a, **k):
+            r = next(resp)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        enj = Enjambre(s)
+        with mock.patch.object(Enjambre, 'enviar', side_effect=enviar), \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            enj.liderar('pedido')
+        self.assertIs(enj.fallo_ejecucion, True)
+
+    def test_cierre_caido_marca_fallo(self):
+        _s, enj, _r = self._liderar(['@workerf: tarea', 'Hecho', '(⏰ timeout tras 600s)'])
+        self.assertIs(enj.fallo_ejecucion, True)
+
+    def test_plan_caido_no_se_parsea_y_deja_aviso(self):
+        s, _l, _w = self._mesa()
+        enj = Enjambre(s)
+        with mock.patch.object(Enjambre, 'enviar', return_value='(⏰ timeout tras 7s)\n\nx') as env, \
+                mock.patch.object(Enjambre, '_parse_asignaciones') as parse, \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            enj.liderar('pedido')
+        env.assert_called_once()
+        parse.assert_not_called()
+        self.assertIs(enj.fallo_ejecucion, True)
+        aviso = s.mensajes.filter(es_sistema=True).latest('id').texto
+        self.assertIn('no se repartieron ni ejecutaron subtareas', aviso)
+
+    def test_liderar_reinicia_el_fallo_en_cada_llamada(self):
+        s, _l, _w = self._mesa()
+        enj = Enjambre(s)
+        resp = iter(['@workerf: tarea', '(❌ cae)', 'Cierre',
+                     '@workerf: tarea', 'Hecho', 'Cierre'])
+        with mock.patch.object(Enjambre, 'enviar', side_effect=lambda *a, **k: next(resp)), \
+                mock.patch('enjambre.toolbelt.habilitado', return_value=True):
+            enj.liderar('uno')
+            self.assertIs(enj.fallo_ejecucion, True)
+            enj.liderar('dos')
+        self.assertIs(enj.fallo_ejecucion, False)
+
+    def _turno(self, resultados, fallo):
+        from types import SimpleNamespace
+
+        from .management.commands.enjambre_worker import Command
+        sesion = SimpleNamespace(topologia='plana', lider_id=None, autonoma=False, pk=1)
+        with mock.patch('enjambre.management.commands.enjambre_worker.Enjambre') as cls:
+            enj = cls.return_value
+            enj.responder.return_value = resultados
+            enj.fallo_ejecucion = fallo
+            Command()._turno(sesion, 'pedido')
+        return [c.args[0] for c in enj.log.call_args_list]
+
+    def test_worker_no_dice_turno_completo_si_todo_fue_ruido(self):
+        textos = self._turno({'silla': '(❌ proveedor)'}, False)
+        self.assertTrue(any('turno sin respuesta válida' in t for t in textos))
+        self.assertFalse(any('turno completo' in t for t in textos))
+
+    def test_worker_no_dice_turno_completo_con_fallos_de_ejecucion(self):
+        textos = self._turno({'a': 'bien'}, True)
+        self.assertTrue(any('turno con fallos de ejecución' in t for t in textos))
+        self.assertFalse(any('turno completo' in t for t in textos))
+
+    def test_worker_turno_sano_dice_completo(self):
+        textos = self._turno({'a': 'bien'}, False)
+        self.assertTrue(any('turno completo' in t for t in textos))
+
+
+class TareaNoSeCuelgaTests(TestCase):
+    """S-05/S-09: lo que explota antes del try/finally de una Tarea la cierra en ERROR."""
+
+    def _tarea(self, **kw):
+        from .models import Tarea
+        p = Participante.objects.create(key=f'n{Tarea.objects.count()}', nombre='Neo', comando=['x'])
+        return Tarea.objects.create(participante=p, titulo='t', ordenes='hacelo',
+                                    estado=Tarea.Estado.PENDIENTE, **kw)
+
+    def test_worktree_que_explota_no_clava_la_tarea(self):
+        from . import workspace
+        from .models import Tarea
+        with tempfile.TemporaryDirectory() as repo:
+            t = self._tarea(repo_path=repo)
+            with mock.patch.object(workspace, 'crear_worktree', side_effect=RuntimeError('worktree roto')), \
+                    mock.patch.object(workspace, 'remover_worktree') as rm, \
+                    mock.patch.object(workspace, 'ejecutar_cli') as cli:
+                workspace.ejecutar_tarea(t, timeout=1)   # NO propaga al worker
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn('worktree roto', t.salida)
+        cli.assert_not_called()
+        rm.assert_called_once()
+
+    def test_persistente_que_explota_antes_del_try_no_clava_la_tarea(self):
+        from . import workspace
+        from .models import Tarea
+        s = Sesion.objects.create(nombre='m')
+        t = self._tarea(sesion=s, persistente=True)
+        with mock.patch.object(workspace, 'mesa_workspace', side_effect=OSError('disco lleno')):
+            workspace.ejecutar_tarea(t, timeout=1)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn('disco lleno', t.salida)
+
+    def test_worktree_real_con_git_alterado_queda_en_error_sin_commit(self):
+        """Ruta de worktree con git real: una clave `filter.*` en la config del repo → no se commitea."""
+        from . import workspace
+        from .models import Tarea
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / 'repo'
+            repo.mkdir()
+            workspace._git(repo, 'init')
+            (repo / 'a.txt').write_text('a')
+            workspace._git(repo, 'add', '-A')
+            workspace._git(repo, *workspace.GIT_AUTOR, 'commit', '-m', 'init')
+            base = workspace._git(repo, 'rev-parse', 'HEAD')
+            t = self._tarea(repo_path=str(repo), base_ref=base)
+
+            def silla(*a, **k):
+                workspace._git(repo, 'config', 'filter.x.clean', 'cat')
+                (Path(k['workdir']) / 'b.txt').write_text('b')
+                return ('lo hice', False)
+
+            with override_settings(ENJAMBRE_WORKSPACES_DIR=str(Path(tmp) / 'wt')), \
+                    mock.patch.object(workspace, 'ejecutar_cli', side_effect=silla):
+                workspace.ejecutar_tarea(t, timeout=1)
+        t.refresh_from_db()
+        self.assertEqual(t.estado, Tarea.Estado.ERROR)
+        self.assertIn(workspace.GIT_ALTERADO_MARCA, t.salida)

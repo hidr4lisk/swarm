@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+{% load static i18n %}
+{% comment %}
+base_swarm.html — el esqueleto self-contained de Swarm: temas matrix/inverse con sus
+tokens definidos localmente, sin login ni nada de portal. Los templates de Enjambre
+extienden de acá sin cambios.
+{% endcomment %}
+{% get_current_language as LANGUAGE_CODE %}<html lang="{{ LANGUAGE_CODE }}" data-theme="matrix">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hidr4lisk_Swarm</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'enjambre/favicon.svg' %}">
+
+    <!-- Anti-FOUC: aplicar tema antes de renderizar -->
+    <script>
+        (function () {
+            const saved = localStorage.getItem('swarm-theme');
+            const theme = (saved === 'matrix' || saved === 'inverse') ? saved : 'matrix';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
+    <!-- Fonts + FontAwesome self-hosted (sin CDN) -->
+    <link rel="preload" href="{% static 'enjambre/vendor/fonts/jetbrains-mono-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{% static 'enjambre/vendor/fonts/inter-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{% static 'enjambre/vendor/fonts/fonts.css' %}">
+    <link rel="stylesheet" href="{% static 'enjambre/vendor/fontawesome/css/all.min.css' %}">
+
+    <link rel="stylesheet" href="{% static 'enjambre/swarm.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <header>
+        <div class="header-content">
+            <a href="{% url 'enjambre:home' %}" class="brand" title="Hidr4lisk_Swarm" aria-label="Hidr4lisk_Swarm">
+                HIDR4LISK_SWARM
+            </a>
+
+            <div class="gov-banner" aria-hidden="true">
+                <span class="gov-flag" title="Argentina"><svg width="20" height="13" viewBox="0 0 30 20" role="img" aria-label="Argentina"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.667" fill="#75AADB"/><rect width="30" height="6.667" y="13.333" fill="#75AADB"/><polygon fill="#F6B40E" points="19.2,10 17.495,8.966 17.969,7.031 16.034,7.505 15,5.8 13.966,7.505 12.031,7.031 12.505,8.966 10.8,10 12.505,11.034 12.031,12.969 13.966,12.495 15,14.2 16.034,12.495 17.969,12.969 17.495,11.034"/><circle cx="15" cy="10" r="2.7" fill="#F6B40E" stroke="#85340A" stroke-width=".25"/></svg></span>
+                <span>{% trans '2026 - El conocimiento es libre' %}</span>
+                <span class="gov-stars">★★★</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                {# Idioma: postea al set_language de Django (cookie + redirect a la misma página). #}
+                <form action="{% url 'set_language' %}" method="post" style="margin:0;display:inline-flex;">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    {% get_current_language as LANG %}
+                    {% if LANG == 'es' %}
+                    <button type="submit" name="language" value="en" class="theme-toggle-btn"
+                            aria-label="Switch to English" title="Switch to English"
+                            style="font-size:.75rem;font-weight:700;letter-spacing:.05em;">EN</button>
+                    {% else %}
+                    <button type="submit" name="language" value="es" class="theme-toggle-btn"
+                            aria-label="Cambiar a español" title="Cambiar a español"
+                            style="font-size:.75rem;font-weight:700;letter-spacing:.05em;">ES</button>
+                    {% endif %}
+                </form>
+                <button id="themeToggle" class="theme-toggle-btn" type="button"
+                    aria-label="{% trans 'Cambiar tema' %}" title="{% trans 'Cambiar tema' %}">
+                    <i class="fas fa-yin-yang"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        {% comment %} Avisos de las vistas que redirigen («config importada», «no subiste
+           archivo»…). Se consumen al pintarlos: no reaparecen al recargar.
+           OJO: {# #} es de UNA línea en Django — multilínea se imprime. {% endcomment %}
+        {% if messages %}
+        <style>
+            .enj-msgs { margin: 0 0 1rem; display: flex; flex-direction: column; gap: .4rem; }
+            .enj-msg { border: 1px solid var(--enj-border); border-left: 3px solid var(--accent-color);
+                border-radius: 8px; padding: .55rem .8rem; font-size: .85rem;
+                background: rgba(var(--accent-rgb), .07); }
+            .enj-msg.success { border-left-color: #2ecc40; background: rgba(46, 204, 64, .07); }
+            .enj-msg.warning { border-left-color: #e0a800; background: rgba(224, 168, 0, .08); }
+            .enj-msg.error   { border-left-color: #c0392b; background: rgba(192, 57, 43, .08); }
+        </style>
+        <div class="enj-msgs" role="status" aria-live="polite">
+            {% for m in messages %}<div class="enj-msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <style>
+        footer { gap: 10px; }
+        footer > span { min-width: 0; white-space: nowrap; }
+        footer .footer-credit { overflow: hidden; text-overflow: ellipsis; }
+        footer .footer-version { flex-shrink: 0; }
+        footer .footer-short { display: none; }
+        @media (max-width: 640px) {
+            footer .footer-long { display: none; }
+            footer .footer-short { display: inline; }
+            footer .footer-social { display: none; }   /* en celu: solo "By Federico Furgiuele" */
+        }
+    </style>
+    <footer>
+        <span class="footer-credit"><span class="footer-long">{% trans 'Desarrollado por' %} </span><span class="footer-short">By </span><a href="https://github.com/hidr4lisk" target="_blank" rel="noopener noreferrer"
+            style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:inherit;font-weight:600;">
+            Federico Furgiuele<i class="fab fa-github footer-social" style="font-size:14px;"></i>
+        </a><a href="https://www.linkedin.com/in/federico-furgiuele" target="_blank" rel="noopener noreferrer"
+            aria-label="LinkedIn de Federico Furgiuele" class="footer-social"
+            style="display:inline-flex;align-items:center;margin-left:6px;text-decoration:none;color:inherit;">
+            <i class="fab fa-linkedin" style="font-size:14px;color:inherit;" aria-hidden="true"></i>
+        </a><a href="https://www.instagram.com/hidralisk.online" target="_blank" rel="noopener noreferrer"
+            aria-label="Instagram de HIDR4LISK" class="footer-social"
+            style="display:inline-flex;align-items:center;margin-left:6px;text-decoration:none;color:inherit;">
+            <i class="fab fa-instagram" style="font-size:14px;color:inherit;" aria-hidden="true"></i>
+        </a></span>
+        <span class="footer-version" style="font-family:monospace;font-size:0.75rem;opacity:0.5;"><a
+            href="https://hidr4lisk.github.io/swarm/" target="_blank" rel="noopener noreferrer"
+            title="{% trans 'Sitio del proyecto' %}"
+            style="text-decoration:none;color:inherit;">Hidr4lisk_Swarm {{ swarm_version }}</a></span>
+    </footer>
+
+    <script>
+        // Toggle de tema (matrix ↔ inverse), persistido en localStorage.
+        (function () {
+            const btn = document.getElementById('themeToggle');
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                const html = document.documentElement;
+                const next = html.getAttribute('data-theme') === 'matrix' ? 'inverse' : 'matrix';
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('swarm-theme', next);
+            });
+        })();
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

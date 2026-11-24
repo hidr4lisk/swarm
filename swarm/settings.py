@@ -1,0 +1,184 @@
+"""
+swarm/settings.py — settings mínimas de Hidr4lisk_Swarm.
+
+Filosofía clone & run: todo lo configurable entra por variables de entorno (ver
+`.env.example`); los defaults sirven para desarrollo local sin tocar nada.
+Single-user: no hay login humano, todo corre con rango `control`.
+"""
+import os
+from pathlib import Path
+
+import dj_database_url
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# SECRET_KEY — orden de resolución:
+#   1. env SWARM_SECRET_KEY (para despliegues expuestos o CI).
+#   2. archivo persistente data/.secret_key (0600): se genera solo la primera vez y se reusa.
+#      Así el pendrive lleva SU propia key, distinta por instalación, sin default compartido.
+# El default inseguro ('django-insecure-…') queda solo como último recurso si data/ no es escribible.
+def _resolver_secret_key():
+    env = os.environ.get('SWARM_SECRET_KEY')
+    if env:
+        return env
+    data_dir = Path(os.environ.get('SWARM_DATA_DIR') or (BASE_DIR / 'data'))
+    key_file = data_dir / '.secret_key'
+    try:
+        if key_file.exists():
+            k = key_file.read_text(encoding='utf-8').strip()
+            if k:
+                return k
+        from django.core.management.utils import get_random_secret_key
+        k = get_random_secret_key()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(k, encoding='utf-8')
+        os.chmod(key_file, 0o600)
+        return k
+    except OSError:
+        # data/ no escribible: pendrive read-only, exFAT con error, bind-mount RO.
+        # ANTES caía a un literal hardcodeado — la MISMA clave en todas las
+        # instalaciones que llegaran acá, y publicada en el repo. Ahora se genera
+        # una al vuelo en memoria: invalida las sesiones en cada arranque (molesto,
+        # pero visible), en vez de firmarlas con una clave que cualquiera conoce.
+        import sys
+        from django.core.management.utils import get_random_secret_key
+        print('[swarm] AVISO: no pude guardar la clave de firma en data/ '
+              '(¿medio de solo lectura?). Uso una efímera: vas a tener que volver '
+              'a entrar cada vez que arranque. Seteá SWARM_SECRET_KEY para fijarla.',
+              file=sys.stderr)
+        return get_random_secret_key()
+
+
+SECRET_KEY = _resolver_secret_key()
+
+DEBUG = os.environ.get('SWARM_DEBUG', '1') == '1'
+
+ALLOWED_HOSTS = [h for h in os.environ.get('SWARM_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h]
+
+INSTALLED_APPS = [
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'enjambre',
+]
+
+# Sin login humano, pero sessions+auth quedan para que request.user exista (AnonymousUser)
+# y CSRF proteja los POST de la mesa.
+# `messages` es el canal de avisos «acción hecha / algo falló» de las vistas que redirigen:
+# el aviso se calcula en el POST y se pinta después del redirect (lo muestra base_swarm.html,
+# una sola vez). Guardado en la sesión, que ya está montada.
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+]
+
+ROOT_URLCONF = 'swarm.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+                'enjambre.context_processors.version',
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = 'swarm.wsgi.application'
+
+# DATABASE_URL (postgres en el compose); sin setear cae a SQLite local para desarrollo.
+DATABASES = {
+    'default': dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+    ),
+}
+# SQLite con escritores concurrentes (en `serve`, worker en un hilo + web en otros): sin WAL ni
+# busy_timeout, dos escrituras a la vez terminan en «database is locked». WAL además deja que las
+# lecturas (SSE cada 2s) no bloqueen al escritor.
+if DATABASES['default']['ENGINE'].endswith('sqlite3'):
+    DATABASES['default'].setdefault('OPTIONS', {}).update({
+        'timeout': 20,
+        'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=20000;',
+        # ⚠️ IMMEDIATE no es redundante con busy_timeout: cubre el caso que el timeout NO puede
+        # cubrir. Por default Django abre la transacción como DEFERRED, así que una vista que LEE
+        # y después ESCRIBE (patrón `participantes.set()`: SELECT y luego DELETE) arranca leyendo
+        # y recién al escribir intenta subir a escritora. Si otro hilo escribió en el medio,
+        # SQLite devuelve SQLITE_BUSY **al instante y sin llamar al busy handler** — está
+        # documentado, y por eso el `busy_timeout=20000` de arriba no lo salva: no es contención
+        # que se resuelva esperando, es un upgrade imposible. Con IMMEDIATE la transacción nace
+        # escritora, así que cualquier espera SÍ pasa por el busy_timeout.
+        # Encontrado el 2026-08-04 con Swarm corriendo del pendrive en nave: guardar la config de
+        # una mesa tiraba 500 «database is locked» mientras el worker posteaba en otra.
+        # (Se descartó que fuera el pendrive: mide 1 ms por commit contra 9 ms del disco interno.)
+        'transaction_mode': 'IMMEDIATE',
+    })
+
+LANGUAGE_CODE = 'es'
+# UI bilingüe: se traduce el CHROME (botones, títulos, la guía Ayuda) vía i18n estándar.
+# El CONTENIDO (mensajes de las sillas, lo persistido en DB) no se traduce: lo definen
+# las personas de cada silla. El botón ES/EN de la navbar setea la cookie de idioma.
+LANGUAGES = [('es', 'Español'), ('en', 'English')]
+LOCALE_PATHS = [BASE_DIR / 'locale']
+TIME_ZONE = os.environ.get('SWARM_TZ', 'America/Argentina/Buenos_Aires')
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── Enjambre — el motor de la mesa ──────────────────────────────────────────────
+
+# Carpetas de trabajo persistentes por mesa. Vacío = ~/.enjambre/mesas.
+ENJAMBRE_MESAS_DIR = os.environ.get('ENJAMBRE_MESAS_DIR', '')
+
+# Git worktrees aislados de las Tareas. Vacío = ~/.enjambre/workspaces.
+ENJAMBRE_WORKSPACES_DIR = os.environ.get('ENJAMBRE_WORKSPACES_DIR', '')
+
+# uid/gid del worker del host. Si el contenedor web corre como root, chownea a estos las
+# carpetas/archivos de mesa que crea, para que el worker pueda hacerles git init (si no, quedan
+# root:root → 'Permission denied' al fabricar). Override por .env si tu usuario no es 1000.
+ENJAMBRE_HOST_UID = int(os.environ.get('ENJAMBRE_HOST_UID', '1000'))
+ENJAMBRE_HOST_GID = int(os.environ.get('ENJAMBRE_HOST_GID', '1000'))
+
+# Resolver de rol pluggable: callable(creador) -> 'control' | 'consulta'.
+# None (default) = todo es rango `control` — el modelo single-user de Swarm.
+ENJAMBRE_ROLE_RESOLVER = None
+
+# Cómo te llaman las sillas en la mesa. Vacío = 'Humano'.
+ENJAMBRE_TITULO_HUMANO = os.environ.get('ENJAMBRE_TITULO_HUMANO', '')
+
+# ── Swarm 2.0 — ruta por API key / portátil / toolbelt ──────────────────────────
+# Directorio de datos PERSISTENTE (bóveda de API keys + lo que no es la DB). En el pendrive el
+# launcher lo apunta a <bundle>/data para que sobreviva a una actualización del app/. Vacío =
+# <repo>/data (dev).
+SWARM_DATA_DIR = os.environ.get('SWARM_DATA_DIR') or str(BASE_DIR / 'data')
+
+# TOOLBELT: si las sillas por API key pueden operar el SISTEMA REAL (F3). Apagado por default —
+# es un tool de mucho poder. Prender con SWARM_TOOLBELT=1 (solo en máquinas que estés autorizado
+# a atender). Ver "Threat model" del README.
+SWARM_TOOLBELT = os.environ.get('SWARM_TOOLBELT', '')
+
+# Cuántas mesas atiende el worker A LA VEZ (turnos en vuelo). Default 1 = secuencial, el camino
+# de siempre (sin hilos). Con N > 1 mesas que NO comparten ninguna silla responden en paralelo;
+# una silla nunca tiene dos turnos en vuelo (mismo login/cuota del CLI o de la key).
+SWARM_WORKER_PARALELO = os.environ.get('SWARM_WORKER_PARALELO', '1')
+
+# base_url del proveedor "OpenAI-compatible" (para apuntar a Groq/DeepSeek/LM Studio/etc.).
+# Vacío = api.openai.com. Solo afecta a las sillas api-openai.
+SWARM_OPENAI_BASE_URL = os.environ.get('SWARM_OPENAI_BASE_URL', '')

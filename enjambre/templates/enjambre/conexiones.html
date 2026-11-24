@@ -1,0 +1,439 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+    .cx-fila { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+    .cx-estado { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem;
+                 flex-shrink: 0; margin-left: auto; }
+    .cx-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .cx-dot.on  { background: #2ecc40; box-shadow: 0 0 6px 1px rgba(46,204,64,.55); }
+    .cx-dot.off { background: #c0392b; box-shadow: 0 0 6px 1px rgba(192,57,43,.4); }
+    .cx-ruta { font-family: monospace; font-size: .78rem; opacity: .65; word-break: break-all; }
+    .cx-login { font-family: monospace; font-size: .8rem; }
+
+    /* Segmented control (pestañas) */
+    .cx-tabs { display: inline-flex; gap: .25rem; padding: .25rem; border-radius: 10px;
+               background: rgba(var(--accent-rgb), .08); border: 1px solid var(--border-color);
+               margin: .2rem 0 1rem; }
+    .cx-tab { appearance: none; border: 0; background: transparent; cursor: pointer;
+              font: inherit; color: var(--text-muted); padding: .45rem .9rem; border-radius: 7px;
+              display: inline-flex; align-items: center; gap: .45rem; transition: background .12s, color .12s; }
+    .cx-tab[aria-selected="true"] { background: var(--surface-color); color: var(--text-main);
+              box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+    .cx-panel[hidden] { display: none; }
+
+    /* Bóveda de API keys */
+    .cx-vault { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap;
+                padding: .8rem 1rem; border-radius: 12px; border: 1px solid var(--border-color);
+                background: rgba(var(--accent-rgb), .06); margin-bottom: 1rem; }
+    .cx-lock { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex;
+               align-items: center; justify-content: center; font-size: 15px;
+               background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
+    .cx-vault.state-abierta .cx-lock { background: rgba(46,204,64,.16); color: #2ecc40; }
+    .cx-vaulttxt { display: flex; flex-direction: column; gap: .12rem; min-width: 130px; }
+    .cx-vaulttxt strong { font-size: .95rem; line-height: 1.2; }
+    /* Botones según estado: en "nueva" no hay ninguno (la acción es Guardar la 1ª key abajo). */
+    .cx-vault [data-act="unlock"], .cx-vault [data-act="lock"] { display: none; }
+    .cx-vault.state-cerrada [data-act="unlock"] { display: inline-flex; }
+    .cx-vault.state-abierta  [data-act="lock"]  { display: inline-flex; }
+    .cx-hint { font-size: .82rem; color: var(--accent-color); margin: .1rem 0 1rem;
+               display: flex; align-items: center; gap: .45rem; }
+    .cx-pass { flex: 1; min-width: 150px; }
+    .cx-pass input { width: 100%; box-sizing: border-box; }
+    .cx-key-token { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
+    .cx-key-token input { flex: 1; min-width: 160px; box-sizing: border-box; font-family: monospace; }
+    .cx-msg { font-size: .8rem; min-height: 1.1em; margin-top: .4rem; }
+    .cx-msg.ok  { color: #2ecc40; }
+    .cx-msg.err { color: #e74c3c; }
+    .cx-note { font-size: .8rem; color: var(--text-muted); }
+
+    /* Toolbelt: switch + tarjeta de estado */
+    .cx-belt { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+               padding: 1rem 1.1rem; border-radius: 12px; border: 1px solid var(--border-color);
+               background: rgba(var(--accent-rgb), .06); margin-bottom: 1rem; }
+    .cx-belt.on { border-color: rgba(46,204,64,.55); background: rgba(46,204,64,.08); }
+    .cx-belticon { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; display: flex;
+                   align-items: center; justify-content: center; font-size: 17px;
+                   background: rgba(var(--accent-rgb), .13); color: var(--accent-color); }
+    .cx-belt.on .cx-belticon { background: rgba(46,204,64,.16); color: #2ecc40; }
+    .cx-belttxt { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 150px; }
+    .cx-belttxt strong { font-size: .98rem; }
+    .cx-switch { position: relative; width: 54px; height: 30px; flex-shrink: 0; }
+    .cx-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .cx-slider { position: absolute; inset: 0; border-radius: 999px; cursor: pointer;
+                 background: rgba(192,57,43,.45); transition: background .15s; }
+    .cx-slider::before { content: ''; position: absolute; height: 22px; width: 22px; left: 4px;
+                 top: 4px; border-radius: 50%; background: #fff; transition: transform .15s; }
+    .cx-switch input:checked + .cx-slider { background: rgba(46,204,64,.8); }
+    .cx-switch input:checked + .cx-slider::before { transform: translateX(24px); }
+    .cx-switch input:disabled + .cx-slider { opacity: .5; cursor: not-allowed; }
+    .cx-safety { list-style: none; padding: 0; margin: .2rem 0 1rem; display: flex;
+                 flex-direction: column; gap: .55rem; }
+    .cx-safety li { display: flex; gap: .6rem; align-items: flex-start; font-size: .86rem;
+                    line-height: 1.4; }
+    .cx-safety i { color: var(--accent-color); margin-top: .18rem; flex-shrink: 0; width: 1rem; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enj">
+    <div class="enj-head">
+        <a href="{% url 'enjambre:gestionar_sillas' %}" class="mod-back"><i class="fas fa-chevron-left"></i> {% trans 'Sillas' %}</a>
+        <span class="mod-sep">|</span>
+        <h1 class="mod-title" style="flex:1;min-width:0;">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-plug" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span>{% trans 'Conexiones' %}</span>
+        </h1>
+    </div>
+
+    {% csrf_token %}
+    {% include 'enjambre/_escalera.html' with abierta=True %}
+    <div class="cx-tabs" role="tablist">
+        <button class="cx-tab" type="button" role="tab" data-tab="clis" aria-selected="true">
+            <i class="fas fa-terminal"></i> {% trans 'CLIs logueados' %}
+        </button>
+        <button class="cx-tab" type="button" role="tab" data-tab="keys" aria-selected="false">
+            <i class="fas fa-key"></i> {% trans 'API keys' %}
+        </button>
+        <button class="cx-tab" type="button" role="tab" data-tab="belt" aria-selected="false">
+            <i class="fas fa-toolbox"></i> {% trans 'Toolbelt' %}
+        </button>
+    </div>
+
+    {# ── Panel 1: CLIs logueados (detección por existencia, sin leer contenido) ── #}
+    <div class="cx-panel" data-panel="clis">
+        <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+            {% blocktrans %}El login de cada CLI vive en <strong>tu terminal</strong>, no acá: Swarm solo detecta si el
+            archivo de credenciales <strong>existe</strong> — nunca lo lee, nunca lo copia y nunca lo muestra.
+            La silla corre como un proceso más de tu sesión, con la cuenta que ya tenés abierta.{% endblocktrans %}
+            {% trans 'Logueá el CLI en esta máquina y encendé su silla en' %}
+            <a href="{% url 'enjambre:gestionar_sillas' %}">{% trans 'Sillas' %}</a>.
+        </p>
+
+        <div class="enj-grid" style="grid-template-columns:1fr;">
+            {% for f in filas %}
+            <div class="enj-card">
+                <div class="cx-fila">
+                    <strong>{{ f.nombre }}</strong>
+                    <span class="cx-estado">
+                        <span class="cx-dot {% if f.ok %}on{% else %}off{% endif %}"></span>
+                        {% if f.ok %}{% trans 'Detectado' %}{% else %}{% trans 'No detectado' %}{% endif %}
+                    </span>
+                </div>
+                <div class="cx-ruta">{{ f.ruta }}</div>
+                {% if not f.ok %}
+                <div class="enj-muted" style="font-size:.8rem;">
+                    {% trans 'Para conectarlo, en tu terminal:' %} <span class="cx-login">{{ f.login }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <p class="enj-muted" style="font-size:.75rem;margin-top:1rem;">
+            {% if chequeado_at %}
+            {% blocktrans %}Chequeado por el worker al arrancar ({{ chequeado_at }}). Si te acabás de loguear,
+            reiniciá el worker (♻️ en Sillas) para rechequear.{% endblocktrans %}
+            {% else %}
+            {% trans 'Chequeado en vivo, en esta máquina.' %}
+            {% endif %}
+        </p>
+    </div>
+
+    {# ── Panel 2: API keys cifradas (bóveda por passphrase) — ruta portable ── #}
+    <div class="cx-panel" data-panel="keys" hidden data-vault>
+        <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+            {% blocktrans %}Las sillas por <strong>API key</strong> (Anthropic / OpenAI-compatible / OpenRouter / Gemini)
+            hablan directo con el proveedor, sin CLI. Las keys se guardan <strong>cifradas con tu
+            passphrase</strong> en <code>data/secrets.enc</code>: si se pierde el pendrive sin la passphrase,
+            no hay tokens en claro.{% endblocktrans %}
+        </p>
+
+        <div class="cx-vault state-{{ vault_state }}" data-vaultbar data-state="{{ vault_state }}"
+             data-nconf="{{ vault_nconf }}" data-minpass="{{ vault_min_pass }}">
+            <span class="cx-lock"><i class="fas fa-lock" data-lockicon></i></span>
+            <div class="cx-vaulttxt">
+                <strong data-vaulttitle></strong>
+                <span class="cx-note" data-vaultsub></span>
+            </div>
+            <div class="cx-pass">
+                <label class="cx-note" for="cx-pass-input" data-passlabel></label>
+                <input id="cx-pass-input" type="password" data-pass autocomplete="off" placeholder="••••••••">
+            </div>
+            <button class="enj-btn" type="button" data-act="unlock"><i class="fas fa-lock-open"></i> {% trans 'Desbloquear' %}</button>
+            <button class="enj-ghost" type="button" data-act="lock"><i class="fas fa-lock"></i> {% trans 'Bloquear' %}</button>
+        </div>
+        <div class="cx-msg" data-vaultmsg role="status"></div>
+
+        <p class="cx-hint" data-hint {% if vault_state != 'nueva' %}hidden{% endif %}>
+            <i class="fas fa-arrow-down"></i> {% trans 'Pegá tu primera key abajo y tocá Guardar — queda creada y activa en un solo paso.' %}
+        </p>
+
+        <div class="enj-grid" style="grid-template-columns:1fr;">
+            {% for k in keys %}
+            <div class="enj-card" data-key="{{ k.id }}">
+                <div class="cx-fila">
+                    <strong>{{ k.label }}</strong>
+                    <span class="cx-estado">
+                        <span class="cx-dot {% if k.ok or k.opcional %}on{% else %}off{% endif %}" data-keydot></span>
+                        <span data-keystate>{% if k.ok %}{% trans 'Configurada' %}{% elif k.opcional %}{% trans 'Anda sin key' %}{% else %}{% trans 'Sin key' %}{% endif %}</span>
+                    </span>
+                </div>
+                <div class="cx-key-token">
+                    <input type="password" data-token autocomplete="off"
+                           placeholder="{% trans 'Pegá la API key…' %}">
+                    <button class="enj-btn" type="button" data-act="set"><i class="fas fa-save"></i> {% trans 'Guardar' %}</button>
+                    <button class="enj-ghost" type="button" data-act="remove" {% if not k.ok %}hidden{% endif %}>
+                        <i class="fas fa-trash"></i> {% trans 'Quitar' %}</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <p class="cx-note" style="margin-top:1rem;">
+            {% trans 'La passphrase nunca se guarda ni se loguea; se usa solo para cifrar y descifrar tus keys.' %}
+        </p>
+    </div>
+
+    {# ── Panel 3: Toolbelt (las sillas API operan la máquina real) ── #}
+    <div class="cx-panel" data-panel="belt" hidden data-belt
+         data-on="{{ toolbelt_on|yesno:'1,0' }}" data-forced="{{ toolbelt_forzado|yesno:'1,0' }}">
+        <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+            {% blocktrans %}Con el toolbelt <strong>encendido</strong>, las sillas dejan de solo conversar y pueden
+            <strong>inspeccionar y operar la computadora donde corre Swarm</strong> (la del cliente). Es el corazón
+            del soporte: la silla mira el sistema <strong>real</strong> en vez de adivinar. Vale para las sillas por
+            <strong>API key</strong> y para las de <strong>CLI</strong> (claude · opencode · agy), con una diferencia
+            importante en cómo se controla cada una — mirá abajo.{% endblocktrans %}
+        </p>
+
+        <div class="cx-belt {% if toolbelt_on %}on{% endif %}" data-beltbar>
+            <span class="cx-belticon"><i class="fas fa-toolbox"></i></span>
+            <div class="cx-belttxt">
+                <strong data-belttitle>{% if toolbelt_on %}{% trans 'Toolbelt encendido' %}{% else %}{% trans 'Toolbelt apagado' %}{% endif %}</strong>
+                <span class="cx-note" data-beltsub>
+                    {% if toolbelt_forzado %}{% trans 'Forzado por SWARM_TOOLBELT en el launcher — se controla desde ahí, no acá.' %}
+                    {% elif toolbelt_on %}{% trans 'Las sillas API y CLI pueden operar esta máquina.' %}
+                    {% else %}{% trans 'Las sillas solo conversan; no ven la máquina.' %}{% endif %}
+                </span>
+            </div>
+            <label class="cx-switch" title="{% trans 'Encender / apagar el toolbelt' %}">
+                <input type="checkbox" data-beltswitch {% if toolbelt_on %}checked{% endif %} {% if toolbelt_forzado %}disabled{% endif %}>
+                <span class="cx-slider"></span>
+            </label>
+        </div>
+        <div class="cx-msg" data-beltmsg role="status"></div>
+
+        {% comment %}git: no es un escalón (charlar no lo usa) pero /armar no arranca sin él.
+        Se avisa acá, antes de que el humano se coma el error a mitad de un turno.{% endcomment %}
+        <div class="cx-belt {% if git_ok %}on{% endif %}" style="margin-top:.6rem;">
+            <span class="cx-belticon"><i class="fab fa-git-alt"></i></span>
+            <div class="cx-belttxt">
+                <strong>{% if git_ok %}{% trans 'git disponible' %}{% else %}{% trans 'git no está instalado' %}{% endif %}</strong>
+                <span class="cx-note">
+                    {% if git_ok %}{% blocktrans %}<code>/armar</code> puede versionar la carpeta de cada mesa.{% endblocktrans %}
+                    {% else %}{% blocktrans %}Charlar funciona igual, pero <code>/armar</code> lo necesita para versionar la
+                    carpeta de la mesa. Instalalo y reiniciá Swarm:{% endblocktrans %}
+                    <code>{{ git_instalar }}</code>{% endif %}
+                </span>
+            </div>
+        </div>
+
+        <p class="cx-note" style="margin:.2rem 0 .5rem;">
+            <strong>{% trans 'Este switch es el permiso — vale para todas las sillas' %}</strong></p>
+        <ul class="cx-safety">
+            <li><i class="fas fa-magnifying-glass"></i>
+                <span>{% blocktrans %}<strong>Lectura automática:</strong> ver el SO, procesos, disco, archivos y comandos de
+                <strong>solo lectura</strong> (allowlist por sistema) — para diagnosticar rápido.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-triangle-exclamation"></i>
+                <span>{% blocktrans %}<strong>Los cambios se aplican en el momento.</strong> Con el switch encendido, las sillas
+                (por API key <em>y</em> por CLI) editan archivos, tocan configuración, instalan y construyen
+                <strong>sin pedirte permiso comando por comando</strong>. No hay deshacer: prender esto <strong>es</strong>
+                el permiso.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-book"></i>
+                <span>{% blocktrans %}<strong>Todo queda registrado y lo ves en vivo:</strong> cada lectura y cada cambio va a la
+                Bitácora de la mesa, y además se avisa en la conversación mientras pasa. Es la red que te queda.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-key"></i>
+                <span>{% blocktrans %}<strong>La bóveda de keys queda afuera:</strong> las sillas no pueden leer ni sobrescribir
+                tus API keys guardadas.{% endblocktrans %}</span></li>
+            <li><i class="fas fa-power-off"></i>
+                <span>{% blocktrans %}<strong>Apagado, las sillas solo responden texto:</strong> no tocan un archivo ni corren
+                un comando. Prendelo solo en máquinas que estés autorizado a atender.{% endblocktrans %}</span></li>
+        </ul>
+
+        <p class="cx-note">
+            {% blocktrans %}Apagado por defecto. Las sillas por API key necesitan un modelo que soporte
+            <strong>herramientas</strong> (function-calling); si no las soporta, la silla las ignora. Las de CLI
+            usan el login que ya tenés en la máquina. Pedile <code>system_report</code> a una API, o
+            «fijate cuánto disco libre hay» a una CLI, para probar.{% endblocktrans %}
+        </p>
+    </div>
+</div>
+
+<script>
+// ── Pestañas (segmented control) ──────────────────────────────────────────────
+(function () {
+    var tabs = document.querySelectorAll('.cx-tab');
+    var panels = document.querySelectorAll('.cx-panel');
+    tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+            tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+            panels.forEach(function (p) { p.hidden = (p.dataset.panel !== tab.dataset.tab); });
+        });
+    });
+})();
+
+// ── Bóveda de API keys (máquina de 3 estados: nueva / cerrada / abierta) ───────
+(function () {
+    var vault = document.querySelector('[data-vault]');
+    if (!vault) return;
+    var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var bar = vault.querySelector('[data-vaultbar]');
+    var passInput = vault.querySelector('[data-pass]');
+    var lockIcon = vault.querySelector('[data-lockicon]');
+    var titleEl = vault.querySelector('[data-vaulttitle]');
+    var subEl = vault.querySelector('[data-vaultsub]');
+    var passLabel = vault.querySelector('[data-passlabel]');
+    var hint = vault.querySelector('[data-hint]');
+    var msg = vault.querySelector('[data-vaultmsg]');
+    var minPass = parseInt(bar.dataset.minpass || '8', 10);
+
+    var T = {
+        nueva:   { icon: 'fa-lock',      title: '{% trans "Creá tu bóveda" %}',
+                   sub: '{% trans "Elegí una passphrase y guardá tu primera key: queda cifrada y activa en un paso." %}',
+                   pass: '{% trans "Elegí una passphrase (mín. 8)" %}' },
+        cerrada: { icon: 'fa-lock',      title: '{% trans "Bóveda cerrada" %}',
+                   sub: '{% trans "Ingresá tu passphrase para activar las keys en esta sesión." %}',
+                   pass: '{% trans "Tu passphrase" %}' },
+        abierta: { icon: 'fa-lock-open', title: '{% trans "Bóveda abierta" %}',
+                   sub: '{% trans "Las sillas API ya pueden usar sus keys." %}',
+                   pass: '{% trans "Tu passphrase" %}' },
+    };
+
+    function say(text, kind) {
+        msg.textContent = text || '';
+        msg.className = 'cx-msg' + (kind ? ' ' + kind : '');
+    }
+    function post(fields) {
+        var fd = new FormData();
+        Object.keys(fields).forEach(function (k) { fd.append(k, fields[k]); });
+        return fetch("{% url 'enjambre:vault_keys' %}", {
+            method: 'POST', body: fd,
+            headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (r) { return r.json(); });
+    }
+    function setState(state, nconf) {
+        var t = T[state] || T.nueva;
+        bar.dataset.state = state;
+        bar.className = 'cx-vault state-' + state;
+        lockIcon.className = 'fas ' + t.icon;
+        titleEl.textContent = t.title;
+        var sub = t.sub;
+        if (state === 'cerrada' && nconf > 0) {
+            sub = nconf + ' {% trans "key(s) guardada(s)." %} ' + sub;
+        }
+        subEl.textContent = sub;
+        passLabel.textContent = t.pass;
+        if (hint) hint.hidden = (state !== 'nueva');
+    }
+    function stateFrom(d) {
+        if (d.desbloqueada) return 'abierta';
+        return (d.configurados && d.configurados.length) ? 'cerrada' : 'nueva';
+    }
+    function markConfigured(list) {
+        vault.querySelectorAll('[data-key]').forEach(function (card) {
+            var ok = list.indexOf(card.dataset.key) !== -1;
+            card.querySelector('[data-keydot]').className = 'cx-dot ' + (ok ? 'on' : 'off');
+            card.querySelector('[data-keystate]').textContent = ok ? '{% trans "Configurada" %}' : '{% trans "Sin key" %}';
+            var rm = card.querySelector('[data-act="remove"]');
+            if (rm) rm.hidden = !ok;
+        });
+    }
+
+    // Estado inicial (server-side)
+    setState(bar.dataset.state, parseInt(bar.dataset.nconf || '0', 10));
+
+    vault.querySelector('[data-act="unlock"]').addEventListener('click', function () {
+        var pass = passInput.value;
+        if (!pass) { say('{% trans "Escribí tu passphrase." %}', 'err'); return; }
+        post({ accion: 'unlock', passphrase: pass }).then(function (d) {
+            setState(stateFrom(d), (d.configurados || []).length);
+            if (d.ok) { passInput.value = ''; say('{% trans "Bóveda desbloqueada — las sillas API ya pueden usar sus keys." %}', 'ok'); }
+            else { say(d.error || 'Error', 'err'); }
+        }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
+    });
+    vault.querySelector('[data-act="lock"]').addEventListener('click', function () {
+        post({ accion: 'lock' }).then(function (d) {
+            setState(stateFrom(d), (d.configurados || []).length);
+            say('{% trans "Bóveda bloqueada." %}', 'ok');
+        }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
+    });
+
+    vault.querySelectorAll('[data-key]').forEach(function (card) {
+        var provider = card.dataset.key;
+        var tokenInput = card.querySelector('[data-token]');
+        card.querySelector('[data-act="set"]').addEventListener('click', function () {
+            var pass = passInput.value, tok = tokenInput.value;
+            if (!tok.trim()) { say('{% trans "Pegá la API key primero." %}', 'err'); return; }
+            if (!pass) { say('{% trans "Elegí una passphrase arriba para cifrar la key." %}', 'err'); return; }
+            if (bar.dataset.state === 'nueva' && pass.length < minPass) {
+                say('{% trans "La passphrase tiene que tener al menos 8 caracteres." %}', 'err'); return;
+            }
+            post({ accion: 'set', provider: provider, token: tok, passphrase: pass }).then(function (d) {
+                if (d.ok) { tokenInput.value = ''; markConfigured(d.configurados); setState(stateFrom(d), (d.configurados || []).length);
+                            say('{% trans "Key guardada, cifrada y activada." %}', 'ok'); }
+                else { say(d.error || 'Error', 'err'); }
+            }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
+        });
+        var rm = card.querySelector('[data-act="remove"]');
+        if (rm) rm.addEventListener('click', function () {
+            var pass = passInput.value;
+            if (!pass) { say('{% trans "Escribí tu passphrase para quitar la key." %}', 'err'); return; }
+            post({ accion: 'remove', provider: provider, passphrase: pass }).then(function (d) {
+                if (d.ok) { markConfigured(d.configurados); setState(stateFrom(d), (d.configurados || []).length); say('{% trans "Key quitada." %}', 'ok'); }
+                else { say(d.error || 'Error', 'err'); }
+            }).catch(function () { say('{% trans "Error de red" %}', 'err'); });
+        });
+    });
+})();
+
+// ── Toolbelt (toggle en vivo: prende/apaga que las sillas API operen la máquina) ──
+(function () {
+    var belt = document.querySelector('[data-belt]');
+    if (!belt) return;
+    var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var bar = belt.querySelector('[data-beltbar]');
+    var sw = belt.querySelector('[data-beltswitch]');
+    var titleEl = belt.querySelector('[data-belttitle]');
+    var subEl = belt.querySelector('[data-beltsub]');
+    var msg = belt.querySelector('[data-beltmsg]');
+
+    function paint(on) {
+        bar.className = 'cx-belt' + (on ? ' on' : '');
+        titleEl.textContent = on ? '{% trans "Toolbelt encendido" %}' : '{% trans "Toolbelt apagado" %}';
+        subEl.textContent = on ? '{% trans "Las sillas API pueden operar esta máquina." %}'
+                               : '{% trans "Las sillas API solo conversan; no ven la máquina." %}';
+    }
+    sw.addEventListener('change', function () {
+        var quiere = sw.checked;
+        var fd = new FormData();
+        fd.append('on', quiere ? '1' : '0');
+        fetch("{% url 'enjambre:toolbelt_toggle' %}", {
+            method: 'POST', body: fd,
+            headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            sw.checked = !!d.on;
+            paint(!!d.on);
+            msg.textContent = d.on ? '{% trans "Toolbelt encendido — pedile a una silla API «corré system_report»." %}'
+                                   : '{% trans "Toolbelt apagado." %}';
+            msg.className = 'cx-msg ok';
+        }).catch(function () {
+            sw.checked = !quiere;  // revertir el switch si falló
+            msg.textContent = '{% trans "Error de red" %}';
+            msg.className = 'cx-msg err';
+        });
+    });
+})();
+</script>
+{% endblock %}

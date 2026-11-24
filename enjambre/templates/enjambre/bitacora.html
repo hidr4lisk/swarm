@@ -1,0 +1,152 @@
+{% extends 'enjambre/base_swarm.html' %}
+{% load i18n %}
+{% block extra_css %}{% include 'enjambre/_skin.html' %}
+<style>
+    .bt-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+    .bt-tag { font-size: .72rem; padding: .12rem .5rem; border-radius: 999px; font-weight: 600;
+              border: 1px solid var(--border-color); white-space: nowrap; }
+    .bt-tag.mut { color: #e67e22; border-color: rgba(230,126,34,.5); background: rgba(230,126,34,.10); }
+    .bt-tag.lec { color: var(--text-muted); }
+    .bt-badge { font-size: .74rem; padding: .12rem .55rem; border-radius: 999px; margin-left: auto;
+                display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+    .bt-badge.ejecutada { color: #2ecc40; background: rgba(46,204,64,.12); }
+    .bt-badge.pendiente { color: #e67e22; background: rgba(230,126,34,.14); }
+    .bt-badge.rechazada { color: #c0392b; background: rgba(192,57,43,.12); }
+    .bt-badge.error     { color: #e74c3c; background: rgba(231,76,60,.12); }
+    .bt-cmd { font-family: monospace; font-size: .82rem; background: var(--gauge-track, rgba(var(--accent-rgb),.07));
+              border: 1px solid var(--border-color); border-radius: 8px; padding: .5rem .7rem;
+              overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: .5rem 0 .2rem; }
+    .bt-motivo { font-size: .82rem; color: var(--text-muted); }
+    .bt-card.pend { border-color: rgba(230,126,34,.55); box-shadow: 0 0 0 1px rgba(230,126,34,.18); }
+    .bt-out { margin-top: .5rem; }
+    .bt-out summary { cursor: pointer; font-size: .8rem; color: var(--text-muted); }
+    .bt-out pre { font-family: monospace; font-size: .78rem; background: var(--gauge-track, rgba(var(--accent-rgb),.07));
+                  border-radius: 8px; padding: .5rem .7rem; overflow-x: auto; white-space: pre-wrap;
+                  word-break: break-word; margin: .4rem 0 0; max-height: 340px; }
+    .bt-acts { display: flex; gap: .5rem; margin-top: .6rem; }
+    .bt-when { font-size: .72rem; color: var(--text-muted); }
+    .bt-empty { text-align: center; color: var(--text-muted); padding: 2rem 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enj">
+    <div class="enj-head">
+        <a href="{% url 'enjambre:mesa' sesion.pk %}" class="mod-back"><i class="fas fa-chevron-left"></i> {% trans 'Mesa' %}</a>
+        <span class="mod-sep">|</span>
+        <h1 class="mod-title" style="flex:1;min-width:0;">
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background-color:rgba(var(--accent-rgb),.13);flex-shrink:0;">
+                <i class="fas fa-clipboard-list" style="color:var(--accent-color);font-size:16px;"></i>
+            </div>
+            <span>{% trans 'Bitácora' %}</span>
+        </h1>
+        {% if acciones %}
+        <a class="enj-ghost" href="{% url 'enjambre:informe' sesion.pk %}"><i class="fas fa-download"></i> {% trans 'Exportar informe' %}</a>
+        {% endif %}
+    </div>
+
+    {% csrf_token %}
+
+    <p class="enj-muted" style="font-size:.85rem;margin:.3rem 0 1rem;">
+        {% blocktrans %}Todo lo que las sillas por API key hacen sobre <strong>esta máquina</strong> queda acá.
+        Las <strong>lecturas</strong> (inspect, read_file, system_report) se ejecutan solas; las
+        <strong>mutaciones</strong> (apply_fix) esperan tu aprobación y nunca corren sin tu OK.{% endblocktrans %}
+        {% if not toolbelt_on %}<br><strong>{% trans 'El toolbelt está apagado' %}</strong>
+        ({% trans 'prendelo con' %} <code>SWARM_TOOLBELT=1</code>).{% endif %}
+    </p>
+
+    {% if pendientes %}
+    <p class="enj-muted" style="font-size:.85rem;color:#e67e22;">
+        <i class="fas fa-triangle-exclamation"></i>
+        {% blocktrans count n=pendientes %}{{ n }} cambio pendiente de tu aprobación.{% plural %}{{ n }} cambios pendientes de tu aprobación.{% endblocktrans %}
+    </p>
+    {% endif %}
+
+    <div class="enj-grid" style="grid-template-columns:1fr;">
+        {% for a in acciones %}
+        <div class="enj-card bt-card {% if a.estado == 'pendiente' %}pend{% endif %}" data-accion="{{ a.pk }}">
+            <div class="bt-row">
+                <strong>{{ a.herramienta }}</strong>
+                {% if a.es_mutacion %}<span class="bt-tag mut">{% trans 'mutación' %}</span>
+                {% else %}<span class="bt-tag lec">{% trans 'lectura' %}</span>{% endif %}
+                <span class="bt-badge {{ a.estado }}" data-estado>
+                    {% if a.estado == 'ejecutada' %}<i class="fas fa-check"></i> {% trans 'ejecutada' %}
+                    {% elif a.estado == 'pendiente' %}<i class="fas fa-clock"></i> {% trans 'pendiente' %}
+                    {% elif a.estado == 'rechazada' %}<i class="fas fa-ban"></i> {% trans 'rechazada' %}
+                    {% else %}<i class="fas fa-triangle-exclamation"></i> {% trans 'error' %}{% endif %}
+                </span>
+            </div>
+            <div class="bt-when">{{ a.emisor|default:'—' }} · {{ a.creado_at|date:'d/m H:i:s' }}{% if a.aprobada_por %} · {% trans 'por' %} {{ a.aprobada_por }}{% endif %}</div>
+            <div class="bt-cmd">$ {{ a.comando }}</div>
+            {% if a.motivo %}<div class="bt-motivo"><strong>{% trans 'Motivo:' %}</strong> {{ a.motivo }}</div>{% endif %}
+            {% if a.salida %}
+            <details class="bt-out" {% if a.estado == 'pendiente' %}open{% endif %} data-out>
+                <summary>{% trans 'Salida' %}</summary>
+                <pre data-out-pre>{{ a.salida }}</pre>
+            </details>
+            {% endif %}
+            {% if a.estado == 'pendiente' %}
+            <div class="bt-acts" data-acts>
+                <button class="enj-btn" type="button" data-act="aprobar"><i class="fas fa-play"></i> {% trans 'Aprobar y ejecutar' %}</button>
+                <button class="enj-ghost" type="button" data-act="rechazar"><i class="fas fa-ban"></i> {% trans 'Rechazar' %}</button>
+            </div>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="bt-empty">
+            <i class="fas fa-clipboard-list" style="font-size:2rem;opacity:.4;"></i><br><br>
+            {% trans 'Todavía no hay acciones. Cuando una silla por API key inspeccione o proponga un cambio en esta máquina, aparecerá acá.' %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+(function () {
+    var token = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var BADGE = {
+        ejecutada: '<i class="fas fa-check"></i> {% trans "ejecutada" %}',
+        rechazada: '<i class="fas fa-ban"></i> {% trans "rechazada" %}',
+        error: '<i class="fas fa-triangle-exclamation"></i> {% trans "error" %}'
+    };
+    document.querySelectorAll('[data-accion]').forEach(function (card) {
+        var acts = card.querySelector('[data-acts]');
+        if (!acts) return;
+        function resolve(accion, btn) {
+            if (accion === 'aprobar' &&
+                !confirm('{% trans "¿Aprobar y ejecutar este comando en esta máquina? Es un cambio real." %}')) return;
+            acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+            btn.textContent = '{% trans "Trabajando…" %}';
+            var fd = new FormData();
+            fd.append('accion', accion);
+            fetch("{% url 'enjambre:accion_resolver' 0 %}".replace('/0/', '/' + card.dataset.accion + '/'), {
+                method: 'POST', body: fd,
+                headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' },
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                var badge = card.querySelector('[data-estado]');
+                badge.className = 'bt-badge ' + d.estado;
+                badge.innerHTML = BADGE[d.estado] || d.estado;
+                card.classList.remove('pend');
+                acts.remove();
+                if (d.salida) {
+                    var det = card.querySelector('[data-out]');
+                    if (!det) {
+                        det = document.createElement('details');
+                        det.className = 'bt-out'; det.open = true;
+                        det.innerHTML = '<summary>{% trans "Salida" %}</summary><pre data-out-pre></pre>';
+                        card.appendChild(det);
+                    }
+                    det.querySelector('[data-out-pre]').textContent = d.salida;
+                }
+            }).catch(function () {
+                acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+                btn.textContent = accion === 'aprobar' ? '{% trans "Reintentar" %}' : '{% trans "Rechazar" %}';
+            });
+        }
+        acts.querySelectorAll('[data-act]').forEach(function (btn) {
+            btn.addEventListener('click', function () { resolve(btn.dataset.act, btn); });
+        });
+    });
+})();
+</script>
+{% endblock %}

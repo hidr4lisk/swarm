@@ -1,0 +1,477 @@
+# Hidr4lisk_Swarm
+
+**English** | [Español](#hidr4lisk_swarm--español)
+
+A **multi-agent worktable** in your browser: several AIs sit at the same table —
+**chat, debate and act** — coordinated by a leader. Run them on your already-logged-in
+**CLIs** (`claude`, `opencode`, `agy`, `codex`) or on your own **API keys** (Anthropic,
+OpenAI-compatible, OpenRouter). **It's one self-contained folder**: leave it on the PC or
+carry it on a pendrive and plug it into any bare machine — Windows or Linux, no Python,
+no Docker, nothing to install.
+
+**They don't just talk — they can operate the machine.** Flip on the **toolbelt** (opt-in,
+off by default, one switch in *Conexiones → Toolbelt*) and every seat — API key or CLI — gets to
+inspect, edit and fix the real computer you plugged into. The switch is the permission: with it on
+changes apply immediately, and everything lands in the log.
+→ [Toolbelt](#threat-model--read-this-before-using-it)
+
+🌐 **Project page:** <https://hidr4lisk.github.io/swarm>
+
+**v1.2.1 · Codex CLI compatibility update.** Tested on Linux and Windows with CLI 0.162.1:
+chat, read-only enforcement and building real files. [Release notes and upgrade instructions](docs/releases/v1.2.1.md) · [Test report and limitations](docs/codex-cli-audit.md).
+
+![A Swarm table: the seats debate the request, /armar builds the script for real (one commit per turn) and the worker's live flow shows on the right](docs/img/mesa.png)
+
+> The UI is bilingual (EN/ES button in the navbar) — though its soul speaks Spanish,
+> *rioplatense* to be precise.
+
+## Quickstart
+
+One way to run it: a self-contained folder. Drop it on a **pendrive** to carry it
+between machines, or leave it in a folder on the PC — same thing either way.
+No Python, no Docker, no install.
+
+### Portable · Linux & Windows
+
+**Just want the pendrive? Don't clone anything —
+[download `swarm-portable.zip`](https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip)**
+(ready to use, Windows + Linux, ~100 MB), unzip it straight onto a stick and double-click
+`Enjambre.bat` / `enjambre.sh`. No Python, no Docker, no build. The rest of this section is
+for running from source or building the stick yourself.
+
+The lightest way from source, and the one that runs off a pendrive. Only needs Python 3.12
+(or the bundled runtime); seats run on **API keys** — no CLI binaries required.
+
+> **`/armar` needs `git`.** Chatting and debating need nothing else, but each table's folder is a
+> git repo (one commit per turn), so building files requires git on the machine — the one thing
+> the bundle does not ship, and it is absent on a freshly installed Windows:
+> `winget install --id Git.Git -e` (Windows) · `brew install git` (macOS) ·
+> `sudo apt install git` (Linux). Swarm tells you at startup if it is missing.
+
+```bash
+git clone https://github.com/hidr4lisk/swarm.git && cd swarm
+pip install -r requirements-portable.txt
+python manage.py serve        # migrate + worker + web + browser, one process
+```
+
+`serve` opens **http://127.0.0.1:8799**. From there it's a two-step **ladder**: install and log
+into the free `opencode` CLI (several free models, and seats that build files), or go to
+**Conexiones → API keys** and load a key — stored encrypted under a passphrase you choose, see
+the vault below. The **Conexiones** screen shows the ladder and what each step unlocks.
+
+<details>
+<summary><b>Build the portable pendrive (Linux + Windows in one folder)</b></summary>
+
+```bash
+./scripts/build_bundle.sh        # → dist/swarm-portable/
+```
+
+Copy `dist/swarm-portable/` to a pendrive — it's just **a handful of big files**
+(`runtime-linux.tar.gz`, `runtime-win.tar.gz`, the launchers and `app/`), not the ~18k
+tiny files of an unpacked Python, so the copy is a fast sequential write instead of an
+overnight crawl. On any bare PC (no Python, no Docker): double-click **`enjambre.sh`**
+(Linux, "Run in terminal") or **`Enjambre.bat`** (Windows). The **first run asks once**
+whether to install Swarm on that PC for a fast next boot (unpacks the runtime to the local
+disk, ~280 MB — and a new release replaces that copy instead of piling up next to it) or to
+run **trace-free** (unpacked to a temp dir, wiped on exit, re-unpacked
+each time). No file to edit — you choose once **per machine** (remembered in that PC's local
+cache, not on the stick, so every new PC asks again). Chose trace-free and changed your mind?
+The next launch on that PC offers to install it (or to stop asking). Your DB, tables, seats and encrypted
+vault always live in the stick's `data/` folder and travel with it between Windows and Linux,
+whichever you pick — same tables on any PC. Requires `bash`, `curl` and `tar` to *build* (not
+to use); run the build on a machine with internet, or just grab the release zip above.
+
+</details>
+
+### Ya corriendo
+
+Create a table (*mesa*) and ask away. With `/armar <request>` the table builds real files
+in its git folder (`~/.enjambre/mesas/mesa-<id>`). The UI is bilingual — the **EN/ES**
+button in the navbar switches language. The full usage guide — table commands (`@alias`,
+`/armar`, `/debate`, `/continuo`, `/alto`…), flat/leader topologies and seat
+configuration — lives in the app's **Help** button ([preview](docs/img/ayuda-en.png)).
+
+Your seat setup travels: **Sillas → Export** downloads it (names, models, prompts, portraits,
+colors, order) as a JSON file, and **Import** applies it on another PC or on a fresh version
+instead of redoing it by hand — merging by default, or replacing the whole config. The file
+carries **no credentials**: API keys stay encrypted in the vault, separately.
+
+Everything configurable comes in through environment variables with sane defaults:
+see [.env.example](.env.example). Tests: `python manage.py test enjambre`.
+
+## How it works
+
+`manage.py serve` is a single process that does everything — migrate, run the Enjambre
+**worker** in a thread, and serve the **web** (threaded, so each SSE turn gets its own thread;
+no gevent). SQLite, no Docker, no `docker.sock`, no daemon. CLI seats are invoked straight from
+the machine's PATH; API-key seats talk to the providers over plain HTTP. There's no capsule —
+the [toolbelt](#threat-model--read-this-before-using-it) acts on the real machine, and that's
+the point. This is exactly what the launchers run, from a pendrive or from a folder on disk.
+
+The worker answers **one table at a time** by default. Set `SWARM_WORKER_PARALELO=N` (and restart)
+to let up to N tables answer at once — only tables that share **no** seat run together, so a seat
+never has two turns in flight against the same login or key.
+
+**Credentials are never copied.** Swarm doesn't ask for, store or log a CLI login: your
+`claude login` on that machine is the single source of truth, and the Conexiones screen only
+reports whether the credential **file exists**. API keys are the one exception — they live
+encrypted in the vault (see below).
+
+**Codex CLI (experimental; Linux and Windows tested with 0.162.1).** A `codex` seat uses `codex exec`,
+an explicit `read-only` sandbox for chat and `workspace-write` to build in the table's folder,
+with non-interactive approvals. `--full-auto` is no longer accepted by that CLI version.
+Leave the model empty to use your CLI's configured default, or enter an ID your account supports.
+Unlike the other CLI seats, Codex keeps its write sandbox when the toolbelt is on: it cannot
+modify arbitrary paths elsewhere on the machine. Prompts travel over stdin, not command-line
+arguments. Existing standard Codex seats are updated by migration `0011`; custom commands are
+left untouched. Conexiones respects `CODEX_HOME` but only checks for an `auth.json` file, not
+whether the login is valid (keyring/environment-only auth is not detected).
+Chat, read-only enforcement and file creation/commit were tested on both platforms. Other CLI
+versions and Windows sandbox backends remain unverified — see [issue #1](https://github.com/hidr4lisk/swarm/issues/1).
+
+On native Windows, **configure Codex's Windows sandbox before building**. With no backend
+selected, CLI 0.162.1 silently downgrades `workspace-write` to `read-only`, even with exit 0.
+Choose the backend appropriate to your machine in Codex's `config.toml`; SWARM does not
+override it. For portable QA without administrator setup we used:
+
+```toml
+[windows]
+sandbox = "unelevated"
+```
+
+This keeps a restricted token and filesystem boundaries, but has weaker network isolation
+than the administrator-provisioned `elevated` backend. See the
+[official Windows sandbox guide](https://developers.openai.com/codex/windows).
+
+![The Conexiones screen only reports whether each credential exists — never its contents](docs/img/conexiones.png)
+
+## Threat model — read this before using it
+
+Swarm is **single-user, on your machine**. No sugarcoating:
+
+- **There is no sandbox.** Swarm runs on the machine, as you. CLI seats are plain
+  subprocesses and agents can read anything your user can — including your CLI tokens and,
+  while the vault is unlocked, your API keys. A confused or prompt-injected agent could
+  exfiltrate them. Accepted because these are **your** accounts running **your** requests on
+  a machine you're authorized to operate.
+- **CLI credentials** are never asked for, stored or logged; the Conexiones screen only
+  reports whether the file **exists**. **API keys are the exception** — they're stored
+  encrypted (see the vault below).
+- The web listens on `127.0.0.1:8799` with no human login: don't publish it as-is.
+- Anything the seats build with `/armar` lands in the mesa's own git folder; anything they do
+  with the **toolbelt** lands on the real machine. Read the two sections below before flipping
+  that switch.
+- **When a turn times out, Swarm kills the CLI and everything it spawned** — including
+  processes that escaped into their own session (opencode runs each toolbelt command that
+  way). It finds them by a per-turn marker in the environment they inherited, so it never
+  touches a process that isn't a descendant of the seat it launched. Without this, a turn
+  that timed out could **hang the worker forever**: the grandchildren keep the pipes open.
+  On Linux the sweep is complete; on Windows only the child tree is killed.
+
+**API-key vault.** When you run sillas by **API key** instead of a CLI,
+Swarm has to keep the keys — so it stores them **encrypted with a passphrase you choose**.
+Your passphrase is stretched with **scrypt** into a key that encrypts `data/secrets.enc`
+with **Fernet (AES)**; the passphrase itself is never stored on disk. Lose the pendrive
+without the passphrase and there are no tokens in the clear. The first key you save sets
+the vault's passphrase; the rest use the same one. Caveats, said plainly:
+
+- **While the vault is *unlocked*** the decrypted keys live in a `0600` runtime file so the
+  worker can dispatch — an agent running on that machine could read it, exactly like it can
+  read a mounted CLI token. **Lock the vault** (Conexiones → API keys) when you're done. Same
+  trust model as the CLI route: your keys, your requests, your machine.
+- The passphrase protects the keys **at rest** (pendrive stolen while locked), **not** against
+  an attacker who already controls the running machine.
+- `data/secrets.enc` and the runtime file are git-ignored — they never reach the repo.
+
+**Toolbelt — sillas operate the real system (opt-in, off by default).** This
+is the sharp edge of Swarm. When enabled, sillas get tools that act on **the actual
+machine you plugged into** — no container, no capsule. You turn it on from the UI
+(**Conexiones → Toolbelt → switch**), which flips live with no restart — no need to edit the
+launcher; the `SWARM_TOOLBELT` env var is an optional override that forces it always-on. API-key
+sillas need a model that supports tool-use (function-calling); CLI sillas use their own tools.
+
+**One toolbelt, one permission: the switch is the lock.** With it off, sillas only answer text —
+they cannot touch a file or run a command. With it on, **both** backends (API key and CLI) read,
+edit files, change configuration and build, and **everything applies immediately**. There is no
+second mode and no per-command approval: flipping the switch *is* the consent. The safety net is
+**not** a sandbox; it is:
+
+- **Reads are separated from writes.** `inspect` only runs binaries on a read-only allowlist, with
+  **no shell** (pipes/redirects are inert) and a denylist for write-flags (`find -delete`). That
+  allowlist stays so a *read* never mutates by accident — anything that mutates must be asked for
+  explicitly, through `write_file` or `apply_fix`.
+- **Everything is logged, and you see it live.** Every read and every mutation lands in the
+  per-mesa Bitácora (the `Accion` model), exportable as a support report, and each change also
+  posts a note in the mesa over SSE. With no gate in front, that live visibility is the net you
+  have: you watch the change go by as it happens.
+- **The key vault is off-limits.** `secrets.enc` and the runtime file can be neither read nor
+  written by the toolbelt — that would be the cheap escape (dumping keys into the transcript, or
+  wiping them with one overwrite).
+- **This is a powerful, dangerous tool in the wrong hands.** Only enable it on machines you're
+  authorized to service. Once it's on, a silla can change the system without asking you first.
+
+Why the two backends still differ *in shape*: Swarm executes an API silla's tools one by one, so it
+logs each one; a CLI silla (claude · opencode · agy) carries its own tools and we only hand it a
+prompt on stdin, so what gets logged is the whole turn. Same permission, different granularity of
+the record. Two honest notes:
+
+- This grants **no reach it didn't already have**: a CLI seat under `/armar` already ran with `cwd`
+  set to the mesa folder, and a `cwd` is not a jail (claude's build command ships
+  `--allowedTools Bash`). What changes is that it is now **explicit and recorded**.
+- `/armar` still builds inside the mesa's git folder. A CLI silla builds there via its `cwd`; an
+  API silla has no `cwd`, so it is **told the folder's absolute path** and writes into it with
+  `write_file` — either way the result is committed and the mesa sees the diff.
+
+**Tidy by default: work lands in the mesa's folder.** With the toolbelt on, if your request
+**doesn't name a path**, sillas leave what they produce inside that mesa's folder: it stays
+together, versioned, and downloadable via 📁 → "Download everything (.zip)". If you do name an
+absolute path (`fix /etc/nginx/nginx.conf`, `review ~/repos/app`) or type **`/libre`**, that turn
+works wherever you said. Per-mesa switch in the gear menu ("Work in the mesa's folder").
+
+How strong this is, plainly: for an **API-key** silla it's a real stop (its `write_file`/`apply_fix`
+go through Swarm and are refused outside the folder, with a note in the mesa); for a **CLI** silla
+it's the `cwd` plus the prompt framing — its own shell still reaches the whole machine. **It's
+tidiness, not a jail**: what it prevents is work scattering across the disk unseen. Diagnosing the
+machine (reading logs, `inspect`) is never restricted.
+
+**System credentials are off-limits.** Beyond the vault, the toolbelt won't read or list
+`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.docker`, `~/.kube`, `/etc/shadow` or `/etc/sudoers` — checked by
+path containment, not by filename. This covers Swarm's own tools (API sillas); a CLI silla carries
+its own tools and that limit doesn't reach it.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Built by [Federico Furgiuele](https://github.com/hidr4lisk).
+
+---
+
+# Hidr4lisk_Swarm — Español
+
+Una **mesa de trabajo multi-agente** en tu navegador: varias IAs se sientan a la misma
+mesa — **charlan, debaten y actúan** — coordinadas por un líder. Corrélas sobre tus
+**CLIs** ya logueados (`claude`, `opencode`, `agy`, `codex`) o sobre tus propias **API keys**
+(Anthropic, compatible-OpenAI, OpenRouter). **Es una sola carpeta que se basta sola**:
+dejala en la PC o llevátela en un pendrive y enchufalo en cualquier máquina pelada —
+Windows o Linux, sin Python, sin Docker, sin instalar nada.
+
+**No solo hablan — pueden operar la máquina.** Prendé el **toolbelt** (opt-in, apagado por
+default, un switch en *Conexiones → Toolbelt*) y todas las sillas — por API key o por CLI — pasan a
+inspeccionar, editar y arreglar la computadora real en la que estás. El switch es el permiso: con
+él prendido los cambios se aplican en el momento, y todo queda registrado.
+→ [Toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo)
+
+🌐 **Página del proyecto:** <https://hidr4lisk.github.io/swarm>
+
+**v1.2.1 · Actualización de compatibilidad con Codex CLI.** Probado en Linux y Windows con
+CLI 0.162.1: charla, solo lectura y fabricación real. [Notas e instrucciones para actualizar](docs/releases/v1.2.1.md) · [Informe de pruebas y límites](docs/codex-cli-audit.md).
+
+## Quickstart
+
+Una sola forma de correrlo: una carpeta que se basta sola. La ponés en un **pendrive**
+para llevarla de máquina en máquina, o la dejás en una carpeta de la PC — es lo mismo.
+Sin Python, sin Docker, sin instalar nada.
+
+### Portátil · Linux y Windows
+
+La más liviana, y la que corre desde un pendrive. Solo necesita Python 3.12 (o el runtime
+bundleado); las sillas corren sobre **API keys** — sin binarios de CLI.
+
+> **`/armar` necesita `git`.** Charlar y debatir no necesitan nada más, pero la carpeta de cada
+> mesa es un repo git (un commit por turno), así que fabricar archivos pide git instalado en la
+> máquina — lo único que el bundle no trae, y en una Windows recién instalada no está:
+> `winget install --id Git.Git -e` (Windows) · `brew install git` (macOS) ·
+> `sudo apt install git` (Linux). Si falta, Swarm te lo avisa al arrancar.
+
+```bash
+git clone https://github.com/hidr4lisk/swarm.git && cd swarm
+pip install -r requirements-portable.txt
+python manage.py serve        # migra + worker + web + navegador, un proceso
+```
+
+`serve` abre **http://127.0.0.1:8799**. De ahí es una **escalera** de dos escalones: instalá y
+logueá el CLI gratuito `opencode` (varios modelos free, y sillas que fabrican archivos), o andá a
+**Conexiones → API keys** y cargá una key — se guarda cifrada con una passphrase que elegís vos,
+ver la bóveda abajo. La pantalla **Conexiones** muestra la escalera y qué desbloquea cada escalón.
+
+<details>
+<summary><b>Armar el pendrive portátil (Linux + Windows en la misma carpeta)</b></summary>
+
+```bash
+./scripts/build_bundle.sh        # → dist/swarm-portable/
+```
+
+Copiá `dist/swarm-portable/` a un pendrive. En cualquier PC pelada (sin Python, sin Docker):
+doble-clic a **`enjambre.sh`** (Linux) o **`Enjambre.bat`** (Windows) — el app entero
+arranca desde el pendrive con un Python bundleado por SO, y la mesa abre en el navegador.
+Tu DB y tu bóveda cifrada viven en la carpeta `data/` del pendrive. Para *armarlo* (no para
+usarlo) hace falta `bash`, `curl` y `tar`; corré el build en una máquina con internet.
+
+</details>
+
+### Ya corriendo
+
+Creá una mesa y preguntá. Con `/armar <pedido>` la mesa fabrica archivos de verdad en su
+carpeta git (`~/.enjambre/mesas/mesa-<id>`). La UI es bilingüe — el botón **ES/EN** de la
+navbar cambia el idioma. La guía completa de uso — comandos de la mesa (`@alias`, `/armar`,
+`/debate`, `/continuo`, `/alto`…), topologías plana/líder y configuración de sillas — vive
+en el botón **Ayuda** de la app ([vista previa](docs/img/ayuda.png)).
+
+Tu config de sillas viaja: **Sillas → Exportar** te la baja (nombres, modelos, prompts,
+retratos, colores, orden) en un archivo JSON, e **Importar** la aplica en otra PC o al
+estrenar una versión nueva, en vez de rehacerla a mano — fusionando por defecto, o
+reemplazando toda la config. El archivo **no lleva credenciales**: las API keys quedan
+cifradas en la bóveda, aparte.
+
+Todo lo configurable entra por variables de entorno con defaults razonables:
+ver [.env.example](.env.example). Tests: `python manage.py test enjambre`.
+
+## Cómo funciona
+
+`manage.py serve` es un solo proceso que hace todo — migra, corre el **worker** del Enjambre
+en un hilo y sirve la **web** (threaded, así cada turno SSE vive en su hilo; sin gevent).
+SQLite, sin Docker, sin `docker.sock`, sin daemon. Las sillas de CLI se invocan directo del
+PATH de la máquina; las de API key hablan con los proveedores por HTTP plano. No hay cápsula
+— el [toolbelt](#modelo-de-amenaza--leelo-antes-de-usarlo) actúa sobre la máquina real, y esa
+es la idea. Es exactamente lo que corren los launchers, desde un pendrive o desde una carpeta
+del disco.
+
+Por default el worker atiende **una mesa por vez**. Con `SWARM_WORKER_PARALELO=N` (y reiniciando)
+responden hasta N mesas a la vez — solo mesas que **no** comparten ninguna silla, así una silla
+nunca tiene dos turnos en vuelo contra el mismo login o la misma key.
+
+**Las credenciales no se copian nunca.** Swarm no pide, guarda ni loguea el login de un CLI:
+tu `claude login` en esa máquina es la única fuente de verdad, y la pantalla Conexiones solo
+reporta si el **archivo existe**. Las API keys son la única excepción: viven cifradas en la
+bóveda (abajo).
+
+**Codex CLI (experimental; Linux y Windows probados con 0.162.1).** La silla `codex` usa `codex exec`,
+sandbox explícito `read-only` para charlar y `workspace-write` para fabricar en la carpeta de
+la mesa, sin aprobaciones interactivas. Esa versión del CLI ya no acepta `--full-auto`.
+Dejá el modelo vacío para usar el default de tu CLI, o escribí un ID disponible en tu cuenta.
+A diferencia de las otras sillas CLI, Codex conserva su sandbox de escritura con el toolbelt
+encendido: no puede modificar rutas arbitrarias fuera de la mesa. El prompt viaja por stdin,
+no como argumento. La migración `0011` actualiza las sillas Codex estándar ya guardadas; deja
+intactos los comandos personalizados. Conexiones respeta `CODEX_HOME`, pero solo verifica que
+exista `auth.json`, no que el login sea válido (no detecta auth solo por keyring o entorno).
+Charla, bloqueo de escritura y creación/commit de archivos probados en ambos sistemas. Otras
+versiones del CLI y otros backends del sandbox de Windows siguen sin verificar — ver el
+[issue #1](https://github.com/hidr4lisk/swarm/issues/1).
+
+En Windows nativo, **configurá el sandbox de Windows de Codex antes de fabricar**. Sin un
+backend elegido, el CLI 0.162.1 degrada `workspace-write` a `read-only` aunque salga con exit 0.
+Elegí el backend adecuado para tu máquina en el `config.toml` de Codex; SWARM no lo pisa.
+Para la prueba portátil sin preparación de administrador usamos:
+
+```toml
+[windows]
+sandbox = "unelevated"
+```
+
+Conserva un token restringido y límites de filesystem, pero aísla menos la red que el backend
+`elevated`, que requiere preparación de administrador. Ver la
+[guía oficial del sandbox de Windows](https://developers.openai.com/codex/windows).
+
+## Modelo de amenaza — leelo antes de usarlo
+
+Swarm es **single-user en tu máquina**. Dicho sin vueltas:
+
+- **No hay sandbox.** Swarm corre en la máquina, como vos. Las sillas de CLI son subprocesos
+  pelados y los agentes pueden leer todo lo que pueda leer tu usuario — incluidos tus tokens
+  de CLI y, con la bóveda desbloqueada, tus API keys. Un agente confundido o prompt-injected
+  podría exfiltrarlos. Se acepta porque son **tus** cuentas corriendo **tus** pedidos en una
+  máquina que estás autorizado a operar.
+- Las **credenciales de CLI** jamás se piden, guardan ni loguean; la pantalla Conexiones
+  solo reporta si el archivo **existe**. **Las API keys son la excepción**: se guardan
+  cifradas (ver la bóveda abajo).
+- La web escucha en `127.0.0.1:8799` sin login humano: no la publiques tal cual.
+- Lo que las sillas fabrican con `/armar` queda en la carpeta git de la mesa; lo que hacen con
+  el **toolbelt** cae sobre la máquina real. Leé las dos secciones de abajo antes de prender
+  ese switch.
+- **Cuando un turno vence, Swarm mata al CLI y a todo lo que haya lanzado** — incluidos los
+  procesos que se hicieron sesión propia (opencode corre así cada comando de su toolbelt). Los
+  reconoce por una marca del turno en el entorno que heredaron, así que nunca toca un proceso
+  que no sea descendiente de la silla que arrancó. Sin esto, un turno vencido podía **colgar el
+  worker para siempre**: los nietos mantienen las pipes abiertas. En Linux el barrido es
+  completo; en Windows se mata solo el árbol de hijos.
+
+**Bóveda de API keys (ruta portátil).** Cuando corrés sillas por **API key** en vez de un
+CLI, Swarm tiene que guardar las keys — así que las guarda **cifradas con una passphrase que
+elegís vos**. Tu passphrase se estira con **scrypt** hasta una clave que cifra
+`data/secrets.enc` con **Fernet (AES)**; la passphrase en sí nunca se guarda en disco. Si se
+pierde el pendrive sin la passphrase, no hay tokens en claro. La **primera** key que guardás
+fija la passphrase de la bóveda; las siguientes usan la misma. Los peros, sin vueltas:
+
+- **Mientras la bóveda está *desbloqueada***, las keys descifradas viven en un archivo runtime
+  `0600` para que el worker pueda despachar — un agente corriendo en esa máquina podría leerlo,
+  igual que puede leer un token de CLI montado. **Bloqueá la bóveda** (Conexiones → API keys)
+  cuando termines. Mismo modelo de confianza que la ruta CLI: tus keys, tus pedidos, tu máquina.
+- La passphrase protege las keys **en reposo** (pendrive robado estando bloqueada), **no**
+  contra un atacante que ya controla la máquina en uso.
+- `data/secrets.enc` y el archivo runtime están en `.gitignore` — nunca llegan al repo.
+
+**Toolbelt — las sillas operan el sistema real (opt-in, apagado por default).**
+Es el filo de Swarm. Habilitado, las sillas reciben herramientas que actúan sobre **la máquina a la
+que enchufaste el pendrive** — sin contenedor, sin cápsula. Se prende desde la interfaz
+(**Conexiones → Toolbelt → switch**), que cambia en vivo sin reiniciar — no hace falta editar el
+launcher; la variable `SWARM_TOOLBELT` es un override opcional que lo fuerza siempre encendido. Las
+sillas por API key necesitan un modelo que soporte herramientas (function-calling); las CLI usan las
+suyas.
+
+**Un solo toolbelt, un solo permiso: el switch es el candado.** Apagado, las sillas solo responden
+texto — no tocan un archivo ni corren un comando. Encendido, **los dos** backends (API key y CLI)
+leen, editan archivos, tocan configuración y construyen, y **todo se aplica en el momento**. No hay
+un segundo modo ni aprobación por comando: prender el switch **es** el consentimiento. La red de
+seguridad **no** es un sandbox; es esto:
+
+- **Las lecturas están separadas de las escrituras.** `inspect` solo corre binarios de una allowlist
+  de solo-lectura, **sin shell** (pipes/redirecciones son inertes) y con denylist de banderas que
+  escriben (`find -delete`). Esa allowlist sigue ahí para que una *lectura* no mute por accidente:
+  lo que muta se pide explícito, por `write_file` o `apply_fix`.
+- **Todo queda logueado, y lo ves en vivo.** Cada lectura y cada mutación va a la Bitácora de la
+  mesa (modelo `Accion`), exportable como informe de soporte, y además cada cambio avisa en la mesa
+  por SSE. Sin gate adelante, esa visibilidad en vivo es la red que te queda: ves pasar el cambio
+  mientras pasa.
+- **La bóveda de keys no se toca.** `secrets.enc` y el archivo runtime no se leen NI se escriben con
+  el toolbelt — sería el escape barato (volcar las keys al transcript, o borrarlas de un
+  sobrescritazo).
+- **Es un tool de mucho poder, peligroso en manos equivocadas.** Habilitalo solo en máquinas que
+  estés autorizado a atender. Con el switch prendido, una silla puede cambiar el sistema sin
+  preguntarte antes.
+
+Por qué los dos backends igual se diferencian *en forma*: Swarm ejecuta las herramientas de una
+silla API una por una, así que anota cada una; una silla CLI (claude · opencode · agy) trae sus
+herramientas adentro y solo le pasamos un prompt por stdin, así que lo que se anota es el turno
+entero. Mismo permiso, distinta granularidad del registro. Dos aclaraciones honestas:
+
+- Esto **no** le da alcance que antes no tuviera: una silla CLI en `/armar` ya corría con el `cwd`
+  en la carpeta de la mesa, y un `cwd` no es una jaula (el comando de fabricar de claude trae
+  `--allowedTools Bash`). Lo que cambia es que ahora es **explícito y queda registrado**.
+- `/armar` sigue fabricando dentro de la carpeta git de la mesa. Una silla CLI trabaja ahí por su
+  `cwd`; una silla API no tiene `cwd`, así que **se le pasa la ruta absoluta** de la carpeta y
+  escribe con `write_file` — en los dos casos el resultado se commitea y la mesa ve el diff.
+
+**Orden por default: el trabajo aterriza en la carpeta de la mesa.** Con el toolbelt encendido, si
+en tu pedido **no nombrás una ruta**, las sillas dejan lo que producen en la carpeta de esa mesa:
+queda junto, versionado y se baja con 📁 → «Descargar todo (.zip)». Si nombrás una ruta absoluta
+(`arreglá /etc/nginx/nginx.conf`, `revisá ~/repos/app`) o escribís **`/libre`**, ese turno trabaja
+donde vos dijiste. Se apaga por mesa en la tuerquita («Trabajar en la carpeta de la mesa»).
+
+Sin vueltas sobre qué tan fuerte es: para una silla **por API key**, `write_file` **se rechaza**
+fuera de la carpeta; `apply_fix` corre un comando de shell con el `cwd` puesto ahí y **no se
+rechaza** — si el comando nombra una ruta de afuera, va y la toca, pero **queda anotado en la mesa**;
+para una silla **CLI** es el `cwd` más el encuadre del prompt — su shell alcanza toda la máquina
+igual. **No es una jaula, es prolijidad**: lo que evita es que el trabajo se disperse por el disco
+sin que nadie lo vea. Diagnosticar el equipo (leer logs, `inspect`) nunca queda limitado.
+
+**Credenciales del sistema fuera de alcance.** Además de la bóveda, el toolbelt no lee ni lista
+`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.docker`, `~/.kube`, `/etc/shadow` ni `/etc/sudoers` — se chequea
+por contención de ruta, no por nombre de archivo. Vale para las herramientas de Swarm (sillas API);
+una silla CLI tiene sus propias herramientas y ese límite no la alcanza.
+
+## Licencia
+
+MIT — ver [LICENSE](LICENSE).
+
+Desarrollado por [Federico Furgiuele](https://github.com/hidr4lisk).

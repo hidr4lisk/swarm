@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hidr4lisk_Swarm — mesa multi-agente en tu navegador</title>
+<meta name="description" content="Swarm: varias IAs en una misma mesa — charlan, debaten y actúan. Corre con tus API keys o CLIs, instalada o desde un pendrive. Linux y Windows, open source (MIT).">
+<meta property="og:title" content="Hidr4lisk_Swarm — multi-agent worktable in your browser">
+<meta property="og:description" content="Several AIs at one table — chat, debate and act. Runs on your API keys or CLIs, installed or from a pendrive. Linux & Windows, open source (MIT).">
+<meta property="og:image" content="https://hidr4lisk.github.io/swarm/docs/img/social-preview.png">
+<meta property="og:type" content="website">
+<style>
+:root{
+  --bg:#0a0e0c; --surface:#0d1310; --surface2:#131a16;
+  --border:#1d2a22; --border-strong:#223229;
+  --accent:#22e584; --accent-glow:rgba(34,229,132,.25);
+  --text:#eef2ef; --text-soft:#c7cfc9; --text-dim:#7d8781; --text-disabled:#5c6862;
+  --amber:#ffbd2e;
+  --font:'Hack','JetBrains Mono','Cascadia Code',ui-monospace,Menlo,Consolas,'DejaVu Sans Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.6;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(1100px 520px at 50% -8%,rgba(34,229,132,.06),transparent 60%);pointer-events:none;z-index:0;}
+a{color:var(--accent);}
+img{max-width:100%;}
+
+/* ── Top-bar compartida (mismas medidas que warp/shield/tech/pentool/hidralisk-os) ── */
+.top-bar{--nav-accent:#98B4A6;--nav-pad:1rem;
+  position:sticky;top:0;z-index:200;height:36px;background:rgba(13,17,23,.92);
+  border-bottom:1px solid var(--border);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+@media (min-width:640px){.top-bar{--nav-pad:1.5rem;}}
+@media (min-width:1024px){.top-bar{--nav-pad:3rem;}}
+@media (min-width:1280px){.top-bar{--nav-pad:4rem;}}
+.top-bar__inner{max-width:1320px;margin:0 auto;height:100%;padding-inline:var(--nav-pad);
+  display:flex;align-items:center;justify-content:space-between;gap:16px;position:relative;}
+/* Banner lema pirata — centrado absoluto en la top-bar. Bandera SVG (no emoji: Windows) + ★ de texto. Solo PC. */
+.gov-banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);
+  white-space:nowrap;pointer-events:none;}
+.gov-banner>span{display:inline-flex;align-items:center;line-height:1;}
+.gov-banner .gov-flag svg{display:block;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.18);}
+.gov-banner .gov-stars{color:#f5c518;letter-spacing:3px;font-size:13px;}
+@media (max-width:1023px){.gov-banner{display:none;}}
+.top-bar__left,.top-bar__right{display:flex;align-items:center;gap:12px;
+  font-size:.72rem;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;}
+.tool-select{ min-width: 150px;appearance:none;-webkit-appearance:none;background-color:transparent;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%2398B4A6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;background-size:8px 5px;
+  border:1px solid var(--nav-accent);color:var(--nav-accent);font-family:var(--font);
+  font-size:.72rem;font-weight:700;letter-spacing:.08em;padding:3px 28px 3px 8px;
+  cursor:pointer;border-radius:2px;}
+.tool-select:focus-visible{outline:2px solid var(--nav-accent);outline-offset:2px;}
+.lang-toggle{display:flex;align-items:center;gap:8px;}
+.lang-btn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  font-family:var(--font);font-size:.72rem;padding:2px 8px;cursor:pointer;
+  letter-spacing:.1em;min-height:24px;min-width:36px;border-radius:2px;
+  transition:border-color .15s,color .15s;}
+.lang-btn:hover{border-color:var(--nav-accent);color:var(--nav-accent);}
+.lang-btn.active{border-color:var(--nav-accent);color:var(--nav-accent);}
+.lang-sep{color:var(--border);font-size:.72rem;}
+
+/* ── Layout ── */
+.wrap{max-width:1000px;margin:0 auto;padding:0 24px;position:relative;z-index:1;}
+section{padding:88px 0;border-bottom:1px solid var(--border);}
+.eyebrow{color:var(--accent);font-weight:700;font-size:.95rem;letter-spacing:.12em;margin-bottom:26px;}
+h2{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.15;letter-spacing:-.5px;margin-bottom:22px;}
+.body-txt{color:var(--text-soft);font-size:1.06rem;max-width:46em;}
+.body-txt b{color:var(--text);}
+.punch{color:var(--accent);font-weight:700;font-size:1.06rem;margin-top:26px;max-width:44em;}
+
+/* ── Hero ── */
+.hero{padding:96px 0 80px;text-align:center;border-bottom:1px solid var(--border);}
+.hero .prompt{font-size:1.05rem;color:var(--text-dim);}
+.hero .prompt .u{color:var(--accent);font-weight:700;}
+.hero .prompt .cur{color:var(--accent);animation:blink 1.1s step-end infinite;}
+@keyframes blink{50%{opacity:0;}}
+.hero h1{font-size:clamp(2.4rem,7vw,4.4rem);letter-spacing:-1px;margin-top:30px;word-break:break-word;}
+.hero h1 .lo{color:var(--text-dim);}
+.hero .tagline{color:var(--text-soft);font-size:clamp(1rem,2.4vw,1.25rem);margin:20px auto 0;max-width:40em;}
+.hero .tagline b{color:var(--text);}
+.hero .badges{color:var(--text-dim);margin-top:22px;font-size:.95rem;}
+.hero .ctas{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-top:40px;}
+.btn{display:inline-block;padding:15px 30px;border-radius:10px;font-weight:700;
+  font-size:1rem;text-decoration:none;letter-spacing:.03em;transition:transform .12s,box-shadow .12s;cursor:pointer;}
+.btn-primary{background:var(--accent);color:#04130b;box-shadow:0 0 34px var(--accent-glow);border:none;font-family:var(--font);}
+/* Versión debajo del botón de descarga: discreta, no compite con los CTAs. */
+.dl-ver{margin:.7em 0 0;font-family:var(--mono,monospace);font-size:.8rem;color:var(--text-dim);letter-spacing:.04em;}
+.btn-secondary{border:1px solid var(--border-strong);color:var(--text-soft);}
+.btn:hover{transform:translateY(-2px);}
+.hero .relnote{margin-top:26px;color:var(--text-disabled);font-size:.86rem;}
+.hero .os-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px;}
+.os{display:inline-flex;align-items:center;gap:9px;font-size:.9rem;font-weight:700;color:var(--text-soft);
+  border:1px solid var(--border-strong);border-radius:22px;padding:7px 17px;background:var(--surface);}
+.os-ico{width:17px;height:17px;display:block;flex:none;}
+.os-ico--win{fill:#0078D4;}
+.os-ico--tux{fill:#FCC624;}
+
+/* ── Terminal ── */
+.term{background:var(--surface);border:1px solid var(--border-strong);border-radius:14px;
+  overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.55);margin-top:36px;}
+.term .bar{display:flex;align-items:center;gap:9px;background:var(--surface2);
+  padding:12px 18px;border-bottom:1px solid var(--border-strong);}
+.term .bar i{width:13px;height:13px;border-radius:50%;display:block;}
+.term .bar i:nth-child(1){background:#ff5f56;}.term .bar i:nth-child(2){background:#ffbd2e;}.term .bar i:nth-child(3){background:#27c93f;}
+.term .bar span{color:#8b958f;font-size:.82rem;margin-left:8px;}
+.term .scr{padding:22px 26px;font-size:.95rem;line-height:1.9;overflow-x:auto;}
+.term .scr .row{white-space:nowrap;}
+.pr{color:var(--accent);font-weight:700;}
+.dim{color:var(--text-dim);}
+.who{color:var(--accent);font-weight:700;}
+.who.b{color:#58a6ff;}.who.r{color:#ff6b6b;}.who.q{color:#c792ea;}
+.wait{color:var(--amber);animation:pulse 1.6s ease-in-out infinite;}
+@keyframes pulse{50%{opacity:.45;}}
+
+/* ── A/B slots ── */
+.slots{display:flex;gap:22px;align-items:stretch;margin-top:36px;flex-wrap:wrap;}
+.slot{flex:1;min-width:250px;border-radius:14px;padding:26px;}
+.slot.a{border:2px solid var(--accent);background:rgba(34,229,132,.06);}
+.slot.b{border:2px dashed #3a4a41;}
+.slot .t{font-weight:700;font-size:1.15rem;}
+.slot.a .t{color:var(--accent);}.slot.b .t{color:#8b958f;}
+.slot p{font-size:.94rem;color:var(--text-dim);margin-top:10px;}
+.slot code{background:var(--surface2);border:1px solid var(--border-strong);border-radius:5px;
+  padding:1px 6px;font-size:.86em;color:var(--text-soft);}
+.slots .arr{display:flex;align-items:center;color:var(--text-disabled);font-size:1.6rem;}
+
+/* ── Checklist ── */
+.ck{list-style:none;margin-top:30px;display:flex;flex-direction:column;gap:16px;font-size:1.04rem;}
+.ck li{display:flex;gap:14px;color:var(--text-soft);}
+.ck li::before{content:'✓';color:var(--accent);font-weight:700;flex-shrink:0;}
+.ck li b{color:var(--text);}
+
+/* ── Warning ── */
+.warn{margin-top:32px;border:1px solid #6b5b1e;background:rgba(255,189,46,.05);
+  border-radius:12px;padding:20px 24px;font-size:.95rem;color:var(--text-soft);max-width:46em;}
+.warn .t{color:var(--amber);font-weight:700;margin-bottom:8px;}
+
+/* ── Screenshot ── */
+.shot{border:1px solid var(--border-strong);border-radius:14px;overflow:hidden;
+  box-shadow:0 18px 60px rgba(0,0,0,.55);margin-top:36px;}
+.shot img{display:block;width:100%;}
+.shot figcaption{padding:12px 18px;color:var(--text-dim);font-size:.85rem;border-top:1px solid var(--border-strong);}
+
+/* ── Donación ── */
+.donate{display:flex;gap:34px;align-items:center;flex-wrap:wrap;margin-top:36px;
+  background:var(--surface);border:1px solid var(--accent);border-radius:16px;
+  padding:30px;box-shadow:0 0 44px rgba(34,229,132,.09);}
+.donate .qbox{background:#fff;border-radius:12px;padding:14px;flex-shrink:0;line-height:0;}
+.donate .qr{width:170px;height:170px;display:block;}
+.donate .qr path{fill:#04130b;}
+.donate .dinfo{flex:1;min-width:220px;}
+.donate .dlabel{color:var(--text-dim);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase;}
+.donate .alias{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 6px;}
+.donate .alias b{color:var(--accent);font-size:1.5rem;font-weight:700;letter-spacing:-.5px;}
+.donate .copy{background:transparent;border:1px solid var(--border-strong);color:var(--text-soft);
+  font-family:var(--font);font-size:.78rem;padding:5px 12px;border-radius:6px;cursor:pointer;
+  transition:border-color .15s,color .15s;}
+.donate .copy:hover{border-color:var(--accent);color:var(--accent);}
+.donate .copy.ok{border-color:var(--accent);color:var(--accent);}
+.donate .dnote{color:var(--text-dim);font-size:.92rem;margin-top:8px;}
+
+/* ── Steps (arrancar) ── */
+#arrancar{border-bottom:none;}
+.steps{margin-top:40px;display:flex;flex-direction:column;gap:30px;}
+.step{display:flex;gap:20px;}
+.step>div{min-width:0;flex:1;} /* sin esto, los <code> pre fuerzan el ancho y desbordan en celu */
+/* A y B son OPCIONES, no pasos: antes iban 01/02/03 con un counter y se leía como una
+   secuencia que había que hacer entera. La letra sale de data-opt. */
+.step::before{content:attr(data-opt);color:var(--accent);font-weight:700;font-size:1.15rem;flex-shrink:0;}
+.step .st-t{font-weight:700;margin-bottom:8px;font-size:1.05rem;}
+/* Segunda variante dentro de la opción B (armar la carpeta uno mismo). */
+.step .st-sub{font-weight:700;margin:22px 0 8px;font-size:.95rem;color:var(--text-dim);}
+.step p{color:var(--text-dim);font-size:.93rem;margin-top:8px;}
+.step p code, .body-txt code{background:var(--surface2);border:1px solid var(--border-strong);
+  border-radius:5px;padding:1px 6px;font-size:.86em;color:var(--text-soft);}
+.step .cmd,#contacto .cmd{display:block;background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:8px;padding:12px 16px;margin-top:4px;font-size:.88rem;color:var(--text-soft);
+  overflow-x:auto;white-space:pre;line-height:1.8;}
+.step .cmd .pr,#contacto .cmd .pr{user-select:none;}
+
+/* ── Footer ── */
+footer{border-top:1px solid var(--border);padding:34px 24px 44px;text-align:center;
+  color:var(--text-disabled);font-size:.85rem;position:relative;z-index:1;}
+footer .brand{color:var(--accent);font-weight:700;}
+footer a{color:var(--text-dim);}
+
+@media (max-width:640px){
+  section{padding:64px 0;}
+  .hero{padding:70px 0 56px;}
+  .slots .arr{display:none;}
+  .donate{justify-content:center;text-align:center;}
+  .donate .alias{justify-content:center;}
+  /* CTAs apilados, ancho completo — más cómodos al dedo */
+  .hero .ctas{flex-direction:column;align-items:center;gap:12px;}
+  .hero .ctas .btn{width:100%;max-width:340px;text-align:center;}
+  /* terminales: la conversación wrappea en vez de cortarse */
+  .term .scr{font-size:.86rem;line-height:1.7;}
+  .term .scr .row{white-space:normal;overflow-wrap:anywhere;}
+  .term .scr .row+.row{margin-top:6px;}
+  /* comandos: respetan saltos de línea pero wrappean lo largo */
+  .step .cmd,#contacto .cmd{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.82rem;}
+  .step{gap:14px;}
+  h2{overflow-wrap:break-word;}
+}
+/* ── Boot glitch (mismo efecto que warp/shield/tech) ── */
+#glitch-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none;animation:go-hide 2s ease-out forwards;}
+#glitch-overlay::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.3) 0,rgba(0,0,0,.3) 1px,transparent 1px,transparent 3px);}
+#glitch-overlay::after{content:'';position:absolute;left:0;right:0;height:2px;background:var(--accent);opacity:.85;animation:go-scanline 2s steps(1,end) forwards;}
+@keyframes go-hide{0%,70%{opacity:1;}100%{opacity:0;}}
+@keyframes go-scanline{
+  0%{top:10%;transform:scaleX(.8) translateX(-5px);}8%{top:72%;transform:scaleX(.4) translateX(12px);}
+  16%{top:25%;transform:scaleX(.9) translateX(-8px);}24%{top:58%;transform:scaleX(.6) translateX(4px);}
+  32%{top:40%;transform:scaleX(1) translateX(-15px);}40%{top:85%;transform:scaleX(.3) translateX(7px);}
+  48%{top:15%;transform:scaleX(.7) translateX(-3px);}56%{top:62%;transform:scaleX(.5) translateX(10px);}
+  64%{top:33%;transform:scaleX(.2) translateX(-1px);}72%{top:50%;transform:scaleX(.1) translateX(2px);opacity:.5;}
+  100%{opacity:0;}
+}
+.hero h1{animation:title-glitch 2s steps(1,end) forwards;}
+@keyframes title-glitch{
+  0%{text-shadow:3px 0 #ff0040,-3px 0 #00f0cc;filter:blur(.5px);}
+  8%{text-shadow:-4px 0 #ff0040,2px 0 #00f0cc;transform:translateX(3px);}
+  16%{text-shadow:2px 0 #ff0040,-4px 0 #00f0cc;transform:translateX(-2px);filter:none;}
+  24%{text-shadow:-2px 0 #ff0040,3px 0 #00f0cc;transform:translateX(1px);}
+  32%{text-shadow:4px 0 #ff0040,-2px 0 #00f0cc;filter:blur(.3px);}
+  40%{text-shadow:-3px 0 #ff0040,1px 0 #00f0cc;transform:translateX(-1px);}
+  48%{text-shadow:1px 0 rgba(152,180,166,.5);transform:none;}
+  56%{text-shadow:-2px 0 #ff0040,2px 0 #00f0cc;}
+  64%{text-shadow:2px 0 rgba(152,180,166,.3);}
+  72%{text-shadow:-1px 0 #ff0040,1px 0 #00f0cc;}
+  80%,100%{text-shadow:none;filter:none;transform:none;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto;}
+  .btn:hover{transform:none;}
+  .hero .prompt .cur,.wait{animation:none;}
+  .hero h1{animation:none;}
+  #glitch-overlay{display:none;}
+}
+</style>
+<!-- Piel común de los 6 proyectos (tema Inverse). Va DESPUÉS del <style> a
+     propósito: pisa los tokens de este sitio sin obligar a reescribirlo.
+     Fuente de verdad: hidralisk, hidra/static/hidra/landing-kit/.
+     Se distribuye con scripts/sync-landings.sh — NO editar acá, el sync lo pisa. -->
+<link rel="stylesheet" href="hidra-kit/kit.css">
+</head>
+<body>
+<div id="glitch-overlay" aria-hidden="true"></div>
+
+<div class="top-bar">
+  <div class="top-bar__inner">
+    <div class="top-bar__left">
+      <select class="tool-select" id="toolSelect" aria-label="Hidr4lisk tools">
+        <option value="https://hidralisk.online">Hidr4lisk_</option>
+        <option value="https://hidr4lisk.github.io/swarm" selected>SWARM</option>
+        <option value="https://hidr4lisk.github.io/hidralisk-os">HIDRALISK OS</option>
+        <option value="https://hidr4lisk.github.io/pentool">PENTOOL</option>
+        <option value="https://hidr4lisk.github.io/tech">TECH</option>
+        <option value="https://hidr4lisk.github.io/shield">SHIELD</option>
+        <option value="https://hidr4lisk.github.io/warp">WARP</option>
+      </select>
+    </div>
+    <div class="gov-banner" aria-hidden="true">
+      <span class="gov-flag" title="Argentina"><svg width="20" height="13" viewBox="0 0 30 20" role="img" aria-label="Argentina"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.667" fill="#75AADB"/><rect width="30" height="6.667" y="13.333" fill="#75AADB"/><polygon fill="#F6B40E" points="19.2,10 17.495,8.966 17.969,7.031 16.034,7.505 15,5.8 13.966,7.505 12.031,7.031 12.505,8.966 10.8,10 12.505,11.034 12.031,12.969 13.966,12.495 15,14.2 16.034,12.495 17.969,12.969 17.495,11.034"/><circle cx="15" cy="10" r="2.7" fill="#F6B40E" stroke="#85340A" stroke-width=".25"/></svg></span>
+      <span data-i18n="nav_motto">2026 - El conocimiento es libre</span>
+      <span class="gov-stars">★★★</span>
+    </div>
+    <div class="top-bar__right">
+      <nav class="lang-toggle" aria-label="Language selector">
+        <button class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+        <span class="lang-sep" aria-hidden="true">/</span>
+        <button class="lang-btn active" data-lang="es" aria-pressed="true">ES</button>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<!-- ── Hero ── -->
+<header class="hero">
+  <div class="wrap">
+    <div class="prompt"><span class="u">hidra@swarm</span>:~$ <span class="cur" aria-hidden="true">█</span></div>
+    <h1><span class="lo">Hidr4lisk_</span>Swarm</h1>
+    <p class="tagline" data-i18n-html="tagline">Una <b>mesa multi-agente</b> en tu navegador: varias IAs charlan, debaten y <b>actúan</b> — coordinadas por un líder.</p>
+    <p class="badges" data-i18n="badges">multi-agente · API keys o CLIs · portátil · open source (MIT)</p>
+    <div class="os-row" aria-label="corre en Windows y Linux">
+      <span class="os"><svg class="os-ico os-ico--win" viewBox="0 0 24 24" aria-hidden="true"><path d="M0,0H11.377V11.372H0ZM12.623,0H24V11.372H12.623ZM0,12.623H11.377V24H0Zm12.623,0H24V24H12.623"/></svg>Windows</span>
+      <span class="os"><svg class="os-ico os-ico--tux" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z"/></svg>Linux</span>
+    </div>
+    <div class="ctas">
+      <a class="btn btn-primary" href="https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip" data-i18n="cta_download">⬇ DESCARGAR · LISTO PARA USAR</a>
+      <a class="btn btn-secondary" href="#arrancar" data-i18n="cta_go">▸ ARRANCAR</a>
+      <a class="btn btn-secondary" href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener" data-i18n="go_repo">▸ REPO &amp; README</a>
+      <a class="btn btn-secondary" href="#apoya" data-i18n="go_donate">☕️ APOYAR</a>
+    </div>
+    <!-- Versión del zip que sirve el botón + CUÁNDO se actualizó (dato clave: el que llega a la
+         web quiere saber si el proyecto está vivo). La reescribe scripts/actualizar_version.py
+         desde el workflow al publicar cada release: no se toca a mano. -->
+    <p class="dl-ver" id="dl-ver">v1.2.2 · <span data-i18n="dl_upd">última actualización</span> 18/11/2026 · Windows + Linux · ~100 MB</p>
+    <p class="relnote" data-i18n="relnote">una carpeta que se basta sola · Linux &amp; Windows · sin instalar, sin cuenta</p>
+  </div>
+</header>
+
+<!-- ── 01 la mesa ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s1_eyebrow">// 01 · UNA MESA, MUCHAS MENTES</p>
+    <h2 data-i18n="s1_h">Varias IAs, una misma mesa.</h2>
+    <p class="body-txt" data-i18n-html="s1_body">Cada <b>silla</b> es una IA con su voz y su tarea. Dejás un pedido; lo discuten en plano o bajo un <b>líder</b>, y el líder cierra — con una respuesta o <b>actuando</b>. Tu navegador, tu máquina, tus cuentas.</p>
+    <div class="term"><div class="bar"><i></i><i></i><i></i><span>swarm — mesa 07</span></div><div class="scr">
+      <div class="row"><span class="pr">$</span> mesa nueva <span class="dim">"revisá el disco y arreglá el servicio caído"</span></div>
+      <div class="row"><span class="who">[líder]</span> <span data-i18n="s1_l1">reparto: Arq revisa disco, Red mira el servicio…</span></div>
+      <div class="row"><span class="who b">[arq]</span>&nbsp;&nbsp;&nbsp;<span class="dim">/</span> <span data-i18n="s1_l2">disco 82% — /var/log se comió 12 GB</span></div>
+      <div class="row"><span class="who r">[red]</span>&nbsp;&nbsp;&nbsp;<span data-i18n="s1_l3">nginx caído: falta reload tras el logrotate</span></div>
+      <div class="row"><span class="who">[líder]</span> <span data-i18n="s1_l4">propongo: limpiar logs + reload nginx</span> &nbsp;<span class="wait" data-i18n="s1_l5">⧗ espera tu OK</span></div>
+    </div></div>
+    <p class="punch" data-i18n="s1_punch">Muchas mesitas, una por tarea. En vivo, en el navegador.</p>
+  </div>
+</section>
+
+<!-- ── 02 dos formas ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s2_eyebrow">// 02 · UNA CARPETA, DONDE QUIERAS</p>
+    <h2 data-i18n="s2_h">En el disco, o en un pendrive.</h2>
+    <p class="body-txt" data-i18n-html="s2_body">Swarm es <b>una carpeta que se basta sola</b> —app, Python y tus datos adentro—. Dónde la dejes es lo único que cambia.</p>
+    <div class="slots">
+      <div class="slot a"><div class="t" data-i18n="s2_at">EN LA PC</div><p data-i18n-html="s2_ap">Descomprimila en una carpeta del disco y doble-clic. Queda ahí, lista para la próxima. Ideal para tu máquina de todos los días.</p></div>
+      <div class="arr" aria-hidden="true">⇄</div>
+      <div class="slot b"><div class="t" data-i18n="s2_bt">EN UN PENDRIVE ⟳</div><p data-i18n-html="s2_bp">La misma carpeta en un pendrive. La enchufás en cualquier PC <b>Windows o Linux</b> pelada → doble-clic y la mesa abre en el navegador. Tus mesas y sillas viajan con vos.</p></div>
+    </div>
+    <p class="punch" data-i18n="s2_punch">El kit del técnico: un pendrive que vuelve cualquier PC de cliente una mesa completa.</p>
+    <p class="body-txt" data-i18n-html="s2_cfg">Y tu config viaja con vos: <b>Sillas → Exportar</b> baja tus sillas —nombres, modelos, prompts, retratos, colores— a un JSON, e <b>Importar</b> las repone en otra PC o en una versión nueva. Sin credenciales adentro: las keys quedan cifradas en la bóveda, aparte.</p>
+  </div>
+</section>
+
+<!-- ── 03 tres sillas ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s3_eyebrow">// 03 · TRES TIPOS DE SILLA</p>
+    <h2 data-i18n="s3_h">Por CLI, por API key, o local.</h2>
+    <p class="body-txt" data-i18n-html="s3_body">Cada silla elige su backend. Mezclalas en la misma mesa.</p>
+    <div class="term"><div class="bar"><i></i><i></i><i></i><span>swarm — conexiones</span></div><div class="scr">
+      <div class="row"><span class="pr">$</span> swarm conexiones</div>
+      <div class="row"><span class="who">cli</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;claude · opencode · agy · codex <span class="dim">(beta)</span>&nbsp;&nbsp;<span class="dim" data-i18n="s3_cli">— cuentas ya logueadas, nada se guarda</span></div>
+      <div class="row"><span class="who b">api</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;anthropic · openai · openrouter&nbsp;&nbsp;<span class="dim" data-i18n="s3_api">— keys cifradas en bóveda con passphrase</span></div>
+      <div class="row"><span class="who q">local</span>&nbsp;&nbsp;&nbsp;ollama <span class="dim">(http)</span>&nbsp;&nbsp;<span class="dim" data-i18n="s3_local">— corre entero en tu propio hardware</span></div>
+    </div></div>
+    <p class="punch" data-i18n="s3_punch">La ruta por API key no necesita ningún binario — es la que hace posible el pendrive.</p>
+    <p class="body-txt" data-i18n-html="s3_codex">Codex CLI 0.162.1: <b>charla y fabricación verificadas en Windows y Linux</b>. Conserva su sandbox de escritura; en Windows hay que configurar el backend nativo de Codex. <a href="https://github.com/hidr4lisk/swarm#readme">Requisitos y actualización →</a></p>
+  </div>
+</section>
+
+<!-- ── 04 toolbelt ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s4_eyebrow">// 04 · EL FILO</p>
+    <h2 data-i18n="s4_h">Puede tocar la máquina real — con cuidado.</h2>
+    <p class="body-txt" data-i18n-html="s4_body">Prendé el <b>toolbelt</b> (opt-in, apagado por default) y las sillas —por API key <b>y</b> por CLI— reciben herramientas que actúan sobre la computadora a la que enchufaste, sin contenedor y sin cápsula. <b>El switch es el permiso</b>: prendido, lo que hacen se aplica en el momento. La red de seguridad <b>no</b> es un sandbox; es disciplina:</p>
+    <ul class="ck">
+      <li data-i18n-html="s4_i1"><span><b>Lo de solo-lectura corre solo.</b> Revisar disco, procesos y archivos: allowlist sin shell, corre sin preguntar.</span></li>
+      <li data-i18n-html="s4_i2"><span><b>Lo ves pasar mientras pasa.</b> Cada cambio avisa en la mesa al aplicarse: sin gate adelante, la visibilidad en vivo es la red.</span></li>
+      <li data-i18n-html="s4_i3"><span><b>Todo queda logueado.</b> Cada lectura y cada cambio va a la bitácora de la mesa, exportable como informe.</span></li>
+      <li data-i18n-html="s4_i4"><span><b>El trabajo queda junto.</b> Si no nombrás una ruta, lo que produzcan aterriza en la carpeta de esa mesa, versionado y descargable.</span></li>
+    </ul>
+    <div class="warn">
+      <div class="t" data-i18n="s4_warn_t">⚠ Poder de verdad</div>
+      <span data-i18n="s4_warn_p">Peligroso en manos equivocadas. Habilitalo solo en máquinas que estés autorizado a atender: con el switch prendido, una silla puede cambiar el sistema sin preguntarte antes.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── 05 mirala ── -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="s5_eyebrow">// 05 · EN VIVO</p>
+    <h2 data-i18n="s5_h">Una mesa, trabajando.</h2>
+    <p class="body-txt" data-i18n-html="s5_body">Las sillas debaten, el líder fabrica archivos de verdad (un commit por turno) y el flujo se ve a la derecha. La UI es bilingüe, aunque su alma habla español.</p>
+    <figure class="shot">
+      <img src="docs/img/mesa.png" alt="Una mesa de Swarm: las sillas debaten el pedido, /armar fabrica el script de verdad y el flujo del worker se ve a la derecha" loading="lazy">
+      <figcaption data-i18n="s5_cap">Una mesa con líder: debate, fabricación real y flujo en vivo.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Apoyá ── -->
+<section id="apoya">
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="dn_eyebrow">// APOYÁ</p>
+    <h2 data-i18n="dn_h">Bancá el caballo de batalla.</h2>
+    <p class="body-txt" data-i18n-html="dn_body">Swarm es <b>gratis y open source</b>. Si te sirve y querés que siga creciendo, podés colaborar por <b>Mercado Pago</b> — escaneá el QR o transferí al alias.</p>
+    <div class="donate">
+      <div class="qbox" aria-hidden="true">
+        <svg class="qr" version="1.1" viewBox="0 0 29 29" xmlns="http://www.w3.org/2000/svg"><path d="M2,2H3V3H2zM3,2H4V3H3zM4,2H5V3H4zM5,2H6V3H5zM6,2H7V3H6zM7,2H8V3H7zM8,2H9V3H8zM10,2H11V3H10zM12,2H13V3H12zM13,2H14V3H13zM16,2H17V3H16zM17,2H18V3H17zM20,2H21V3H20zM21,2H22V3H21zM22,2H23V3H22zM23,2H24V3H23zM24,2H25V3H24zM25,2H26V3H25zM26,2H27V3H26zM2,3H3V4H2zM8,3H9V4H8zM11,3H12V4H11zM12,3H13V4H12zM13,3H14V4H13zM14,3H15V4H14zM18,3H19V4H18zM20,3H21V4H20zM26,3H27V4H26zM2,4H3V5H2zM4,4H5V5H4zM5,4H6V5H5zM6,4H7V5H6zM8,4H9V5H8zM12,4H13V5H12zM13,4H14V5H13zM18,4H19V5H18zM20,4H21V5H20zM22,4H23V5H22zM23,4H24V5H23zM24,4H25V5H24zM26,4H27V5H26zM2,5H3V6H2zM4,5H5V6H4zM5,5H6V6H5zM6,5H7V6H6zM8,5H9V6H8zM10,5H11V6H10zM11,5H12V6H11zM14,5H15V6H14zM15,5H16V6H15zM16,5H17V6H16zM18,5H19V6H18zM20,5H21V6H20zM22,5H23V6H22zM23,5H24V6H23zM24,5H25V6H24zM26,5H27V6H26zM2,6H3V7H2zM4,6H5V7H4zM5,6H6V7H5zM6,6H7V7H6zM8,6H9V7H8zM10,6H11V7H10zM12,6H13V7H12zM14,6H15V7H14zM16,6H17V7H16zM17,6H18V7H17zM18,6H19V7H18zM20,6H21V7H20zM22,6H23V7H22zM23,6H24V7H23zM24,6H25V7H24zM26,6H27V7H26zM2,7H3V8H2zM8,7H9V8H8zM10,7H11V8H10zM12,7H13V8H12zM13,7H14V8H13zM14,7H15V8H14zM18,7H19V8H18zM20,7H21V8H20zM26,7H27V8H26zM2,8H3V9H2zM3,8H4V9H3zM4,8H5V9H4zM5,8H6V9H5zM6,8H7V9H6zM7,8H8V9H7zM8,8H9V9H8zM10,8H11V9H10zM12,8H13V9H12zM14,8H15V9H14zM16,8H17V9H16zM18,8H19V9H18zM20,8H21V9H20zM21,8H22V9H21zM22,8H23V9H22zM23,8H24V9H23zM24,8H25V9H24zM25,8H26V9H25zM26,8H27V9H26zM10,9H11V10H10zM13,9H14V10H13zM16,9H17V10H16zM18,9H19V10H18zM2,10H3V11H2zM6,10H7V11H6zM8,10H9V11H8zM9,10H10V11H9zM10,10H11V11H10zM12,10H13V11H12zM14,10H15V11H14zM18,10H19V11H18zM19,10H20V11H19zM20,10H21V11H20zM21,10H22V11H21zM22,10H23V11H22zM23,10H24V11H23zM26,10H27V11H26zM4,11H5V12H4zM6,11H7V12H6zM7,11H8V12H7zM9,11H10V12H9zM10,11H11V12H10zM11,11H12V12H11zM12,11H13V12H12zM16,11H17V12H16zM17,11H18V12H17zM18,11H19V12H18zM22,11H23V12H22zM23,11H24V12H23zM25,11H26V12H25zM5,12H6V13H5zM6,12H7V13H6zM7,12H8V13H7zM8,12H9V13H8zM10,12H11V13H10zM13,12H14V13H13zM15,12H16V13H15zM16,12H17V13H16zM17,12H18V13H17zM19,12H20V13H19zM20,12H21V13H20zM23,12H24V13H23zM24,12H25V13H24zM2,13H3V14H2zM3,13H4V14H3zM4,13H5V14H4zM5,13H6V14H5zM9,13H10V14H9zM11,13H12V14H11zM14,13H15V14H14zM17,13H18V14H17zM18,13H19V14H18zM22,13H23V14H22zM24,13H25V14H24zM25,13H26V14H25zM2,14H3V15H2zM3,14H4V15H3zM7,14H8V15H7zM8,14H9V15H8zM9,14H10V15H9zM10,14H11V15H10zM12,14H13V15H12zM13,14H14V15H13zM17,14H18V15H17zM19,14H20V15H19zM20,14H21V15H20zM21,14H22V15H21zM23,14H24V15H23zM24,14H25V15H24zM25,14H26V15H25zM26,14H27V15H26zM2,15H3V16H2zM4,15H5V16H4zM5,15H6V16H5zM9,15H10V16H9zM10,15H11V16H10zM11,15H12V16H11zM14,15H15V16H14zM16,15H17V16H16zM17,15H18V16H17zM18,15H19V16H18zM22,15H23V16H22zM25,15H26V16H25zM4,16H5V17H4zM8,16H9V17H8zM9,16H10V17H9zM12,16H13V17H12zM13,16H14V17H13zM14,16H15V17H14zM16,16H17V17H16zM17,16H18V17H17zM18,16H19V17H18zM21,16H22V17H21zM22,16H23V17H22zM23,16H24V17H23zM24,16H25V17H24zM6,17H7V18H6zM9,17H10V18H9zM10,17H11V18H10zM11,17H12V18H11zM13,17H14V18H13zM17,17H18V18H17zM19,17H20V18H19zM21,17H22V18H21zM22,17H23V18H22zM24,17H25V18H24zM25,17H26V18H25zM2,18H3V19H2zM3,18H4V19H3zM8,18H9V19H8zM9,18H10V19H9zM14,18H15V19H14zM17,18H18V19H17zM18,18H19V19H18zM19,18H20V19H19zM20,18H21V19H20zM21,18H22V19H21zM22,18H23V19H22zM23,18H24V19H23zM24,18H25V19H24zM10,19H11V20H10zM11,19H12V20H11zM16,19H17V20H16zM18,19H19V20H18zM22,19H23V20H22zM2,20H3V21H2zM3,20H4V21H3zM4,20H5V21H4zM5,20H6V21H5zM6,20H7V21H6zM7,20H8V21H7zM8,20H9V21H8zM10,20H11V21H10zM18,20H19V21H18zM20,20H21V21H20zM22,20H23V21H22zM2,21H3V22H2zM8,21H9V22H8zM14,21H15V22H14zM16,21H17V22H16zM18,21H19V22H18zM22,21H23V22H22zM23,21H24V22H23zM24,21H25V22H24zM25,21H26V22H25zM2,22H3V23H2zM4,22H5V23H4zM5,22H6V23H5zM6,22H7V23H6zM8,22H9V23H8zM10,22H11V23H10zM11,22H12V23H11zM12,22H13V23H12zM13,22H14V23H13zM14,22H15V23H14zM18,22H19V23H18zM19,22H20V23H19zM20,22H21V23H20zM21,22H22V23H21zM22,22H23V23H22zM23,22H24V23H23zM24,22H25V23H24zM2,23H3V24H2zM4,23H5V24H4zM5,23H6V24H5zM6,23H7V24H6zM8,23H9V24H8zM12,23H13V24H12zM14,23H15V24H14zM16,23H17V24H16zM17,23H18V24H17zM19,23H20V24H19zM20,23H21V24H20zM21,23H22V24H21zM24,23H25V24H24zM25,23H26V24H25zM26,23H27V24H26zM2,24H3V25H2zM4,24H5V25H4zM5,24H6V25H5zM6,24H7V25H6zM8,24H9V25H8zM12,24H13V25H12zM13,24H14V25H13zM14,24H15V25H14zM15,24H16V25H15zM16,24H17V25H16zM17,24H18V25H17zM18,24H19V25H18zM20,24H21V25H20zM23,24H24V25H23zM25,24H26V25H25zM2,25H3V26H2zM8,25H9V26H8zM11,25H12V26H11zM13,25H14V26H13zM14,25H15V26H14zM17,25H18V26H17zM19,25H20V26H19zM21,25H22V26H21zM22,25H23V26H22zM23,25H24V26H23zM24,25H25V26H24zM25,25H26V26H25zM2,26H3V27H2zM3,26H4V27H3zM4,26H5V27H4zM5,26H6V27H5zM6,26H7V27H6zM7,26H8V27H7zM8,26H9V27H8zM10,26H11V27H10zM12,26H13V27H12zM14,26H15V27H14zM17,26H18V27H17zM24,26H25V27H24zM25,26H26V27H25zM26,26H27V27H26z" fill-rule="nonzero" stroke="none"/></svg>
+      </div>
+      <div class="dinfo">
+        <div class="dlabel" data-i18n="dn_label">Alias Mercado Pago</div>
+        <div class="alias">
+          <b id="aliasVal">hidralisk.online</b>
+          <button class="copy" id="copyAlias" data-i18n="dn_copy">copiar</button>
+        </div>
+        <p class="dnote" data-i18n="dn_note">Escaneá el QR con la app de Mercado Pago o transferí manualmente al alias. Gracias 🪲</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Arrancar ── -->
+<section id="arrancar">
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="go_eyebrow">// ARRANCAR</p>
+    <h2 data-i18n="go_h">Arriba en un comando.</h2>
+    <p class="body-txt" data-i18n-html="go_body">¿No querés clonar nada? Bajá la carpeta lista y doble-clic. ¿Preferís el código? Cloná y arrancá — sin Docker, sin cuenta, solo Python 3.12.</p>
+    <div class="steps">
+      <div class="step" data-opt="A"><div>
+        <div class="st-t" data-i18n="go0_t">Bajar Swarm · listo para usar</div>
+        <code class="cmd"><span class="pr">⬇</span> <a href="https://github.com/hidr4lisk/swarm/releases/latest/download/swarm-portable.zip" style="color:inherit">swarm-portable.zip</a>  <span class="dim"># Windows + Linux, ~100 MB</span></code>
+        <p data-i18n-html="go0_p">Descomprimilo en <b>una carpeta del disco o en un pendrive</b> y doble-clic a <code>Enjambre.bat</code> (Windows) o <code>enjambre.sh</code> (Linux). Sin Python, sin Docker, sin clonar. La primera vez cada PC pregunta si instalarlo ahí o correr sin dejar rastro.</p>
+        <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_note">¿Windows avisa «Windows protegió su PC»? Es normal (el código no tiene firma paga, es público en GitHub) — «Más información» → «Ejecutar de todos modos». Guía paso a paso: botón <b>Ayuda</b> dentro de la app.</p>
+        <p class="dim" style="font-size:.85em;margin-top:.4em;" data-i18n-html="go0_git">Para <b>charlar</b> no instalás nada. Para <code>/armar</code> —que las sillas fabriquen archivos— hace falta <b>git</b>, lo único que el bundle no trae: <code>winget install --id Git.Git -e</code> en Windows, <code>sudo apt install git</code> en Linux. Si falta, Swarm te lo avisa al arrancar.</p>
+      </div></div>
+      <div class="step" data-opt="B"><div>
+        <div class="st-t" data-i18n="go1_t">Desde el código (Python 3.12)</div>
+        <code class="cmd"><span class="pr">$</span> git clone https://github.com/hidr4lisk/swarm.git &amp;&amp; cd swarm
+<span class="pr">$</span> pip install -r requirements-portable.txt
+<span class="pr">$</span> python manage.py serve</code>
+        <p data-i18n-html="go1_p">Abre <code>127.0.0.1:8799</code>. Andá a <b>Conexiones → API keys</b>, cargá una key (se guarda cifrada) y armá una mesa.</p>
+        <div class="st-sub" data-i18n="go2_t">Armar la carpeta portátil (Linux + Windows)</div>
+        <code class="cmd"><span class="pr">$</span> ./scripts/build_bundle.sh   <span class="dim"># → dist/swarm-portable/</span></code>
+        <p data-i18n-html="go2_p">Copiás <code>dist/swarm-portable/</code> adonde quieras —una carpeta del disco o un pendrive—: son pocos archivos grandes, se copia al toque. En cualquier PC pelada: doble-clic a <code>enjambre.sh</code> (Linux) o <code>Enjambre.bat</code> (Windows). La primera vez te pregunta si instalarlo en esa PC o usarlo sin dejar rastro.</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Contacto ── -->
+<section id="contacto">
+  <div class="wrap">
+    <p class="eyebrow" data-i18n="ct_eyebrow">// CONTACTO</p>
+    <h2 data-i18n="ct_h">Hablemos.</h2>
+    <p class="body-txt" data-i18n-html="ct_body">¿Encontraste un bug, tenés una idea o querés usar Swarm en tu equipo? Abrí un <a href="https://github.com/hidr4lisk/swarm/issues" target="_blank" rel="noopener">issue en GitHub</a> o escribinos directo:</p>
+    <code class="cmd"><span class="pr">✉</span> <a href="mailto:hidralisk.online@gmail.com" style="color:inherit">hidralisk.online@gmail.com</a></code>
+    <p class="body-txt" style="margin-top:14px;" data-i18n="ct_note">Leemos todo. Tu feedback es lo que hace crecer a Swarm.</p>
+  </div>
+</section>
+
+<footer>
+  <span class="brand">Hidr4lisk_Swarm</span> · MIT ·
+  <a href="https://github.com/hidr4lisk/swarm" target="_blank" rel="noopener">github.com/hidr4lisk/swarm</a> ·
+  <a href="mailto:hidralisk.online@gmail.com">hidralisk.online@gmail.com</a> ·
+  <span data-i18n="foot">varias mentes, una mesa</span> 🪲
+</footer>
+
+<script>
+/* ── i18n (ES = texto del HTML; EN = este diccionario) ── */
+const I18N = {
+  en: {
+    nav_motto: '2026 - Knowledge is free',
+    tagline: 'A <b>multi-agent worktable</b> in your browser: several AIs chat, debate and <b>act</b> — coordinated by a leader.',
+    badges: 'multi-agent · API keys or CLIs · portable · open source (MIT)',
+    cta_go: '▸ GET STARTED', cta_download: '⬇ DOWNLOAD · READY TO USE',
+    relnote: 'one self-contained folder · Linux &amp; Windows · nothing to install, no account',
+    dl_upd: 'last updated',
+    s1_eyebrow: '// 01 · ONE TABLE, MANY MINDS', s1_h: 'Several AIs, one table.',
+    s1_body: 'Each <b>seat</b> is an AI with its own voice and job. You drop a request; they discuss it flat or under a <b>leader</b>, and the leader closes — with an answer, or by <b>acting</b>. Your browser, your machine, your accounts.',
+    s1_l1: 'split: Arch checks the disk, Red looks at the service…',
+    s1_l2: 'disk 82% — /var/log ate 12 GB',
+    s1_l3: 'nginx down: missing reload after logrotate',
+    s1_l4: 'proposal: clean logs + reload nginx', s1_l5: '⧗ waiting for your OK',
+    s1_punch: 'Many small tables, one per task. Live, in the browser.',
+    s2_eyebrow: '// 02 · ONE FOLDER, ANYWHERE', s2_h: 'On the disk, or on a pendrive.',
+    s2_body: 'Same app, same SQLite. Two wrappers — pick the one that fits the machine in front of you.',
+    s2_at: 'INSTALLED',
+    s2_at: 'ON THE PC', s2_ap: 'Unzip it into a folder on the disk and double-click. It stays there, ready for next time. Ideal for your everyday machine.',
+    s2_bt: 'PORTABLE ⟳',
+    s2_bt: 'ON A PENDRIVE ⟳', s2_bp: 'The same folder on a stick. Plug it into any bare <b>Windows or Linux</b> PC → double-click and the table opens in the browser. Your tables and seats travel with you.',
+    s2_punch: 'The technician\'s kit: a stick that turns any client PC into a full worktable.',
+    s2_cfg: 'And your setup travels with you: <b>Sillas → Export</b> downloads your seats —names, models, prompts, portraits, colors— to a JSON file, and <b>Import</b> restores them on another PC or on a fresh version. No credentials inside: keys stay encrypted in the vault, separately.',
+    s3_eyebrow: '// 03 · THREE KINDS OF SEAT', s3_h: 'By CLI, by API key, or local.',
+    s3_body: 'Every seat picks its own backend. Mix them at the same table.',
+    s3_cli: '— accounts you already logged in, nothing stored',
+    s3_api: '— keys encrypted in a passphrase vault',
+    s3_local: '— runs entirely on your own hardware',
+    s3_punch: 'The API-key route needs no binary — it\'s what makes the pendrive possible.',
+    s3_codex: 'Codex CLI 0.162.1: <b>chat and file building verified on Windows and Linux</b>. It keeps its write sandbox; Windows requires configuring a native Codex sandbox backend. <a href="https://github.com/hidr4lisk/swarm#readme">Requirements and upgrade →</a>',
+    s4_eyebrow: '// 04 · THE SHARP EDGE', s4_h: 'It can touch the real machine — carefully.',
+    s4_body: 'Turn on the <b>toolbelt</b> (opt-in, off by default) and seats —by API key <b>and</b> by CLI— get tools that act on the actual computer you plugged into, no container and no capsule. <b>The switch is the permission</b>: with it on, what they do applies immediately. The safety net is <b>not</b> a sandbox; it\'s discipline:',
+    s4_i1: '<span><b>Read-only runs itself.</b> Inspecting disk, processes and files: allowlist with no shell, runs without asking.</span>',
+    s4_i2: '<span><b>You watch it happen.</b> Every change posts a note in the table as it applies: with no gate in front, live visibility is the net.</span>',
+    s4_i3: '<span><b>Everything is logged.</b> Every read and every change lands in the per-table log, exportable as a report.</span>',
+    s4_i4: '<span><b>Work stays together.</b> If you don\'t name a path, whatever they produce lands in that table\'s folder — versioned and downloadable.</span>',
+    s4_warn_t: '⚠ Real power',
+    s4_warn_p: 'Dangerous in the wrong hands. Only enable it on machines you\'re authorized to service: with the switch on, a seat can change the system without asking you first.',
+    s5_eyebrow: '// 05 · SEE IT', s5_h: 'A table, at work.',
+    s5_body: 'The seats debate, the leader builds real files (one commit per turn) and the flow shows on the right. The UI is bilingual, though its soul speaks Spanish.',
+    s5_cap: 'A table with a leader: debate, real building, live flow.',
+    dn_eyebrow: '// SUPPORT', dn_h: 'Back the workhorse.',
+    dn_body: 'Swarm is <b>free and open source</b>. If it helps you and you want it to keep growing, you can chip in via <b>Mercado Pago</b> — scan the QR or transfer to the alias.',
+    dn_label: 'Mercado Pago alias', dn_copy: 'copy',
+    dn_note: 'Scan the QR with the Mercado Pago app or transfer manually to the alias. Thanks 🪲',
+    ct_eyebrow: '// CONTACT', ct_h: 'Let’s talk.',
+    ct_body: 'Found a bug, got an idea, or want to use Swarm with your team? Open an <a href="https://github.com/hidr4lisk/swarm/issues" target="_blank" rel="noopener">issue on GitHub</a> or write to us directly:',
+    ct_note: 'We read everything. Your feedback is what makes Swarm grow.',
+    go_eyebrow: '// GET STARTED', go_h: 'Up in one command.',
+    go_body: 'Don\'t want to clone anything? Grab the ready-made folder and double-click. Prefer the code? Clone and run — no Docker, no account, just Python 3.12.',
+    go0_t: 'Download Swarm · ready to use',
+    go0_p: 'Unzip it into <b>a folder on the disk or onto a pendrive</b> and double-click <code>Enjambre.bat</code> (Windows) or <code>enjambre.sh</code> (Linux). No Python, no Docker, no cloning. First run asks each PC whether to install it there or run trace-free.',
+    go0_note: 'Windows warns "Windows protected your PC"? That\'s normal (no paid signing cert, code is public on GitHub) — "More info" → "Run anyway". Step-by-step guide: the <b>Help</b> button inside the app.',
+    go0_git: 'To <b>chat</b> you install nothing. For <code>/armar</code> — seats building real files — you need <b>git</b>, the one thing the bundle does not ship: <code>winget install --id Git.Git -e</code> on Windows, <code>sudo apt install git</code> on Linux. If it is missing, Swarm tells you at startup.',
+    go1_t: 'From source (Python 3.12)',
+    go1_p: 'Opens <code>127.0.0.1:8799</code>. Go to <b>Connections → API keys</b>, load a key (stored encrypted) and start a table.',
+    go2_t: 'Build the portable folder (Linux + Windows)',
+    go2_p: 'Copy <code>dist/swarm-portable/</code> wherever you want —a folder on the disk or a pendrive—: just a handful of big files, so it copies fast. On any bare PC: double-click <code>enjambre.sh</code> (Linux) or <code>Enjambre.bat</code> (Windows). First run asks whether to install it on that PC or run trace-free.',
+    go_repo: '▸ REPO & README', go_donate: '☕️ SUPPORT',
+    foot: 'many minds, one table'
+  }
+};
+
+function applyLang(lang){
+  const dict = I18N[lang];
+  document.documentElement.lang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b=>{
+    const on = b.dataset.lang === lang;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  if(!dict) return;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k = el.getAttribute('data-i18n');
+    if(dict[k] !== undefined) el.textContent = dict[k];
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el=>{
+    const k = el.getAttribute('data-i18n-html');
+    if(dict[k] !== undefined) el.innerHTML = dict[k];
+  });
+}
+function setLang(lang){
+  try{ localStorage.setItem('swarm_lang', lang); }catch(e){}
+  if(lang === 'es'){ if(document.documentElement.lang !== 'es') location.reload(); return; }
+  applyLang(lang);
+}
+document.querySelectorAll('.lang-btn').forEach(b=>
+  b.addEventListener('click', ()=>setLang(b.dataset.lang)));
+document.getElementById('toolSelect').addEventListener('change', e=>{
+  if(e.target.value) window.location.href = e.target.value;
+});
+const copyBtn = document.getElementById('copyAlias');
+copyBtn.addEventListener('click', ()=>{
+  const val = document.getElementById('aliasVal').textContent.trim();
+  const done = ()=>{ copyBtn.classList.add('ok'); const t=copyBtn.textContent;
+    copyBtn.textContent = (document.documentElement.lang==='en'?'copied ✓':'copiado ✓');
+    setTimeout(()=>{ copyBtn.classList.remove('ok'); copyBtn.textContent=t; }, 1600); };
+  if(navigator.clipboard) navigator.clipboard.writeText(val).then(done).catch(done);
+  else done();
+});
+let saved=null;
+try{ saved = localStorage.getItem('swarm_lang'); }catch(e){}
+if(saved === 'en') applyLang('en');
+</script>
+<script>
+/* ── Boot glitch: scramble del título (por nodo de texto — no rompe los <span> del h1) ── */
+(function(){
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const h1 = document.querySelector('.hero h1');
+  if (!h1) return;
+  const nodes = [];
+  (function walk(n){ for (const c of n.childNodes) { if (c.nodeType === 3) nodes.push({n:c, t:c.nodeValue}); else walk(c); } })(h1);
+  const chars = '!@#$%^&*<>[]{}01';
+  const len = nodes.reduce((a,x) => a + x.t.length, 0);
+  let frame = 0;
+  const total = 40;
+  const id = setInterval(() => {
+    let off = 0;
+    for (const x of nodes) {
+      x.n.nodeValue = [...x.t].map((ch, i) => {
+        if (ch === ' ') return ch;
+        const lockAt = Math.floor(((off + i) / len) * total * 0.75);
+        return frame > lockAt ? ch : chars[Math.floor(Math.random() * chars.length)];
+      }).join('');
+      off += x.t.length;
+    }
+    if (++frame >= total) { clearInterval(id); for (const x of nodes) x.n.nodeValue = x.t; }
+  }, 50);
+  setTimeout(() => { const ov = document.getElementById('glitch-overlay'); if (ov) ov.remove(); }, 2100);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+# Publica la carpeta portátil "lista para usar" como asset de un GitHub Release.
+# El build corre en un runner Linux (ubuntu-latest) → NADIE necesita Linux para tener el zip.
+# Se dispara al pushear un tag vX.Y.Z; o a mano ("Run workflow") para probar el build sin cortar release.
+name: portable-release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write        # para crear el Release y subir el asset
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ANTES de buildear: así el zip lleva su versión adentro y el footer de la app la muestra.
+      # (También deja lista la línea de la landing; el push de ambos va al final.)
+      # El bot no commitea en main (solo commits del dueño): la versión se sella ANTES del tag con
+      # `python3 scripts/actualizar_version.py vX.Y.Z` + commit. Si el tag llega sin eso, no se publica.
+      - name: Exigir la versión ya sellada en el commit del tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # Solo la versión: la fecha de la landing la pone el sellado local y el runner corre en UTC.
+          if ! grep -qx "__version__ = '$GITHUB_REF_NAME'" swarm/version.py \
+             || ! grep -q "id=\"dl-ver\">$GITHUB_REF_NAME " index.html; then
+            echo "::error::$GITHUB_REF_NAME sin sellar: corré scripts/actualizar_version.py $GITHUB_REF_NAME, commiteá y volvé a taggear"
+            exit 1
+          fi
+      - name: Buildear el bundle portátil (Linux + Windows en una carpeta)
+        run: ./scripts/build_bundle.sh
+
+      - name: Empaquetar la carpeta portátil en un zip
+        run: cd dist && zip -r -q ../swarm-portable.zip swarm-portable
+
+      # Queda descargable desde la corrida aunque no sea un tag (para probar el build).
+      - name: Guardar el zip como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-portable
+          path: swarm-portable.zip
+
+      - name: Publicar el Release (solo en push de tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          **Listo para usar** — Windows + Linux, sin instalar nada.
+
+          Bajá `swarm-portable.zip` y descomprimilo donde quieras: una **carpeta del disco** si
+          es tu máquina de siempre, o un **pendrive** si querés llevarlo. Después corré
+          **Enjambre.bat** (Windows) o **enjambre.sh** (Linux). No necesitás Python, Docker ni
+          clonar el repo. La primera vez cada PC pregunta si instalar el runtime ahí (arranque
+          rápido) o correr sin dejar rastro.
+
+          Tus mesas, sillas y bóveda viven en `data/`, al lado del launcher, y se mueven con la
+          carpeta entre PCs. ¿Ya tenías tus sillas armadas? **Sillas → Importar** te las repone
+          desde un JSON.
+
+          Para **charlar y debatir** no necesitás nada más. Para `/armar` —que las sillas
+          fabriquen archivos— hacen falta dos cosas: prender el **toolbelt** (Conexiones →
+          Toolbelt) y tener **git** instalado, que es lo único que el bundle no trae. En una PC
+          recién instalada no viene: `winget install --id Git.Git -e` en Windows,
+          `sudo apt install git` en Linux. Si falta, Swarm te avisa al arrancar.
+          EOF
+          # Las notas versionadas incluyen requisitos y cómo conservar data/ al actualizar.
+          if [ -f "docs/releases/$GITHUB_REF_NAME.md" ]; then
+            cp "docs/releases/$GITHUB_REF_NAME.md" notes.md
+          fi
+          gh release create "$GITHUB_REF_NAME" swarm-portable.zip \
+            --title "Swarm $GITHUB_REF_NAME — portátil" --notes-file notes.md \
+          || gh release upload "$GITHUB_REF_NAME" swarm-portable.zip --clobber
