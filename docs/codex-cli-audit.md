@@ -88,13 +88,14 @@ en lugar de sugerencias no verificadas para la cuenta. README y Ayuda ES/EN actu
 
 ## Publicación verificada — 2026-10-15
 
-- [Release v1.2.1](https://github.com/hidr4lisk/swarm/releases/tag/v1.2.1): código
+> Registro histórico: el repo se reinició el 2026-11-23 con un único commit; los hashes, corridas y
+> releases anteriores de esta sección ya no existen en GitHub.
+
+- Release v1.2.1: código
   `55bf979c26dc6ec0987b66b91e43b1cca9d5bd35`; el workflow dejó el sello de versión en
   `main` mediante `6f5fe0f71968225bc882afcc721bd1b955c0bb3e`. El tag apunta al código de
   release; el empaquetado sella la versión antes de construir.
-- [CI](https://github.com/hidr4lisk/swarm/actions/runs/38764767088),
-  [portable-release](https://github.com/hidr4lisk/swarm/actions/runs/38765116839) y
-  [Pages](https://github.com/hidr4lisk/swarm/actions/runs/38765230245): terminados con éxito.
+- CI, portable-release y Pages: terminados con éxito.
 - La [web pública](https://hidr4lisk.github.io/swarm/) respondió HTTP 200, mostró
   **v1.2.1 · 15/10/2026** y el texto de compatibilidad con Codex 0.162.1.
 - Se descargó el ZIP público por `releases/latest/download/swarm-portable.zip` (HTTP 200):
